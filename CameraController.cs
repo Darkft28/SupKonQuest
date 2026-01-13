@@ -19,18 +19,34 @@ namespace SupKonQuest
 
         public override void _UnhandledInput(InputEvent @event)
         {
-            // Gestion du Zoom à la molette
-            if (@event is InputEventMouseButton mouseEvent && mouseEvent.Pressed)
+            if (@event is InputEventMouseButton mb && mb.Pressed)
             {
-                if (mouseEvent.ButtonIndex == MouseButton.WheelUp)
+                if (mb.ButtonIndex == MouseButton.WheelUp)
                 {
-                    Zoom = (Zoom + ZoomStep).Clamp(new Vector2(MinZoom, MinZoom), new Vector2(MaxZoom, MaxZoom));
+                    ApplyZoom(ZoomStep);
                 }
-                else if (mouseEvent.ButtonIndex == MouseButton.WheelDown)
+                else if (mb.ButtonIndex == MouseButton.WheelDown)
                 {
-                    Zoom = (Zoom - ZoomStep).Clamp(new Vector2(MinZoom, MinZoom), new Vector2(MaxZoom, MaxZoom));
+                    ApplyZoom(-ZoomStep);
                 }
             }
         }
+
+        private void ApplyZoom(Vector2 step)
+        {
+            // 1. On mémorise où est la souris dans le MONDE avant de zoomer
+            Vector2 mousePosBefore = GetGlobalMousePosition();
+
+            // 2. On applique le zoom
+            Zoom = (Zoom + step).Clamp(new Vector2(MinZoom, MinZoom), new Vector2(MaxZoom, MaxZoom));
+
+            // 3. On calcule où est la souris dans le MONDE après le zoom
+            // (La position a changé car l'échelle a changé)
+            Vector2 mousePosAfter = GetGlobalMousePosition();
+
+            // 4. On déplace la caméra de la différence pour que le point sous la souris reste fixe
+            Position += mousePosBefore - mousePosAfter;
+        }
+        
     }
 }
