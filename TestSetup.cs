@@ -51,31 +51,31 @@ public partial class TestSetup : Node
 	
 	[Export]
 	public bool GenererMapMaintenant
-    {
-        get => false;
-        set
-        {
-            if (value)
-            {
-                // Appelle ta fonction de génération ici
-                // Attention : Il faut s'assurer que _tileMap est bien assigné avant !
-                InitialiserEtGenerer(); 
-            }
-        }
-    }
+	{
+		get => false;
+		set
+		{
+			if (value)
+			{
+				// Appelle ta fonction de génération ici
+				// Attention : Il faut s'assurer que _tileMap est bien assigné avant !
+				InitialiserEtGenerer(); 
+			}
+		}
+	}
 
-    // Crée une fonction intermédiaire pour s'assurer que tout est prêt
-    private void InitialiserEtGenerer()
-    {
-        // En mode Tool, _Ready n'est pas toujours appelé comme on pense,
-        // donc on force la récupération du noeud si nécessaire.
-        if (_tileMap == null) _tileMap = GetNode<TileMapLayer>("Sol");
-        
-        SetupNoise(); // Tes configs de bruit
-        GenererMap(); // Ta boucle de génération
-        
-        GD.Print("Map générée dans l'éditeur ! N'oublie pas de sauvegarder (Ctrl+S).");
-    }
+	// Crée une fonction intermédiaire pour s'assurer que tout est prêt
+	private void InitialiserEtGenerer()
+	{
+		// En mode Tool, _Ready n'est pas toujours appelé comme on pense,
+		// donc on force la récupération du noeud si nécessaire.
+		if (_tileMap == null) _tileMap = GetNode<TileMapLayer>("Sol");
+		
+		SetupNoise(); // Tes configs de bruit
+		GenererMap(); // Ta boucle de génération
+		
+		GD.Print("Map générée dans l'éditeur ! N'oublie pas de sauvegarder (Ctrl+S).");
+	}
 
 	private void SetupNoise()
 	{
