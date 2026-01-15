@@ -11,9 +11,10 @@ namespace SupKonQuest
         [Export] public float MaxZoom = 3.0f;
         
         private bool _isDragging = false;
-
+        
         public override void _Process(double delta)
         {
+            
             // Déplacement au clavier (WASD / Flèches)
             Vector2 direction = Input.GetVector("ui_left", "ui_right", "ui_up", "ui_down");
             Position += direction * Speed * (float)delta;
@@ -60,6 +61,33 @@ namespace SupKonQuest
 
             // 4. On déplace la caméra de la différence pour que le point sous la souris reste fixe
             Position += mousePosBefore - mousePosAfter;
+        }
+        
+        public void DefinirLimites()
+        {
+            int mapWidth = 256;
+            int mapHeight = 256;
+            int tileSize = 128;
+            
+            LimitLeft = 0;
+            LimitTop = 0;
+            LimitRight = mapWidth * tileSize;
+            LimitBottom = mapHeight * tileSize;
+            
+            Rect2 viewport = GetViewportRect();
+            
+            float zoomMinX = viewport.Size.X / (mapWidth * tileSize);
+            float zoomMinY = viewport.Size.Y / (mapHeight * tileSize);
+    
+            float zoomSuffisant = Mathf.Max(zoomMinX, zoomMinY);
+    
+            MinZoom = Mathf.Max(zoomSuffisant, MinZoom);
+            
+            if (Zoom.X < MinZoom)
+            {
+                Zoom = new Vector2(MinZoom, MinZoom);
+            }
+            
         }
         
     }

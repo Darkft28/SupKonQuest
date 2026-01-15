@@ -80,6 +80,8 @@ public partial class TestSetup : Node
         SetupNoise(); // Tes configs de bruit
         GenererMap(); // Ta boucle de génération
         
+        
+        
         GD.Print("Map générée dans l'éditeur ! N'oublie pas de sauvegarder (Ctrl+S).");
     }
 
