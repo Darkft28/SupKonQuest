@@ -6,9 +6,10 @@ namespace SupKonQuest
 	public partial class CameraController : Camera2D
 	{
 		[Export] public float Speed = 600.0f;
-		[Export] public Vector2 ZoomStep = new Vector2(0.2f, 0.2f);
-		[Export] public float MinZoom = 0.10f;
-		[Export] public float MaxZoom = 3.0f;
+		[Export] public Vector2 ZoomStep = new Vector2(0.15f, 0.15f);
+		[Export] public float MinZoom = 0.05f;
+		[Export] public float MaxZoom = 2.5f;
+        [Export] public float InitialZoom = 0.2f;
 		
 		private bool _isDragging = false;
 		

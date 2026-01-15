@@ -43,8 +43,8 @@ public partial class TestSetup : Node
 		// Config de la caméra
 		if (_camera != null)
 		{
-			_camera.Zoom = new Vector2(0.5f, 0.5f);
-			_camera.Position = new Vector2(MapWidth * 8, MapHeight * 8);
+			_camera.Zoom = new Vector2(0.25f, 0.25f);
+			_camera.Position = new Vector2(MapWidth * 64, MapHeight * 64);
 		}
 
 		
