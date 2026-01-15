@@ -5,7 +5,8 @@ using System;
 public partial class TestSetup : Node
 {
 	// --- RÉFÉRENCES ---
-	private TileMapLayer _tileMap;
+	private TileMapLayer _tileMapSol;  
+	private TileMapLayer _tileMapObjets;
 	private Camera2D _camera;
 
 	// --- CONFIGURATION ---
@@ -21,6 +22,9 @@ public partial class TestSetup : Node
 	private const int IdForet = 3;
 	private const int IdRoche = 5;
 	private const int IdNeige = 4;
+	
+	private const int IdObjetArbre = 100;     // Ton ancienne "IdForet"
+	private const int IdObjetMontagne = 101;
 
 	// Outils de génération
 	private FastNoiseLite _noiseElevation = new FastNoiseLite();
@@ -29,7 +33,8 @@ public partial class TestSetup : Node
 	public override void _Ready()
 	{
 		// Récupération des noeuds enfants (Attention aux noms exacts dans la scène !)
-		_tileMap = GetNode<TileMapLayer>("Sol");
+		_tileMapSol = GetNode<TileMapLayer>("Sol");
+		_tileMapObjets = GetNode<TileMapLayer>("Objets");
 		_camera = GetNode<Camera2D>("Camera2D");
 
 		// Config de la caméra
@@ -40,7 +45,7 @@ public partial class TestSetup : Node
 		}
 
 		
-		if (_tileMap.GetUsedCells().Count == 0)
+		if (_tileMapSol.GetUsedCells().Count == 0)
 		{
 			SetupNoise();
 			GenererMap();
@@ -69,7 +74,8 @@ public partial class TestSetup : Node
     {
         // En mode Tool, _Ready n'est pas toujours appelé comme on pense,
         // donc on force la récupération du noeud si nécessaire.
-        if (_tileMap == null) _tileMap = GetNode<TileMapLayer>("Sol");
+        if (_tileMapSol == null) _tileMapSol = GetNode<TileMapLayer>("Sol");
+        if (_tileMapObjets == null) _tileMapObjets = GetNode<TileMapLayer>("Objets");
         
         SetupNoise(); // Tes configs de bruit
         GenererMap(); // Ta boucle de génération
@@ -93,6 +99,9 @@ public partial class TestSetup : Node
 	private void GenererMap()
 	{
 		GD.Print("Génération C# en cours...");
+		
+		_tileMapSol.Clear();
+		_tileMapObjets.Clear();
 
 		for (int x = 0; x < MapWidth; x++)
 		{
@@ -101,37 +110,67 @@ public partial class TestSetup : Node
 				float altitude = _noiseElevation.GetNoise2D(x, y);
 				float densiteArbre = _noiseForet.GetNoise2D(x, y);
 
-				int sourceIdChoisi = -1;
+				int solId = -1;
+				int objetId = -1;
 
 				// Logique de biome
 				if (altitude < -0.2f)
 				{
-					sourceIdChoisi = IdEau;
+					solId = IdEau;
 				}
 				else if (altitude < -0.15f)
 				{
-					sourceIdChoisi = IdSable;
+					solId = IdSable;
 				}
 				else if (altitude < 0.4f)
 				{
 					// Herbe ou Forêt ?
 					if (densiteArbre > 0.2f)
-						sourceIdChoisi = IdForet;
+					{
+						solId = IdForet;
+						if (densiteArbre > 0.3f)
+						{
+							if (GD.Randf() < 0.25f) 
+							{
+								objetId = IdObjetArbre;
+							}
+						}
+					}
 					else
-						sourceIdChoisi = IdHerbe;
+					{
+						solId = IdHerbe;
+					}
 				}
-				else if (altitude < 0.6f)
+				else if (altitude < 0.55f)
 				{
-					sourceIdChoisi = IdRoche;
+					solId = IdRoche;
+					if (altitude < 0.66f)
+					{
+						if (GD.Randf() < 0.25f) 
+						{
+							objetId = IdObjetMontagne;
+						}
+					}
+					
 				}
 				else
 				{
-					sourceIdChoisi = IdNeige;
+					solId = IdNeige;
 				}
 
-				// Placement de la tuile
-				// Note: Vector2I est nécessaire pour les coordonnées de grille en C# Godot 4
-				_tileMap.SetCell(new Vector2I(x, y), sourceIdChoisi, new Vector2I(0, 0));
+				Vector2I coords = new Vector2I(x, y);
+
+				// 1. On pose le sol
+				if (solId != -1)
+				{
+					_tileMapSol.SetCell(coords, solId, new Vector2I(0, 0));
+				}
+
+				// 2. On pose l'objet (s'il y en a un)
+				if (objetId != -1)
+				{
+					_tileMapObjets.SetCell(coords, objetId, new Vector2I(0, 0));
+				}
 			}
 		}
 	}
@@ -148,7 +187,10 @@ public partial class TestSetup : Node
 		// Zoom Molette
 		if (@event is InputEventMouseButton mouseEvent)
 		{
-			if (_camera == null) return;
+			if (_camera == null)
+			{
+				return;
+			}
 
 			if (mouseEvent.ButtonIndex == MouseButton.WheelUp)
 			{
@@ -157,7 +199,9 @@ public partial class TestSetup : Node
 			else if (mouseEvent.ButtonIndex == MouseButton.WheelDown)
 			{
 				if (_camera.Zoom.X > 0.1f)
+				{
 					_camera.Zoom -= new Vector2(0.1f, 0.1f);
+				}
 			}
 		}
 	}
