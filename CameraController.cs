@@ -63,32 +63,9 @@ namespace SupKonQuest
             Position += mousePosBefore - mousePosAfter;
         }
         
-        public void DefinirLimites()
-        {
-            int mapWidth = 256;
-            int mapHeight = 256;
-            int tileSize = 128;
+        
             
-            LimitLeft = 0;
-            LimitTop = 0;
-            LimitRight = mapWidth * tileSize;
-            LimitBottom = mapHeight * tileSize;
-            
-            Rect2 viewport = GetViewportRect();
-            
-            float zoomMinX = viewport.Size.X / (mapWidth * tileSize);
-            float zoomMinY = viewport.Size.Y / (mapHeight * tileSize);
-    
-            float zoomSuffisant = Mathf.Max(zoomMinX, zoomMinY);
-    
-            MinZoom = Mathf.Max(zoomSuffisant, MinZoom);
-            
-            if (Zoom.X < MinZoom)
-            {
-                Zoom = new Vector2(MinZoom, MinZoom);
-            }
-            
-        }
+        
         
     }
 }

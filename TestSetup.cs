@@ -23,8 +23,11 @@ public partial class TestSetup : Node
 	private const int IdRoche = 5;
 	private const int IdNeige = 4;
 	
-	private const int IdObjetArbre = 100;     // Ton ancienne "IdForet"
+	private const int IdObjetArbre = 100;    
 	private const int IdObjetMontagne = 101;
+	private const int IdObjetCamp = 102;
+	private const int IdObjetCampUp = 103;
+	
 
 	// Outils de génération
 	private FastNoiseLite _noiseElevation = new FastNoiseLite();
@@ -141,6 +144,14 @@ public partial class TestSetup : Node
 					else
 					{
 						solId = IdHerbe;
+						if (GD.Randf() < 0.001f) 
+						{
+							objetId = IdObjetCamp;
+							if (GD.Randf() < 0.1f) 
+							{
+								objetId = IdObjetCampUp;
+							}
+						}
 					}
 				}
 				else if (altitude < 0.55f)
