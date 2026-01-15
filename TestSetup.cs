@@ -147,7 +147,7 @@ public partial class TestSetup : Node
 						if (GD.Randf() < 0.001f) 
 						{
 							objetId = IdObjetCamp;
-							if (GD.Randf() < 0.1f) 
+							if (GD.Randf() < 0.2f) 
 							{
 								objetId = IdObjetCampUp;
 							}
