@@ -5,7 +5,7 @@
 [ext_resource type="Texture2D" uid="uid://dsqkkv6ga6g68" path="res://Assets/Map/Sand.png" id="3_wckam"]
 [ext_resource type="Texture2D" uid="uid://dw3nicichdn81" path="res://Assets/Map/Forest.png" id="4_675va"]
 [ext_resource type="Texture2D" uid="uid://d2vpqheo800fe" path="res://Assets/Map/Snow.png" id="5_m6kus"]
-[ext_resource type="Texture2D" uid="uid://pduvmwafhpxe" path="res://Assets/Map/Stone.png" id="6_jbi0w"]
+[ext_resource type="Texture2D" uid="uid://cg41cjy02hkak" path="res://Assets/Map/Stone.png" id="6_jbi0w"]
 [ext_resource type="Texture2D" uid="uid://judykwpu4206" path="res://Assets/Map/Water.png" id="7_u2kfw"]
 [ext_resource type="Texture2D" uid="uid://bqch5o0ijr5my" path="res://Assets/Objects/foret.png" id="8_675va"]
 [ext_resource type="Texture2D" uid="uid://cuftxykxkqerq" path="res://Assets/Objects/montagne.png" id="9_m6kus"]
@@ -14,35 +14,42 @@
 
 [sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_kqipd"]
 texture = ExtResource("2_aa0um")
+texture_region_size = Vector2i(128, 128)
 0:0/0 = 0
 
 [sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_7vxqu"]
 texture = ExtResource("3_wckam")
+texture_region_size = Vector2i(128, 128)
 0:0/0 = 0
 
 [sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_sowb6"]
 texture = ExtResource("4_675va")
+texture_region_size = Vector2i(128, 128)
 0:0/0 = 0
 
 [sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_xrogp"]
 texture = ExtResource("5_m6kus")
+texture_region_size = Vector2i(128, 16)
 0:0/0 = 0
 
-[sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_2lfc7"]
+[sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_m6kus"]
 texture = ExtResource("6_jbi0w")
+texture_region_size = Vector2i(128, 128)
 0:0/0 = 0
 
 [sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_7r8be"]
 texture = ExtResource("7_u2kfw")
+texture_region_size = Vector2i(128, 128)
 0:0/0 = 0
 
 [sub_resource type="TileSet" id="TileSet_qmro4"]
+tile_size = Vector2i(128, 128)
 sources/0 = SubResource("TileSetAtlasSource_kqipd")
 sources/1 = SubResource("TileSetAtlasSource_7vxqu")
 sources/3 = SubResource("TileSetAtlasSource_sowb6")
 sources/4 = SubResource("TileSetAtlasSource_xrogp")
-sources/5 = SubResource("TileSetAtlasSource_2lfc7")
 sources/6 = SubResource("TileSetAtlasSource_7r8be")
+sources/5 = SubResource("TileSetAtlasSource_m6kus")
 
 [sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_jbi0w"]
 texture = ExtResource("8_675va")
