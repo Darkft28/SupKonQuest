@@ -11,9 +11,13 @@ config_version=5
 [application]
 
 config/name="SupKonQuest"
-run/main_scene="res://TestSetup.tscn"
+run/main_scene="uid://d2v1sgk2tlmyr"
 config/features=PackedStringArray("4.5", "C#", "Forward Plus")
 config/icon="res://icon.svg"
+
+[display]
+
+window/stretch/mode="canvas_items"
 
 [dotnet]
 

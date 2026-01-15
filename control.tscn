@@ -5,7 +5,7 @@
 [ext_resource type="Texture2D" uid="uid://b51w2e1tljy8i" path="res://Assets/Menu/Texture/button_play.png" id="3_kbped"]
 [ext_resource type="Texture2D" uid="uid://dwteg7wvx2jex" path="res://Assets/Menu/Texture/button_options.png" id="4_fj5cn"]
 [ext_resource type="Texture2D" uid="uid://bwlnxvh5eduk3" path="res://Assets/Menu/Texture/button_quitter.png" id="5_iy58a"]
-[ext_resource type="Script" uid="uid://dhdbrajcntcfw" path="res://button_3_Quit.gd" id="6_fj5cn"]
+[ext_resource type="Script" uid="uid://bp405oyrfcf64" path="res://Button3Quit.cs" id="6_fj5cn"]
 
 [node name="Control" type="Control"]
 layout_mode = 3
@@ -67,4 +67,4 @@ size_flags_horizontal = 4
 icon = ExtResource("5_iy58a")
 script = ExtResource("6_fj5cn")
 
-[connection signal="pressed" from="TextureRect/MarginContainer/VBoxContainer/Button3" to="TextureRect/MarginContainer/VBoxContainer/Button3" method="_on_pressed"]
+[connection signal="pressed" from="TextureRect/MarginContainer/VBoxContainer/Button3" to="TextureRect/MarginContainer/VBoxContainer/Button3" method="OnButtonPressed"]
