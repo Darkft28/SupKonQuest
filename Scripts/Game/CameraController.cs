@@ -18,6 +18,9 @@ namespace SupKonQuest
 		[Export] public int TileSize = 128;
 
 		private Vector2 _targetZoom;
+		private Vector2 _mapCenter;
+		private Vector2 _minBounds;
+		private Vector2 _maxBounds;
 
 		public override void _Ready()
 		{
@@ -31,12 +34,14 @@ namespace SupKonQuest
 				float centerX = (usedRect.Position.X + usedRect.Size.X / 2.0f) * tileSize;
 				float centerY = (usedRect.Position.Y + usedRect.Size.Y / 2.0f) * tileSize;
 
-				Position = new Vector2(centerX, centerY);
+				_mapCenter = new Vector2(centerX, centerY);
+				Position = _mapCenter;
 				GD.Print($"Map bounds: {usedRect}, TileSize: {tileSize}");
 				GD.Print($"Caméra centrée sur: {Position}");
 			}
 			else
 			{
+				_mapCenter = Vector2.Zero;
 				Position = Vector2.Zero;
 				GD.Print("TileMapLayer 'Sol' non trouvé, position par défaut");
 			}
@@ -52,10 +57,14 @@ namespace SupKonQuest
 			int halfWidth = MapWidth / 2;
 			int halfHeight = MapHeight / 2;
 
-			LimitLeft = -halfWidth * TileSize;
-			LimitTop = -halfHeight * TileSize;
-			LimitRight = halfWidth * TileSize;
-			LimitBottom = halfHeight * TileSize;
+			_minBounds = new Vector2(-halfWidth * TileSize, -halfHeight * TileSize);
+			_maxBounds = new Vector2(halfWidth * TileSize, halfHeight * TileSize);
+
+			// Désactiver les limites built-in pour gérer manuellement
+			LimitLeft = -10000000;
+			LimitTop = -10000000;
+			LimitRight = 10000000;
+			LimitBottom = 10000000;
 		}
 
 		public override void _Process(double delta)
@@ -71,6 +80,8 @@ namespace SupKonQuest
 
 				Position += mousePosBefore - mousePosAfter;
 			}
+
+			ClampPosition();
 		}
 
 		public override void _UnhandledInput(InputEvent @event)
@@ -78,6 +89,7 @@ namespace SupKonQuest
 			if (@event is InputEventMouseMotion mm && Input.IsMouseButtonPressed(MouseButton.Right))
 			{
 				Position -= mm.Relative / Zoom;
+				ClampPosition();
 			}
 
 			if (@event is InputEventMouseButton mb && mb.Pressed)
@@ -87,6 +99,34 @@ namespace SupKonQuest
 				else if (mb.ButtonIndex == MouseButton.WheelDown)
 					AdjustZoom(1.0f - ZoomSensitivity);
 			}
+
+			// Touche C ou Home pour recentrer la caméra
+			if (@event is InputEventKey key && key.Pressed && !key.Echo)
+			{
+				if (key.Keycode == Key.C || key.Keycode == Key.Home)
+				{
+					Position = _mapCenter;
+				}
+			}
+		}
+
+		private void ClampPosition()
+		{
+			// Calculer la taille visible de la caméra
+			Vector2 viewportSize = GetViewportRect().Size / Zoom;
+			Vector2 halfViewport = viewportSize / 2;
+
+			// Clamper la position pour que la caméra reste dans les limites
+			float clampedX = Mathf.Clamp(Position.X, _minBounds.X + halfViewport.X, _maxBounds.X - halfViewport.X);
+			float clampedY = Mathf.Clamp(Position.Y, _minBounds.Y + halfViewport.Y, _maxBounds.Y - halfViewport.Y);
+
+			// Si la map est plus petite que le viewport, centrer
+			if (_maxBounds.X - _minBounds.X < viewportSize.X)
+				clampedX = _mapCenter.X;
+			if (_maxBounds.Y - _minBounds.Y < viewportSize.Y)
+				clampedY = _mapCenter.Y;
+
+			Position = new Vector2(clampedX, clampedY);
 		}
 
 		private void AdjustZoom(float factor)
