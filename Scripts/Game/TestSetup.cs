@@ -5,7 +5,7 @@ using System;
 public partial class TestSetup : Node
 {
 	// --- RÉFÉRENCES ---
-	private TileMapLayer _tileMapSol;  
+	private TileMapLayer _tileMapSol;
 	private TileMapLayer _tileMapObjets;
 	private Camera2D _camera;
 
@@ -22,16 +22,19 @@ public partial class TestSetup : Node
 	private const int IdForet = 3;
 	private const int IdRoche = 5;
 	private const int IdNeige = 4;
-	
-	private const int IdObjetArbre = 100;    
+
+	private const int IdObjetArbre = 100;
 	private const int IdObjetMontagne = 101;
 	private const int IdObjetCamp = 102;
 	private const int IdObjetCampUp = 103;
-	
+
+	// --- SEED RÉSEAU ---
+	private int? _networkSeed = null;
 
 	// Outils de génération
 	private FastNoiseLite _noiseElevation = new FastNoiseLite();
 	private FastNoiseLite _noiseForet = new FastNoiseLite();
+	private Random _seededRandom;
 
 	public override void _Ready()
 	{
@@ -47,14 +50,32 @@ public partial class TestSetup : Node
 			_camera.Position = new Vector2(MapWidth * 64, MapHeight * 64);
 		}
 
-		
+		// Vérifier si on a une seed réseau depuis GameState
+		if (!Engine.IsEditorHint())
+		{
+			var gameState = GetNodeOrNull<GameState>("/root/GameState");
+			if (gameState != null && gameState.MapSeed != 0)
+			{
+				_networkSeed = gameState.MapSeed;
+				GD.Print($"Seed réseau détectée: {_networkSeed}");
+			}
+		}
+
 		if (_tileMapSol.GetUsedCells().Count == 0)
 		{
 			SetupNoise();
 			GenererMap();
 			GD.Print("Map C# générée ! Appuyez sur ESPACE pour régénérer.");
 		}
-		
+	}
+
+	/// <summary>
+	/// Définit la seed pour la génération de map (utilisé pour la synchronisation réseau)
+	/// </summary>
+	public void SetSeed(int seed)
+	{
+		_networkSeed = seed;
+		GD.Print($"Seed définie: {seed}");
 	}
 	
 	[Export]
@@ -90,21 +111,29 @@ public partial class TestSetup : Node
 
 	private void SetupNoise()
 	{
+		// Utiliser la seed réseau si disponible, sinon en générer une aléatoire
+		int baseSeed = _networkSeed ?? (int)GD.Randi();
+
 		// Bruit pour l'altitude
-		_noiseElevation.Seed = (int)GD.Randi();
+		_noiseElevation.Seed = baseSeed;
 		_noiseElevation.Frequency = 0.008f;
 		_noiseElevation.FractalType = FastNoiseLite.FractalTypeEnum.Fbm;
 		_noiseElevation.FractalOctaves = 5;
 
-		// Bruit pour la forêt
-		_noiseForet.Seed = (int)GD.Randi();
+		// Bruit pour la forêt (dérivé de la seed de base pour être déterministe)
+		_noiseForet.Seed = baseSeed + 1000;
 		_noiseForet.Frequency = 0.05f;
+
+		// Générateur aléatoire seedé pour le placement des objets
+		_seededRandom = new Random(baseSeed + 2000);
+
+		GD.Print($"Noise initialisé avec seed: {baseSeed}");
 	}
 
 	private void GenererMap()
 	{
 		GD.Print("Génération C# en cours...");
-		
+
 		_tileMapSol.Clear();
 		_tileMapObjets.Clear();
 
@@ -135,7 +164,7 @@ public partial class TestSetup : Node
 						solId = IdForet;
 						if (densiteArbre > 0.3f)
 						{
-							if (GD.Randf() < 0.25f) 
+							if (_seededRandom.NextDouble() < 0.25)
 							{
 								objetId = IdObjetArbre;
 							}
@@ -144,10 +173,10 @@ public partial class TestSetup : Node
 					else
 					{
 						solId = IdHerbe;
-						if (GD.Randf() < 0.001f) 
+						if (_seededRandom.NextDouble() < 0.001)
 						{
 							objetId = IdObjetCamp;
-							if (GD.Randf() < 0.2f) 
+							if (_seededRandom.NextDouble() < 0.2)
 							{
 								objetId = IdObjetCampUp;
 							}
@@ -159,12 +188,11 @@ public partial class TestSetup : Node
 					solId = IdRoche;
 					if (altitude < 0.66f)
 					{
-						if (GD.Randf() < 0.25f) 
+						if (_seededRandom.NextDouble() < 0.25)
 						{
 							objetId = IdObjetMontagne;
 						}
 					}
-					
 				}
 				else
 				{
