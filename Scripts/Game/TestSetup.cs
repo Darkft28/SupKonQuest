@@ -5,9 +5,8 @@ using System;
 public partial class TestSetup : Node
 {
 	// --- RÉFÉRENCES ---
-	private TileMapLayer _tileMapSol;  
+	private TileMapLayer _tileMapSol;
 	private TileMapLayer _tileMapObjets;
-	private Camera2D _camera;
 
 	// --- CONFIGURATION ---
 	// Taille de la map (256x256 tuiles)
@@ -38,14 +37,7 @@ public partial class TestSetup : Node
 		// Récupération des noeuds enfants (Attention aux noms exacts dans la scène !)
 		_tileMapSol = GetNode<TileMapLayer>("Sol");
 		_tileMapObjets = GetNode<TileMapLayer>("Objets");
-		_camera = GetNode<Camera2D>("Camera2D");
-
-		// Config de la caméra
-		if (_camera != null)
-		{
-			_camera.Zoom = new Vector2(0.25f, 0.25f);
-			_camera.Position = new Vector2(MapWidth * 64, MapHeight * 64);
-		}
+		// La caméra est gérée par CameraController
 
 		
 		if (_tileMapSol.GetUsedCells().Count == 0)
@@ -108,9 +100,12 @@ public partial class TestSetup : Node
 		_tileMapSol.Clear();
 		_tileMapObjets.Clear();
 
-		for (int x = 0; x < MapWidth; x++)
+		int halfWidth = MapWidth / 2;
+		int halfHeight = MapHeight / 2;
+
+		for (int x = -halfWidth; x < halfWidth; x++)
 		{
-			for (int y = 0; y < MapHeight; y++)
+			for (int y = -halfHeight; y < halfHeight; y++)
 			{
 				float altitude = _noiseElevation.GetNoise2D(x, y);
 				float densiteArbre = _noiseForet.GetNoise2D(x, y);
@@ -196,26 +191,6 @@ public partial class TestSetup : Node
 			SetupNoise();
 			GenererMap();
 		}
-
-		// Zoom Molette
-		if (@event is InputEventMouseButton mouseEvent)
-		{
-			if (_camera == null)
-			{
-				return;
-			}
-
-			if (mouseEvent.ButtonIndex == MouseButton.WheelUp)
-			{
-				_camera.Zoom += new Vector2(0.1f, 0.1f);
-			}
-			else if (mouseEvent.ButtonIndex == MouseButton.WheelDown)
-			{
-				if (_camera.Zoom.X > 0.1f)
-				{
-					_camera.Zoom -= new Vector2(0.1f, 0.1f);
-				}
-			}
-		}
+		// Le zoom est géré par CameraController
 	}
 }
