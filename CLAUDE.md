@@ -70,6 +70,11 @@ feature/camera    # Controles camera
 2. Merger dans `develop` pour tester
 3. Merger `develop` dans `main` quand stable
 
+### Regles pour Claude
+- Ne JAMAIS ajouter "Co-Authored-By: Claude" dans les commits
+- Les commits doivent apparaitre comme faits uniquement par l'utilisateur
+- Ne pas pusher automatiquement sans demande explicite
+
 ## Points d'attention
 
 - Les TileMapLayer utilisent des coordonnees de tiles, pas des pixels
