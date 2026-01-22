@@ -1,21 +1,20 @@
 using Godot;
 using System;
 
+// Génération procédurale de la map avec biomes et objets
 [Tool]
 public partial class TestSetup : Node
 {
-	// --- RÉFÉRENCES ---
 	private TileMapLayer _tileMapSol;
 	private TileMapLayer _tileMapObjets;
 	private Camera2D _camera;
 
-	// --- CONFIGURATION ---
-	// Taille de la map (256x256 tuiles)
 	private const int MapWidth = 256;
 	private const int MapHeight = 256;
+	private const int HalfWidth = MapWidth / 2;
+	private const int HalfHeight = MapHeight / 2;
 
-	// --- IDs DES TUILES (A vérifier dans ton TileSet !) ---
-	// Assure-toi que ces IDs correspondent à la liste "Source ID" dans ton TileSet
+	// IDs des tuiles (correspondant au TileSet)
 	private const int IdEau = 6;
 	private const int IdSable = 1;
 	private const int IdHerbe = 0;
@@ -28,26 +27,23 @@ public partial class TestSetup : Node
 	private const int IdObjetCamp = 102;
 	private const int IdObjetCampUp = 103;
 
-	// --- SEED RÉSEAU ---
+	// Seed réseau pour synchronisation multijoueur
 	private int? _networkSeed = null;
 
-	// Outils de génération
 	private FastNoiseLite _noiseElevation = new FastNoiseLite();
 	private FastNoiseLite _noiseForet = new FastNoiseLite();
 	private Random _seededRandom;
 
 	public override void _Ready()
 	{
-		// Récupération des noeuds enfants (Attention aux noms exacts dans la scène !)
 		_tileMapSol = GetNode<TileMapLayer>("Sol");
 		_tileMapObjets = GetNode<TileMapLayer>("Objets");
 		_camera = GetNode<Camera2D>("Camera2D");
 
-		// Config de la caméra
 		if (_camera != null)
 		{
 			_camera.Zoom = new Vector2(0.25f, 0.25f);
-			_camera.Position = new Vector2(MapWidth * 64, MapHeight * 64);
+			_camera.Position = Vector2.Zero;
 		}
 
 		// Vérifier si on a une seed réseau depuis GameState
@@ -65,7 +61,7 @@ public partial class TestSetup : Node
 		{
 			SetupNoise();
 			GenererMap();
-			GD.Print("Map C# générée ! Appuyez sur ESPACE pour régénérer.");
+			GD.Print("Map générée. Appuyez sur ESPACE pour régénérer.");
 		}
 	}
 
@@ -77,7 +73,8 @@ public partial class TestSetup : Node
 		_networkSeed = seed;
 		GD.Print($"Seed définie: {seed}");
 	}
-	
+
+	// Propriété exportée pour générer la map depuis l'éditeur
 	[Export]
 	public bool GenererMapMaintenant
 	{
@@ -86,35 +83,29 @@ public partial class TestSetup : Node
 		{
 			if (value)
 			{
-				// Appelle ta fonction de génération ici
-				// Attention : Il faut s'assurer que _tileMap est bien assigné avant !
-				InitialiserEtGenerer(); 
+				InitialiserEtGenerer();
 			}
 		}
 	}
 
-	// Crée une fonction intermédiaire pour s'assurer que tout est prêt
+	// Initialise les références et génère la map (utilisé en mode Tool)
 	private void InitialiserEtGenerer()
 	{
-		// En mode Tool, _Ready n'est pas toujours appelé comme on pense,
-		// donc on force la récupération du noeud si nécessaire.
 		if (_tileMapSol == null) _tileMapSol = GetNode<TileMapLayer>("Sol");
 		if (_tileMapObjets == null) _tileMapObjets = GetNode<TileMapLayer>("Objets");
-		
-		SetupNoise(); // Tes configs de bruit
-		GenererMap(); // Ta boucle de génération
-		
-		
-		
-		GD.Print("Map générée dans l'éditeur ! N'oublie pas de sauvegarder (Ctrl+S).");
+
+		SetupNoise();
+		GenererMap();
+
+		GD.Print("Map générée dans l'éditeur.");
 	}
 
+	// Configure les paramètres de bruit pour la génération
 	private void SetupNoise()
 	{
 		// Utiliser la seed réseau si disponible, sinon en générer une aléatoire
 		int baseSeed = _networkSeed ?? (int)GD.Randi();
 
-		// Bruit pour l'altitude
 		_noiseElevation.Seed = baseSeed;
 		_noiseElevation.Frequency = 0.008f;
 		_noiseElevation.FractalType = FastNoiseLite.FractalTypeEnum.Fbm;
@@ -130,16 +121,17 @@ public partial class TestSetup : Node
 		GD.Print($"Noise initialisé avec seed: {baseSeed}");
 	}
 
+	// Génère la map en parcourant toutes les tuiles
 	private void GenererMap()
 	{
-		GD.Print("Génération C# en cours...");
+		GD.Print("Génération en cours...");
 
 		_tileMapSol.Clear();
 		_tileMapObjets.Clear();
 
-		for (int x = 0; x < MapWidth; x++)
+		for (int x = -HalfWidth; x < HalfWidth; x++)
 		{
-			for (int y = 0; y < MapHeight; y++)
+			for (int y = -HalfHeight; y < HalfHeight; y++)
 			{
 				float altitude = _noiseElevation.GetNoise2D(x, y);
 				float densiteArbre = _noiseForet.GetNoise2D(x, y);
@@ -147,7 +139,7 @@ public partial class TestSetup : Node
 				int solId = -1;
 				int objetId = -1;
 
-				// Logique de biome
+				// Détermination du biome selon l'altitude
 				if (altitude < -0.2f)
 				{
 					solId = IdEau;
@@ -158,7 +150,6 @@ public partial class TestSetup : Node
 				}
 				else if (altitude < 0.4f)
 				{
-					// Herbe ou Forêt ?
 					if (densiteArbre > 0.2f)
 					{
 						solId = IdForet;
@@ -201,13 +192,11 @@ public partial class TestSetup : Node
 
 				Vector2I coords = new Vector2I(x, y);
 
-				// 1. On pose le sol
 				if (solId != -1)
 				{
 					_tileMapSol.SetCell(coords, solId, new Vector2I(0, 0));
 				}
 
-				// 2. On pose l'objet (s'il y en a un)
 				if (objetId != -1)
 				{
 					_tileMapObjets.SetCell(coords, objetId, new Vector2I(0, 0));
@@ -218,32 +207,10 @@ public partial class TestSetup : Node
 
 	public override void _Input(InputEvent @event)
 	{
-		// Touche ESPACE pour régénérer
 		if (@event.IsActionPressed("ui_accept"))
 		{
 			SetupNoise();
 			GenererMap();
-		}
-
-		// Zoom Molette
-		if (@event is InputEventMouseButton mouseEvent)
-		{
-			if (_camera == null)
-			{
-				return;
-			}
-
-			if (mouseEvent.ButtonIndex == MouseButton.WheelUp)
-			{
-				_camera.Zoom += new Vector2(0.1f, 0.1f);
-			}
-			else if (mouseEvent.ButtonIndex == MouseButton.WheelDown)
-			{
-				if (_camera.Zoom.X > 0.1f)
-				{
-					_camera.Zoom -= new Vector2(0.1f, 0.1f);
-				}
-			}
 		}
 	}
 }
