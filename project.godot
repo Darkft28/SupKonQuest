@@ -15,6 +15,11 @@ run/main_scene="uid://d2v1sgk2tlmyr"
 config/features=PackedStringArray("4.5", "C#", "Forward Plus")
 config/icon="res://icon.svg"
 
+[autoload]
+
+NetworkManager="*res://Scripts/Network/NetworkManager.cs"
+GameState="*res://Scripts/Network/GameState.cs"
+
 [display]
 
 window/stretch/mode="canvas_items"

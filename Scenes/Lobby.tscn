@@ -1,0 +1,119 @@
+[gd_scene load_steps=2 format=3 uid="uid://clobby123456"]
+
+[ext_resource type="Script" path="res://Scripts/UI/LobbyUI.cs" id="1_lobby"]
+
+[node name="LobbyUI" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_lobby")
+
+[node name="ColorRect" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0.15, 0.15, 0.2, 1)
+
+[node name="VBoxContainer" type="VBoxContainer" parent="."]
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -200.0
+offset_top = -200.0
+offset_right = 200.0
+offset_bottom = 200.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/separation = 20
+
+[node name="Title" type="Label" parent="VBoxContainer"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 32
+text = "Multijoueur"
+horizontal_alignment = 1
+
+[node name="ConnectionPanel" type="PanelContainer" parent="VBoxContainer"]
+layout_mode = 2
+
+[node name="VBoxContainer" type="VBoxContainer" parent="VBoxContainer/ConnectionPanel"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="IPContainer" type="HBoxContainer" parent="VBoxContainer/ConnectionPanel/VBoxContainer"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="VBoxContainer/ConnectionPanel/VBoxContainer/IPContainer"]
+custom_minimum_size = Vector2(80, 0)
+layout_mode = 2
+text = "Adresse IP:"
+
+[node name="IPInput" type="LineEdit" parent="VBoxContainer/ConnectionPanel/VBoxContainer/IPContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+placeholder_text = "127.0.0.1"
+
+[node name="PortContainer" type="HBoxContainer" parent="VBoxContainer/ConnectionPanel/VBoxContainer"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="VBoxContainer/ConnectionPanel/VBoxContainer/PortContainer"]
+custom_minimum_size = Vector2(80, 0)
+layout_mode = 2
+text = "Port:"
+
+[node name="PortInput" type="LineEdit" parent="VBoxContainer/ConnectionPanel/VBoxContainer/PortContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+placeholder_text = "7777"
+
+[node name="ButtonContainer" type="HBoxContainer" parent="VBoxContainer/ConnectionPanel/VBoxContainer"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="HostButton" type="Button" parent="VBoxContainer/ConnectionPanel/VBoxContainer/ButtonContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Héberger"
+
+[node name="JoinButton" type="Button" parent="VBoxContainer/ConnectionPanel/VBoxContainer/ButtonContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Rejoindre"
+
+[node name="LobbyPanel" type="PanelContainer" parent="VBoxContainer"]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="VBoxContainer" type="VBoxContainer" parent="VBoxContainer/LobbyPanel"]
+layout_mode = 2
+
+[node name="PlayersLabel" type="Label" parent="VBoxContainer/LobbyPanel/VBoxContainer"]
+layout_mode = 2
+text = "Joueurs connectés:"
+
+[node name="PlayerList" type="ItemList" parent="VBoxContainer/LobbyPanel/VBoxContainer"]
+layout_mode = 2
+size_flags_vertical = 3
+auto_height = true
+
+[node name="StartButton" type="Button" parent="VBoxContainer/LobbyPanel/VBoxContainer"]
+layout_mode = 2
+text = "Lancer la partie"
+
+[node name="StatusLabel" type="Label" parent="VBoxContainer"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.7, 0.7, 0.7, 1)
+text = "En attente..."
+horizontal_alignment = 1
+
+[node name="BackButton" type="Button" parent="VBoxContainer"]
+layout_mode = 2
+text = "Retour"

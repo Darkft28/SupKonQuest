@@ -1,12 +1,13 @@
-[gd_scene load_steps=8 format=3 uid="uid://d2v1sgk2tlmyr"]
+[gd_scene load_steps=9 format=3 uid="uid://d2v1sgk2tlmyr"]
 
 [ext_resource type="Texture2D" uid="uid://b04lypslc5oeg" path="res://Assets/Menu/Texture/Menu_bg.png" id="1_0fbet"]
 [ext_resource type="Texture2D" uid="uid://g4eqed2gwko4" path="res://Assets/Menu/Texture/Title.png" id="2_62e2m"]
 [ext_resource type="Texture2D" uid="uid://b51w2e1tljy8i" path="res://Assets/Menu/Texture/button_play.png" id="3_kbped"]
 [ext_resource type="Texture2D" uid="uid://dwteg7wvx2jex" path="res://Assets/Menu/Texture/button_options.png" id="4_fj5cn"]
-[ext_resource type="Script" uid="uid://kvw320yxoj7a" path="res://Scripts/UI/ButtonPlay.cs" id="4_iy58a"]
+[ext_resource type="Script" uid="uid://da4avmuek04c0" path="res://Scripts/UI/ButtonPlay.cs" id="4_iy58a"]
 [ext_resource type="Texture2D" uid="uid://bwlnxvh5eduk3" path="res://Assets/Menu/Texture/button_quitter.png" id="5_iy58a"]
-[ext_resource type="Script" uid="uid://bp405oyrfcf64" path="res://Scripts/UI/Button3Quit.cs" id="6_fj5cn"]
+[ext_resource type="Script" uid="uid://cp4uowk8v5pn5" path="res://Scripts/UI/Button3Quit.cs" id="6_fj5cn"]
+[ext_resource type="Script" path="res://Scripts/UI/ButtonMultiplayer.cs" id="7_multi"]
 
 [node name="Control" type="Control"]
 layout_mode = 3
@@ -58,6 +59,12 @@ size_flags_horizontal = 4
 icon = ExtResource("3_kbped")
 script = ExtResource("4_iy58a")
 
+[node name="ButtonMultiplayer" type="Button" parent="TextureRect/MarginContainer/VBoxContainer"]
+layout_mode = 2
+size_flags_horizontal = 4
+text = "Multijoueur"
+script = ExtResource("7_multi")
+
 [node name="Button2" type="Button" parent="TextureRect/MarginContainer/VBoxContainer"]
 layout_mode = 2
 size_flags_horizontal = 4
@@ -70,4 +77,5 @@ icon = ExtResource("5_iy58a")
 script = ExtResource("6_fj5cn")
 
 [connection signal="pressed" from="TextureRect/MarginContainer/VBoxContainer/Button" to="TextureRect/MarginContainer/VBoxContainer/Button" method="OnPlayPressed"]
+[connection signal="pressed" from="TextureRect/MarginContainer/VBoxContainer/ButtonMultiplayer" to="TextureRect/MarginContainer/VBoxContainer/ButtonMultiplayer" method="OnMultiplayerPressed"]
 [connection signal="pressed" from="TextureRect/MarginContainer/VBoxContainer/Button3" to="TextureRect/MarginContainer/VBoxContainer/Button3" method="OnButtonPressed"]
