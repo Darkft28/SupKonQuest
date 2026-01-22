@@ -13,6 +13,8 @@ public partial class TestSetup : Node
 	// Taille de la map (256x256 tuiles)
 	private const int MapWidth = 256;
 	private const int MapHeight = 256;
+	private const int halfWidth = MapWidth / 2;
+	private const int halfHeight = MapHeight / 2;
 
 	// --- IDs DES TUILES (A vérifier dans ton TileSet !) ---
 	// Assure-toi que ces IDs correspondent à la liste "Source ID" dans ton TileSet
@@ -44,7 +46,7 @@ public partial class TestSetup : Node
 		if (_camera != null)
 		{
 			_camera.Zoom = new Vector2(0.25f, 0.25f);
-			_camera.Position = new Vector2(MapWidth * 64, MapHeight * 64);
+			_camera.Position = new Vector2(0, 0);
 		}
 
 		
@@ -108,9 +110,9 @@ public partial class TestSetup : Node
 		_tileMapSol.Clear();
 		_tileMapObjets.Clear();
 
-		for (int x = 0; x < MapWidth; x++)
+		for (int x = -halfWidth; x < halfWidth; x++)
 		{
-			for (int y = 0; y < MapHeight; y++)
+			for (int y = -halfHeight; y < halfHeight; y++)
 			{
 				float altitude = _noiseElevation.GetNoise2D(x, y);
 				float densiteArbre = _noiseForet.GetNoise2D(x, y);
@@ -135,10 +137,8 @@ public partial class TestSetup : Node
 						solId = IdForet;
 						if (densiteArbre > 0.3f)
 						{
-							if (GD.Randf() < 0.25f) 
-							{
-								objetId = IdObjetArbre;
-							}
+							objetId = IdObjetArbre;
+							
 						}
 					}
 					else
@@ -159,10 +159,8 @@ public partial class TestSetup : Node
 					solId = IdRoche;
 					if (altitude < 0.66f)
 					{
-						if (GD.Randf() < 0.25f) 
-						{
-							objetId = IdObjetMontagne;
-						}
+						objetId = IdObjetMontagne;
+						
 					}
 					
 				}
@@ -196,26 +194,6 @@ public partial class TestSetup : Node
 			SetupNoise();
 			GenererMap();
 		}
-
-		// Zoom Molette
-		if (@event is InputEventMouseButton mouseEvent)
-		{
-			if (_camera == null)
-			{
-				return;
-			}
-
-			if (mouseEvent.ButtonIndex == MouseButton.WheelUp)
-			{
-				_camera.Zoom += new Vector2(0.1f, 0.1f);
-			}
-			else if (mouseEvent.ButtonIndex == MouseButton.WheelDown)
-			{
-				if (_camera.Zoom.X > 0.1f)
-				{
-					_camera.Zoom -= new Vector2(0.1f, 0.1f);
-				}
-			}
-		}
+		
 	}
 }
