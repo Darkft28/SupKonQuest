@@ -12,6 +12,8 @@ public partial class TestSetup : Node
 	// Taille de la map (256x256 tuiles)
 	private const int MapWidth = 256;
 	private const int MapHeight = 256;
+	private const int halfWidth = MapWidth / 2;
+	private const int halfHeight = MapHeight / 2;
 
 	// --- IDs DES TUILES (A vérifier dans ton TileSet !) ---
 	// Assure-toi que ces IDs correspondent à la liste "Source ID" dans ton TileSet
@@ -37,7 +39,18 @@ public partial class TestSetup : Node
 		// Récupération des noeuds enfants (Attention aux noms exacts dans la scène !)
 		_tileMapSol = GetNode<TileMapLayer>("Sol");
 		_tileMapObjets = GetNode<TileMapLayer>("Objets");
+    feature/map
+		_camera = GetNode<Camera2D>("Camera2D");
+
+		// Config de la caméra
+		if (_camera != null)
+		{
+			_camera.Zoom = new Vector2(0.25f, 0.25f);
+			_camera.Position = new Vector2(0, 0);
+		}
+
 		// La caméra est gérée par CameraController
+    develop
 
 		
 		if (_tileMapSol.GetUsedCells().Count == 0)
@@ -100,9 +113,12 @@ public partial class TestSetup : Node
 		_tileMapSol.Clear();
 		_tileMapObjets.Clear();
 
+  feature/map
+
 		int halfWidth = MapWidth / 2;
 		int halfHeight = MapHeight / 2;
 
+ develop
 		for (int x = -halfWidth; x < halfWidth; x++)
 		{
 			for (int y = -halfHeight; y < halfHeight; y++)
@@ -130,10 +146,8 @@ public partial class TestSetup : Node
 						solId = IdForet;
 						if (densiteArbre > 0.3f)
 						{
-							if (GD.Randf() < 0.25f) 
-							{
-								objetId = IdObjetArbre;
-							}
+							objetId = IdObjetArbre;
+							
 						}
 					}
 					else
@@ -154,10 +168,8 @@ public partial class TestSetup : Node
 					solId = IdRoche;
 					if (altitude < 0.66f)
 					{
-						if (GD.Randf() < 0.25f) 
-						{
-							objetId = IdObjetMontagne;
-						}
+						objetId = IdObjetMontagne;
+						
 					}
 					
 				}
@@ -191,6 +203,10 @@ public partial class TestSetup : Node
 			SetupNoise();
 			GenererMap();
 		}
+feature/map
+		
+
 		// Le zoom est géré par CameraController
+develop
 	}
 }

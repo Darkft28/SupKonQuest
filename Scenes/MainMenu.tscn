@@ -4,9 +4,9 @@
 [ext_resource type="Texture2D" uid="uid://g4eqed2gwko4" path="res://Assets/Menu/Texture/Title.png" id="2_62e2m"]
 [ext_resource type="Texture2D" uid="uid://b51w2e1tljy8i" path="res://Assets/Menu/Texture/button_play.png" id="3_kbped"]
 [ext_resource type="Texture2D" uid="uid://dwteg7wvx2jex" path="res://Assets/Menu/Texture/button_options.png" id="4_fj5cn"]
-[ext_resource type="Script" uid="uid://kvw320yxoj7a" path="res://Scripts/UI/ButtonPlay.cs" id="4_iy58a"]
+[ext_resource type="Script" uid="uid://da4avmuek04c0" path="res://Scripts/UI/ButtonPlay.cs" id="4_iy58a"]
 [ext_resource type="Texture2D" uid="uid://bwlnxvh5eduk3" path="res://Assets/Menu/Texture/button_quitter.png" id="5_iy58a"]
-[ext_resource type="Script" uid="uid://bp405oyrfcf64" path="res://Scripts/UI/Button3Quit.cs" id="6_fj5cn"]
+[ext_resource type="Script" uid="uid://cp4uowk8v5pn5" path="res://Scripts/UI/Button3Quit.cs" id="6_fj5cn"]
 
 [node name="Control" type="Control"]
 layout_mode = 3
