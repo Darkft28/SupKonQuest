@@ -7,6 +7,7 @@ public partial class TestSetup : Node
 	// --- RÉFÉRENCES ---
 	private TileMapLayer _tileMapSol;
 	private TileMapLayer _tileMapObjets;
+	private Camera2D _camera;
 
 	// --- CONFIGURATION ---
 	// Taille de la map (256x256 tuiles)
@@ -39,7 +40,6 @@ public partial class TestSetup : Node
 		// Récupération des noeuds enfants (Attention aux noms exacts dans la scène !)
 		_tileMapSol = GetNode<TileMapLayer>("Sol");
 		_tileMapObjets = GetNode<TileMapLayer>("Objets");
-    feature/map
 		_camera = GetNode<Camera2D>("Camera2D");
 
 		// Config de la caméra
@@ -50,9 +50,7 @@ public partial class TestSetup : Node
 		}
 
 		// La caméra est gérée par CameraController
-    develop
 
-		
 		if (_tileMapSol.GetUsedCells().Count == 0)
 		{
 			SetupNoise();
@@ -113,12 +111,9 @@ public partial class TestSetup : Node
 		_tileMapSol.Clear();
 		_tileMapObjets.Clear();
 
-  feature/map
-
 		int halfWidth = MapWidth / 2;
 		int halfHeight = MapHeight / 2;
 
- develop
 		for (int x = -halfWidth; x < halfWidth; x++)
 		{
 			for (int y = -halfHeight; y < halfHeight; y++)
@@ -203,10 +198,7 @@ public partial class TestSetup : Node
 			SetupNoise();
 			GenererMap();
 		}
-feature/map
-		
 
 		// Le zoom est géré par CameraController
-develop
 	}
 }
