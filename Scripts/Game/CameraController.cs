@@ -2,9 +2,7 @@ using Godot;
 
 namespace SupKonQuest
 {
-	/// <summary>
-	/// Contrôleur de caméra avec zoom et déplacement.
-	/// </summary>
+	// Contrôleur de caméra avec zoom et déplacement
 	public partial class CameraController : Camera2D
 	{
 		[Export] public float ZoomSensitivity = 0.15f;

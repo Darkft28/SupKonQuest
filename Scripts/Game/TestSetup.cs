@@ -1,9 +1,7 @@
 using Godot;
 using System;
 
-/// <summary>
-/// Génération procédurale de la map avec biomes et objets.
-/// </summary>
+// Génération procédurale de la map avec biomes et objets
 [Tool]
 public partial class TestSetup : Node
 {
@@ -52,9 +50,7 @@ public partial class TestSetup : Node
 		}
 	}
 
-	/// <summary>
-	/// Propriété exportée pour générer la map depuis l'éditeur.
-	/// </summary>
+	// Propriété exportée pour générer la map depuis l'éditeur
 	[Export]
 	public bool GenererMapMaintenant
 	{
@@ -68,9 +64,7 @@ public partial class TestSetup : Node
 		}
 	}
 
-	/// <summary>
-	/// Initialise les références et génère la map (utilisé en mode Tool).
-	/// </summary>
+	// Initialise les références et génère la map (utilisé en mode Tool)
 	private void InitialiserEtGenerer()
 	{
 		if (_tileMapSol == null) _tileMapSol = GetNode<TileMapLayer>("Sol");
@@ -82,9 +76,7 @@ public partial class TestSetup : Node
 		GD.Print("Map générée dans l'éditeur.");
 	}
 
-	/// <summary>
-	/// Configure les paramètres de bruit pour la génération.
-	/// </summary>
+	// Configure les paramètres de bruit pour la génération
 	private void SetupNoise()
 	{
 		_noiseElevation.Seed = (int)GD.Randi();
@@ -96,9 +88,7 @@ public partial class TestSetup : Node
 		_noiseForet.Frequency = 0.05f;
 	}
 
-	/// <summary>
-	/// Génère la map en parcourant toutes les tuiles.
-	/// </summary>
+	// Génère la map en parcourant toutes les tuiles
 	private void GenererMap()
 	{
 		GD.Print("Génération en cours...");
