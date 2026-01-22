@@ -48,10 +48,14 @@ namespace SupKonQuest
 
 		private void SetupCameraLimits()
 		{
-			LimitLeft = 0;
-			LimitTop = 0;
-			LimitRight = MapWidth * TileSize;
-			LimitBottom = MapHeight * TileSize;
+			// La map va de -MapWidth/2 à +MapWidth/2 en tiles (centrée sur 0)
+			int halfWidth = MapWidth / 2;
+			int halfHeight = MapHeight / 2;
+
+			LimitLeft = -halfWidth * TileSize;
+			LimitTop = -halfHeight * TileSize;
+			LimitRight = halfWidth * TileSize;
+			LimitBottom = halfHeight * TileSize;
 		}
 
 		public override void _Process(double delta)
