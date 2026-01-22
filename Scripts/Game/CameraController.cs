@@ -12,6 +12,11 @@ namespace SupKonQuest
 		[Export] public float PanSpeed = 600.0f;
 		[Export] public float InitialZoom = 0.5f;
 
+		[ExportGroup("Map Limits")]
+		[Export] public int MapWidth = 256;
+		[Export] public int MapHeight = 256;
+		[Export] public int TileSize = 128;
+
 		private Vector2 _targetZoom;
 
 		public override void _Ready()
@@ -38,6 +43,15 @@ namespace SupKonQuest
 
 			Zoom = new Vector2(InitialZoom, InitialZoom);
 			_targetZoom = Zoom;
+			SetupCameraLimits();
+		}
+
+		private void SetupCameraLimits()
+		{
+			LimitLeft = 0;
+			LimitTop = 0;
+			LimitRight = MapWidth * TileSize;
+			LimitBottom = MapHeight * TileSize;
 		}
 
 		public override void _Process(double delta)
