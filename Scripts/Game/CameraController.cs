@@ -9,11 +9,36 @@ namespace SupKonQuest
 		[Export] public float MaxZoom = 2.0f;
 		[Export] public float ZoomSpeed = 20.0f;
 		[Export] public float PanSpeed = 600.0f;
+		[Export] public float InitialZoom = 0.5f;
 
 		private Vector2 _targetZoom;
 
 		public override void _Ready()
 		{
+			// Récupérer le TileMapLayer pour calculer le centre réel de la map
+			var tileMap = GetParent().GetNodeOrNull<TileMapLayer>("Sol");
+
+			if (tileMap != null)
+			{
+				// Obtenir les bounds réels de la map générée
+				Rect2I usedRect = tileMap.GetUsedRect();
+				int tileSize = tileMap.TileSet.TileSize.X;
+
+				// Calculer le centre en coordonnées monde
+				float centerX = (usedRect.Position.X + usedRect.Size.X / 2.0f) * tileSize;
+				float centerY = (usedRect.Position.Y + usedRect.Size.Y / 2.0f) * tileSize;
+
+				Position = new Vector2(centerX, centerY);
+				GD.Print($"Map bounds: {usedRect}, TileSize: {tileSize}");
+				GD.Print($"Caméra centrée sur: {Position}");
+			}
+			else
+			{
+				Position = Vector2.Zero;
+				GD.Print("TileMapLayer 'Sol' non trouvé, position par défaut");
+			}
+
+			Zoom = new Vector2(InitialZoom, InitialZoom);
 			_targetZoom = Zoom;
 		}
 
