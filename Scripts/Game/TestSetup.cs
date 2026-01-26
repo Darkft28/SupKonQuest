@@ -11,8 +11,10 @@ public partial class TestSetup : Node
 	private Camera2D _camera;
 	private Node2D _unitsContainer;
 	private SelectionManager _selectionManager;
-	private Texture2D _textureCamp;
-	private Texture2D _textureCampUp;
+
+	// Scènes des camps
+	private PackedScene _campScene;
+	private PackedScene _campUpScene;
 
 	private const int MapWidth = 256;
 	private const int MapHeight = 256;
@@ -47,9 +49,9 @@ public partial class TestSetup : Node
 		_tileMapObjets = GetNode<TileMapLayer>("Objets");
 		_camera = GetNode<Camera2D>("Camera2D");
 
-		// Charger les textures des camps
-		_textureCamp = GD.Load<Texture2D>("res://Assets/Objects/Camps.png");
-		_textureCampUp = GD.Load<Texture2D>("res://Assets/Objects/Camps_UP.png");
+		// Charger les scènes des camps
+		_campScene = GD.Load<PackedScene>("res://Scenes/camp_simple.tscn");
+		_campUpScene = GD.Load<PackedScene>("res://Scenes/camp_avancé.tscn");
 
 		// Créer ou récupérer le conteneur d'unités
 		_unitsContainer = GetNodeOrNull<Node2D>("Units");
@@ -161,6 +163,15 @@ public partial class TestSetup : Node
 		_tileMapSol.Clear();
 		_tileMapObjets.Clear();
 
+		// Supprimer les anciens camps
+		if (_unitsContainer != null)
+		{
+			foreach (Node child in _unitsContainer.GetChildren())
+			{
+				child.QueueFree();
+			}
+		}
+
 		int campCount = 0;
 
 		for (int x = -HalfWidth; x < HalfWidth; x++)
@@ -244,17 +255,31 @@ public partial class TestSetup : Node
 					_tileMapObjets.SetCell(coords, objetId, new Vector2I(0, 0));
 				}
 
-				// Spawn les camps comme unités (pas en mode éditeur)
+				// Spawn les camps (pas en mode éditeur)
 				if ((spawnCamp || spawnCampUp) && !Engine.IsEditorHint() && _unitsContainer != null)
 				{
-					Texture2D texture = spawnCampUp ? _textureCampUp : _textureCamp;
-					Vector2 worldPos = new Vector2(x * TileSize + TileSize / 2, y * TileSize + TileSize / 2);
-					var camp = CampUnit.CreateInstance(texture, worldPos);
-					camp.Name = $"Camp_{campCount++}";
-					_unitsContainer.AddChild(camp);
+					PackedScene campSceneToUse = spawnCampUp ? _campUpScene : _campScene;
+					if (campSceneToUse != null)
+					{
+						var camp = campSceneToUse.Instantiate<Node2D>();
+						Vector2 worldPos = new Vector2(x * TileSize + TileSize / 2, y * TileSize + TileSize / 2);
+						camp.GlobalPosition = worldPos;
+						camp.Name = $"Camp_{campCount++}";
+
+						// Configurer le camp comme neutre
+						if (camp is CampSimple campSimple)
+						{
+							campSimple.IsNeutralCamp = true;
+							campSimple.TeamId = 0; // Équipe neutre
+						}
+
+						_unitsContainer.AddChild(camp);
+					}
 				}
 			}
 		}
+
+		GD.Print($"{campCount} camps générés");
 	}
 
 	public override void _Input(InputEvent @event)

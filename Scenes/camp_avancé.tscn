@@ -1,16 +1,18 @@
-[gd_scene load_steps=3 format=3 uid="uid://dmr5flq3rf88g"]
+[gd_scene load_steps=4 format=3 uid="uid://dmr5flq3rf88g"]
 
 [ext_resource type="Texture2D" uid="uid://dadcmn6ktuuy2" path="res://Assets/Objects/Camps_UP.png" id="1_5qf04"]
+[ext_resource type="Script" uid="uid://b57i42jahy20f" path="res://Scripts/Game/CampSimple.cs" id="2_script"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_sucw0"]
-size = Vector2(25, 25.399998)
+size = Vector2(131, 130)
 
 [node name="Camp_avancé" type="Area2D"]
+script = ExtResource("2_script")
+MaxHealth = 750.0
 
 [node name="Sprite2D" type="Sprite2D" parent="."]
 texture = ExtResource("1_5qf04")
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="."]
-position = Vector2(0.49999952, 1.4999986)
-scale = Vector2(5, 5)
+position = Vector2(0, 0)
 shape = SubResource("RectangleShape2D_sucw0")
