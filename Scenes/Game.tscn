@@ -1,4 +1,4 @@
-[gd_scene load_steps=25 format=4 uid="uid://4n8kkodj5pob"]
+[gd_scene load_steps=26 format=4 uid="uid://4n8kkodj5pob"]
 
 [ext_resource type="Script" uid="uid://drgdyby4ncxx6" path="res://Scripts/Game/TestSetup.cs" id="1_707gh"]
 [ext_resource type="Texture2D" uid="uid://ci3d4fikx58kj" path="res://Assets/Map/Grass.png" id="2_aa0um"]
@@ -12,6 +12,7 @@
 [ext_resource type="Script" uid="uid://fsbeo8ta1qfu" path="res://Scripts/Game/CameraController.cs" id="9_wckam"]
 [ext_resource type="Texture2D" uid="uid://leh64h2iw5ag" path="res://Assets/Objects/Camps.png" id="10_m6kus"]
 [ext_resource type="Texture2D" uid="uid://dadcmn6ktuuy2" path="res://Assets/Objects/Camps_UP.png" id="11_jbi0w"]
+[ext_resource type="PackedScene" uid="uid://do8135h5uk8sg" path="res://Scenes/GameHUD.tscn" id="13_3cx6b"]
 
 [sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_kqipd"]
 texture = ExtResource("2_aa0um")
@@ -102,3 +103,7 @@ tile_set = SubResource("TileSet_wckam")
 [node name="Camera2D" type="Camera2D" parent="."]
 zoom = Vector2(0.25, 0.25)
 script = ExtResource("9_wckam")
+
+[node name="CanvasLayer" type="CanvasLayer" parent="."]
+
+[node name="GameHUD" parent="CanvasLayer" instance=ExtResource("13_3cx6b")]
