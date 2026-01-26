@@ -19,6 +19,7 @@ config/icon="res://icon.svg"
 
 NetworkManager="*res://Scripts/Network/NetworkManager.cs"
 GameState="*res://Scripts/Network/GameState.cs"
+LocalizationManager="*res://Scripts/UI/LocalizationManager.cs"
 
 [display]
 

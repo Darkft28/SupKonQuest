@@ -223,6 +223,9 @@ public partial class CampSimple : Area2D
 			new Color(0.5f, 0, 1, 1f),   // Violet (Team 8)
 		};
 
+		if (TeamId <= 0)
+			return new Color(0.5f, 0.5f, 0.5f, 1f); // Gris pour les camps neutres/invalides
+
 		int colorIndex = (TeamId - 1) % teamColors.Length;
 		return teamColors[colorIndex];
 	}

@@ -1,6 +1,11 @@
-[gd_scene load_steps=2 format=3 uid="uid://clobby123456"]
+[gd_scene load_steps=4 format=3 uid="uid://clobby123456"]
 
 [ext_resource type="Script" path="res://Scripts/UI/LobbyUI.cs" id="1_lobby"]
+[ext_resource type="Texture2D" uid="uid://b04lypslc5oeg" path="res://Assets/Menu/Texture/Menu_bg.png" id="2_bg"]
+[ext_resource type="Texture2D" uid="uid://cx4j1ibd7hv4t" path="res://Assets/Menu/Texture/Button.png" id="3_btn"]
+
+[sub_resource type="StyleBoxTexture" id="StyleBoxTexture_btn"]
+texture = ExtResource("3_btn")
 
 [node name="LobbyUI" type="Control"]
 layout_mode = 3
@@ -11,14 +16,16 @@ grow_horizontal = 2
 grow_vertical = 2
 script = ExtResource("1_lobby")
 
-[node name="ColorRect" type="ColorRect" parent="."]
+[node name="Background" type="TextureRect" parent="."]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
-color = Color(0.15, 0.15, 0.2, 1)
+texture = ExtResource("2_bg")
+expand_mode = 1
+stretch_mode = 6
 
 [node name="VBoxContainer" type="VBoxContainer" parent="."]
 layout_mode = 1
@@ -28,12 +35,12 @@ anchor_top = 0.5
 anchor_right = 0.5
 anchor_bottom = 0.5
 offset_left = -200.0
-offset_top = -200.0
+offset_top = -250.0
 offset_right = 200.0
-offset_bottom = 200.0
+offset_bottom = 250.0
 grow_horizontal = 2
 grow_vertical = 2
-theme_override_constants/separation = 20
+theme_override_constants/separation = 15
 
 [node name="Title" type="Label" parent="VBoxContainer"]
 layout_mode = 2
@@ -52,7 +59,7 @@ theme_override_constants/separation = 10
 layout_mode = 2
 
 [node name="Label" type="Label" parent="VBoxContainer/ConnectionPanel/VBoxContainer/IPContainer"]
-custom_minimum_size = Vector2(80, 0)
+custom_minimum_size = Vector2(100, 0)
 layout_mode = 2
 text = "Adresse IP:"
 
@@ -65,7 +72,7 @@ placeholder_text = "127.0.0.1"
 layout_mode = 2
 
 [node name="Label" type="Label" parent="VBoxContainer/ConnectionPanel/VBoxContainer/PortContainer"]
-custom_minimum_size = Vector2(80, 0)
+custom_minimum_size = Vector2(100, 0)
 layout_mode = 2
 text = "Port:"
 
@@ -76,16 +83,29 @@ placeholder_text = "7777"
 
 [node name="ButtonContainer" type="HBoxContainer" parent="VBoxContainer/ConnectionPanel/VBoxContainer"]
 layout_mode = 2
-theme_override_constants/separation = 10
+size_flags_horizontal = 4
+theme_override_constants/separation = 20
 
 [node name="HostButton" type="Button" parent="VBoxContainer/ConnectionPanel/VBoxContainer/ButtonContainer"]
+custom_minimum_size = Vector2(152, 40)
 layout_mode = 2
-size_flags_horizontal = 3
+size_flags_horizontal = 4
+theme_override_font_sizes/font_size = 18
+theme_override_styles/normal = SubResource("StyleBoxTexture_btn")
+theme_override_styles/hover = SubResource("StyleBoxTexture_btn")
+theme_override_styles/pressed = SubResource("StyleBoxTexture_btn")
+theme_override_styles/focus = SubResource("StyleBoxTexture_btn")
 text = "Héberger"
 
 [node name="JoinButton" type="Button" parent="VBoxContainer/ConnectionPanel/VBoxContainer/ButtonContainer"]
+custom_minimum_size = Vector2(152, 40)
 layout_mode = 2
-size_flags_horizontal = 3
+size_flags_horizontal = 4
+theme_override_font_sizes/font_size = 18
+theme_override_styles/normal = SubResource("StyleBoxTexture_btn")
+theme_override_styles/hover = SubResource("StyleBoxTexture_btn")
+theme_override_styles/pressed = SubResource("StyleBoxTexture_btn")
+theme_override_styles/focus = SubResource("StyleBoxTexture_btn")
 text = "Rejoindre"
 
 [node name="LobbyPanel" type="PanelContainer" parent="VBoxContainer"]
@@ -105,7 +125,14 @@ size_flags_vertical = 3
 auto_height = true
 
 [node name="StartButton" type="Button" parent="VBoxContainer/LobbyPanel/VBoxContainer"]
+custom_minimum_size = Vector2(304, 50)
 layout_mode = 2
+size_flags_horizontal = 4
+theme_override_font_sizes/font_size = 20
+theme_override_styles/normal = SubResource("StyleBoxTexture_btn")
+theme_override_styles/hover = SubResource("StyleBoxTexture_btn")
+theme_override_styles/pressed = SubResource("StyleBoxTexture_btn")
+theme_override_styles/focus = SubResource("StyleBoxTexture_btn")
 text = "Lancer la partie"
 
 [node name="StatusLabel" type="Label" parent="VBoxContainer"]
@@ -115,5 +142,28 @@ text = "En attente..."
 horizontal_alignment = 1
 
 [node name="BackButton" type="Button" parent="VBoxContainer"]
+custom_minimum_size = Vector2(304, 50)
 layout_mode = 2
+size_flags_horizontal = 4
+theme_override_font_sizes/font_size = 20
+theme_override_styles/normal = SubResource("StyleBoxTexture_btn")
+theme_override_styles/hover = SubResource("StyleBoxTexture_btn")
+theme_override_styles/pressed = SubResource("StyleBoxTexture_btn")
+theme_override_styles/focus = SubResource("StyleBoxTexture_btn")
 text = "Retour"
+
+[node name="LangButton" type="Button" parent="."]
+layout_mode = 1
+anchors_preset = 3
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -70.0
+offset_top = -50.0
+offset_right = -20.0
+offset_bottom = -20.0
+grow_horizontal = 0
+grow_vertical = 0
+theme_override_font_sizes/font_size = 16
+text = "FR"

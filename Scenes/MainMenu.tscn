@@ -1,13 +1,14 @@
-[gd_scene load_steps=9 format=3 uid="uid://d2v1sgk2tlmyr"]
+[gd_scene load_steps=8 format=3 uid="uid://d2v1sgk2tlmyr"]
 
 [ext_resource type="Texture2D" uid="uid://b04lypslc5oeg" path="res://Assets/Menu/Texture/Menu_bg.png" id="1_0fbet"]
 [ext_resource type="Texture2D" uid="uid://g4eqed2gwko4" path="res://Assets/Menu/Texture/Title.png" id="2_62e2m"]
-[ext_resource type="Texture2D" uid="uid://b51w2e1tljy8i" path="res://Assets/Menu/Texture/button_play.png" id="3_kbped"]
-[ext_resource type="Texture2D" uid="uid://dwteg7wvx2jex" path="res://Assets/Menu/Texture/button_options.png" id="4_fj5cn"]
 [ext_resource type="Script" uid="uid://da4avmuek04c0" path="res://Scripts/UI/ButtonPlay.cs" id="4_iy58a"]
-[ext_resource type="Texture2D" uid="uid://bwlnxvh5eduk3" path="res://Assets/Menu/Texture/button_quitter.png" id="5_iy58a"]
+[ext_resource type="Texture2D" uid="uid://cx4j1ibd7hv4t" path="res://Assets/Menu/Texture/Button.png" id="5_cmrfp"]
 [ext_resource type="Script" uid="uid://cp4uowk8v5pn5" path="res://Scripts/UI/Button3Quit.cs" id="6_fj5cn"]
-[ext_resource type="Script" path="res://Scripts/UI/ButtonMultiplayer.cs" id="7_multi"]
+[ext_resource type="Script" path="res://Scripts/UI/MainMenu.cs" id="8_mainmenu"]
+
+[sub_resource type="StyleBoxTexture" id="StyleBoxTexture_btn"]
+texture = ExtResource("5_cmrfp")
 
 [node name="Control" type="Control"]
 layout_mode = 3
@@ -16,6 +17,7 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
+script = ExtResource("8_mainmenu")
 
 [node name="TextureRect" type="TextureRect" parent="."]
 layout_mode = 1
@@ -39,6 +41,7 @@ grow_vertical = 2
 
 [node name="VBoxContainer" type="VBoxContainer" parent="TextureRect/MarginContainer"]
 layout_mode = 2
+theme_override_constants/separation = 15
 
 [node name="TextureRect" type="TextureRect" parent="TextureRect/MarginContainer/VBoxContainer"]
 custom_minimum_size = Vector2(350, 180)
@@ -50,32 +53,62 @@ expand_mode = 1
 stretch_mode = 5
 
 [node name="Control" type="Control" parent="TextureRect/MarginContainer/VBoxContainer"]
-custom_minimum_size = Vector2(0, 40)
+custom_minimum_size = Vector2(0, 20)
 layout_mode = 2
 
 [node name="Button" type="Button" parent="TextureRect/MarginContainer/VBoxContainer"]
+custom_minimum_size = Vector2(304, 79)
 layout_mode = 2
 size_flags_horizontal = 4
-icon = ExtResource("3_kbped")
+size_flags_vertical = 4
+theme_override_font_sizes/font_size = 24
+theme_override_styles/normal = SubResource("StyleBoxTexture_btn")
+theme_override_styles/hover = SubResource("StyleBoxTexture_btn")
+theme_override_styles/pressed = SubResource("StyleBoxTexture_btn")
+theme_override_styles/focus = SubResource("StyleBoxTexture_btn")
+text = "Jouer"
 script = ExtResource("4_iy58a")
 
-[node name="ButtonMultiplayer" type="Button" parent="TextureRect/MarginContainer/VBoxContainer"]
-layout_mode = 2
-size_flags_horizontal = 4
-text = "Multijoueur"
-script = ExtResource("7_multi")
-
 [node name="Button2" type="Button" parent="TextureRect/MarginContainer/VBoxContainer"]
+custom_minimum_size = Vector2(304, 79)
 layout_mode = 2
 size_flags_horizontal = 4
-icon = ExtResource("4_fj5cn")
+size_flags_vertical = 4
+theme_override_font_sizes/font_size = 24
+theme_override_styles/normal = SubResource("StyleBoxTexture_btn")
+theme_override_styles/hover = SubResource("StyleBoxTexture_btn")
+theme_override_styles/pressed = SubResource("StyleBoxTexture_btn")
+theme_override_styles/focus = SubResource("StyleBoxTexture_btn")
+text = "Options"
 
 [node name="Button3" type="Button" parent="TextureRect/MarginContainer/VBoxContainer"]
+custom_minimum_size = Vector2(304, 79)
 layout_mode = 2
 size_flags_horizontal = 4
-icon = ExtResource("5_iy58a")
+size_flags_vertical = 4
+theme_override_font_sizes/font_size = 24
+theme_override_styles/normal = SubResource("StyleBoxTexture_btn")
+theme_override_styles/hover = SubResource("StyleBoxTexture_btn")
+theme_override_styles/pressed = SubResource("StyleBoxTexture_btn")
+theme_override_styles/focus = SubResource("StyleBoxTexture_btn")
+text = "Quitter"
 script = ExtResource("6_fj5cn")
 
+[node name="LangButton" type="Button" parent="."]
+layout_mode = 1
+anchors_preset = 3
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -70.0
+offset_top = -50.0
+offset_right = -20.0
+offset_bottom = -20.0
+grow_horizontal = 0
+grow_vertical = 0
+theme_override_font_sizes/font_size = 16
+text = "FR"
+
 [connection signal="pressed" from="TextureRect/MarginContainer/VBoxContainer/Button" to="TextureRect/MarginContainer/VBoxContainer/Button" method="OnPlayPressed"]
-[connection signal="pressed" from="TextureRect/MarginContainer/VBoxContainer/ButtonMultiplayer" to="TextureRect/MarginContainer/VBoxContainer/ButtonMultiplayer" method="OnMultiplayerPressed"]
 [connection signal="pressed" from="TextureRect/MarginContainer/VBoxContainer/Button3" to="TextureRect/MarginContainer/VBoxContainer/Button3" method="OnButtonPressed"]

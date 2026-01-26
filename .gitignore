@@ -3,6 +3,4 @@
 /android/
 
 # Documentation et fichiers de configuration personnels
-*.md
-CLAUDE.md
 .claude/
