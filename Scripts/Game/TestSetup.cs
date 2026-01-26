@@ -1,6 +1,5 @@
 using Godot;
 using System;
-using SupKonQuest;
 
 // Génération procédurale de la map avec biomes et objets
 [Tool]
@@ -12,6 +11,8 @@ public partial class TestSetup : Node
 	private Camera2D _camera;
 	private Node2D _unitsContainer;
 	private SelectionManager _selectionManager;
+	private Texture2D _textureCamp;
+	private Texture2D _textureCampUp;
 
 	private const int MapWidth = 256;
 	private const int MapHeight = 256;
@@ -29,10 +30,9 @@ public partial class TestSetup : Node
 
 	private const int IdObjetArbre = 100;
 	private const int IdObjetMontagne = 101;
+	private const int IdObjetCamp = 102;
+	private const int IdObjetCampUp = 103;
 
-	// Textures pour les camps (chargées dynamiquement)
-	private Texture2D _textureCamp;
-	private Texture2D _textureCampUp;
 
 	// Seed réseau pour synchronisation multijoueur
 	private int? _networkSeed = null;
@@ -86,12 +86,15 @@ public partial class TestSetup : Node
 			}
 		}
 
+		// La caméra est gérée par CameraController
+
 		if (_tileMapSol.GetUsedCells().Count == 0)
 		{
 			SetupNoise();
 			GenererMap();
 			GD.Print("Map générée. Appuyez sur ESPACE pour régénérer.");
 		}
+
 	}
 
 	/// <summary>
@@ -158,15 +161,6 @@ public partial class TestSetup : Node
 		_tileMapSol.Clear();
 		_tileMapObjets.Clear();
 
-		// Nettoyer les unités existantes
-		if (_unitsContainer != null)
-		{
-			foreach (Node child in _unitsContainer.GetChildren())
-			{
-				child.QueueFree();
-			}
-		}
-
 		int campCount = 0;
 
 		for (int x = -HalfWidth; x < HalfWidth; x++)
@@ -212,6 +206,11 @@ public partial class TestSetup : Node
 							if (_seededRandom.NextDouble() < 0.2)
 							{
 								spawnCampUp = true;
+								objetId = IdObjetCampUp;
+							}
+							else
+							{
+								objetId = IdObjetCamp;
 							}
 						}
 					}
@@ -226,6 +225,7 @@ public partial class TestSetup : Node
 							objetId = IdObjetMontagne;
 						}
 					}
+
 				}
 				else
 				{
@@ -255,8 +255,6 @@ public partial class TestSetup : Node
 				}
 			}
 		}
-
-		GD.Print($"Camps générés: {campCount}");
 	}
 
 	public override void _Input(InputEvent @event)
