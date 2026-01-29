@@ -3,7 +3,7 @@ using System;
 
 // Génération procédurale de la map avec biomes et objets
 [Tool]
-public partial class TestSetup : Node
+public partial class MapGenerator : Node
 {
 	// --- RÉFÉRENCES ---
 	private TileMapLayer _tileMapSol;

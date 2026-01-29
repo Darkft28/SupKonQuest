@@ -36,6 +36,10 @@ public partial class GameManager : Node
 
 	public void InitializeTeam(int teamId)
 	{
+		// Ne pas initialiser les camps neutres (teamId <= 0)
+		if (teamId <= 0)
+			return;
+
 		if (!_teamGold.ContainsKey(teamId))
 		{
 			_teamGold[teamId] = StartingGold;
@@ -64,10 +68,11 @@ public partial class GameManager : Node
 
 	public void AddGold(int teamId, int amount)
 	{
-		if (_teamGold.ContainsKey(teamId))
+		if (!_teamGold.ContainsKey(teamId))
 		{
-			_teamGold[teamId] += amount;
+			_teamGold[teamId] = 0;
 		}
+		_teamGold[teamId] += amount;
 	}
 
 	public void GiveCaptureBonus(int teamId)

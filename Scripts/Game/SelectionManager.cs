@@ -5,6 +5,7 @@ public partial class SelectionManager : Node2D
 {
 	private Camera2D _camera;
 	private List<Unit> _selectedUnits = new List<Unit>();
+	private CampSimple _selectedCamp = null;
 
 	// Rectangle de sélection
 	private Vector2 _selectionStart;
@@ -95,6 +96,9 @@ public partial class SelectionManager : Node2D
 		}
 		_selectedUnits.Clear();
 
+		// Désélectionner le camp précédent
+		DeselectCamp();
+
 		// Calculer le rectangle de sélection
 		Rect2 selectionArea = new Rect2(
 			Mathf.Min(_selectionStart.X, endPosition.X),
@@ -103,16 +107,36 @@ public partial class SelectionManager : Node2D
 			Mathf.Abs(endPosition.Y - _selectionStart.Y)
 		);
 
+		bool isClick = selectionArea.Size.Length() < 10;
+
+		// Si c'est un clic, vérifier d'abord les camps
+		if (isClick)
+		{
+			var camps = GetTree().GetNodesInGroup("camps");
+			foreach (var node in camps)
+			{
+				if (node is CampSimple camp)
+				{
+					// Distance de détection basée sur la taille du camp (environ 200 pixels avec scale 3)
+					if (camp.GlobalPosition.DistanceTo(_selectionStart) < 200)
+					{
+						SelectCamp(camp);
+						return;
+					}
+				}
+			}
+		}
+
 		// Sélectionner les unités dans le rectangle
 		var units = GetTree().GetNodesInGroup("units");
 		foreach (var node in units)
 		{
 			if (node is Unit unit)
 			{
-				if (selectionArea.HasPoint(unit.GlobalPosition) || selectionArea.Size.Length() < 10)
+				if (selectionArea.HasPoint(unit.GlobalPosition) || isClick)
 				{
 					// Si c'est un petit clic, vérifier si on a cliqué sur l'unité
-					if (selectionArea.Size.Length() < 10)
+					if (isClick)
 					{
 						if (unit.GlobalPosition.DistanceTo(_selectionStart) < 64)
 						{
@@ -128,6 +152,22 @@ public partial class SelectionManager : Node2D
 		}
 
 		GD.Print($"{_selectedUnits.Count} unites selectionnees");
+	}
+
+	private void SelectCamp(CampSimple camp)
+	{
+		_selectedCamp = camp;
+		_selectedCamp.Modulate = new Color(1.2f, 1.2f, 0.8f, 1);
+		GD.Print($"Camp #{camp.CampId} selectionne (Equipe {camp.TeamId})");
+	}
+
+	private void DeselectCamp()
+	{
+		if (_selectedCamp != null && IsInstanceValid(_selectedCamp))
+		{
+			_selectedCamp.Modulate = Colors.White;
+		}
+		_selectedCamp = null;
 	}
 
 	private void SelectUnit(Unit unit)
@@ -158,8 +198,19 @@ public partial class SelectionManager : Node2D
 			}
 		}
 		_selectedUnits.Clear();
+		DeselectCamp();
 
 		// Sélectionner l'unité cliquée
 		SelectUnit(unit);
+	}
+
+	public CampSimple GetSelectedCamp()
+	{
+		return _selectedCamp;
+	}
+
+	public List<Unit> GetSelectedUnits()
+	{
+		return _selectedUnits;
 	}
 }

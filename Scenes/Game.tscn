@@ -1,6 +1,6 @@
 [gd_scene load_steps=26 format=4 uid="uid://4n8kkodj5pob"]
 
-[ext_resource type="Script" uid="uid://drgdyby4ncxx6" path="res://Scripts/Game/TestSetup.cs" id="1_707gh"]
+[ext_resource type="Script" uid="uid://drgdyby4ncxx6" path="res://Scripts/Game/MapGenerator.cs" id="1_707gh"]
 [ext_resource type="Texture2D" uid="uid://ci3d4fikx58kj" path="res://Assets/Map/Grass.png" id="2_aa0um"]
 [ext_resource type="Texture2D" uid="uid://dsqkkv6ga6g68" path="res://Assets/Map/Sand.png" id="3_wckam"]
 [ext_resource type="Texture2D" uid="uid://dw3nicichdn81" path="res://Assets/Map/Forest.png" id="4_675va"]

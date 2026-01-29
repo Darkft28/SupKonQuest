@@ -42,7 +42,7 @@ Three autoloaded managers defined in project.godot:
 
 **CampSimple** - Base camps with health/capture mechanics. Spawns units in circular pattern. Capture requires killing all defending units first.
 
-**Map Generation (TestSetup)** - FastNoiseLite Perlin noise on 256x256 grid. Biomes by altitude: Water (<-0.2), Sand, Grass/Forest, Rock, Snow (>0.55). Deterministic seeded generation for multiplayer sync.
+**MapGenerator** - FastNoiseLite Perlin noise on 256x256 grid. Biomes by altitude: Water (<-0.2), Sand, Grass/Forest, Rock, Snow (>0.55). Deterministic seeded generation for multiplayer sync.
 
 **CameraController** - Zoom (0.05x-2.0x), WASD/arrow pan, right-click drag, recenter with C/Home
 

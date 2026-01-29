@@ -5,8 +5,11 @@ public partial class CampSimple : Area2D
 	[Export] public int TeamId = 1; // id équipe
 	[Export] public bool IsNeutralCamp = false; // camp neutre
 	[Export] public float MaxHealth = 500f; // pv max du camp
-	
+	[Export] public int GoldPerSecond = 3; // or généré par seconde
+
 	private float _currentHealth;
+	private float _goldTimer = 0f;
+	private int _localGold = 0; // Or local pour les camps neutres
 	
 	// id unique camp
 	public int CampId;
@@ -49,6 +52,15 @@ public partial class CampSimple : Area2D
 	private void SetCampId(int value)
 	{
 		CampId = value;
+	}
+
+	public int GetGold()
+	{
+		if (IsNeutralCamp)
+		{
+			return _localGold;
+		}
+		return GameManager.Instance?.GetGold(TeamId) ?? 0;
 	}
 	
 	public override void _Ready()
@@ -111,6 +123,26 @@ public partial class CampSimple : Area2D
 		//update des infos
 		UpdateHealthBar();
 		CleanDeadUnits();
+		GeneratePassiveGold(delta);
+	}
+
+	private void GeneratePassiveGold(double delta)
+	{
+		_goldTimer += (float)delta;
+		if (_goldTimer >= 1.0f)
+		{
+			_goldTimer = 0f;
+			if (IsNeutralCamp)
+			{
+				// Les camps neutres stockent leur or localement
+				_localGold += GoldPerSecond;
+			}
+			else if (GameManager.Instance != null && TeamId > 0)
+			{
+				// Les camps d'équipe utilisent le GameManager
+				GameManager.Instance.AddGold(TeamId, GoldPerSecond);
+			}
+		}
 	}
 	
 	private void UpdateHealthBar()

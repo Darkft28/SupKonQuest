@@ -4,9 +4,10 @@
 [ext_resource type="Script" uid="uid://b57i42jahy20f" path="res://Scripts/Game/CampSimple.cs" id="2_script"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_sucw0"]
-size = Vector2(131, 130)
+size = Vector2(393, 390)
 
 [node name="Camp_avancé" type="Area2D"]
+scale = Vector2(3, 3)
 script = ExtResource("2_script")
 MaxHealth = 750.0
 
