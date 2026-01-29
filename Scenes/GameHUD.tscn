@@ -1,10 +1,18 @@
-[gd_scene load_steps=6 format=3 uid="uid://do8135h5uk8sg"]
+[gd_scene load_steps=14 format=3 uid="uid://do8135h5uk8sg"]
 
 [ext_resource type="Texture2D" uid="uid://dkxomydt6wuqt" path="res://Assets/Hud/Texture/Barre.png" id="1_cg26j"]
 [ext_resource type="Texture2D" uid="uid://byg3624b0db4o" path="res://Assets/Hud/Texture/MapHUD.png" id="2_s6mu7"]
 [ext_resource type="Script" uid="uid://cajaylesa6tge" path="res://Scripts/UI/Minimap.cs" id="3_s6mu7"]
 [ext_resource type="Script" uid="uid://djbx8jmmtfaju" path="res://Scripts/UI/GameHUD.cs" id="4_gamehud"]
 [ext_resource type="Texture2D" uid="uid://b4vkqd5pqyoc" path="res://Assets/Hud/Texture/Gold.png" id="5_gold"]
+[ext_resource type="Texture2D" uid="uid://bxtsnnwrbfbat" path="res://Assets/Units/Characters/Infantry/Infantry_Front.png" id="6_infantry"]
+[ext_resource type="Texture2D" uid="uid://dr5p7hs0vpbbx" path="res://Assets/Units/Characters/Support/Support_Front.png" id="7_support"]
+[ext_resource type="Texture2D" uid="uid://bt8uettouo4rb" path="res://Assets/Units/Characters/Healer/healer_Front.png" id="8_healer"]
+[ext_resource type="Texture2D" uid="uid://be8q8xnxkdj0s" path="res://Assets/Units/Characters/Range/Range_Front.png" id="9_range"]
+[ext_resource type="Texture2D" uid="uid://b3v5oet61qq77" path="res://Assets/Units/Characters/Anti-armor/Anti-armor_front.png" id="10_antiarmor"]
+[ext_resource type="Texture2D" uid="uid://d13wt48l5hfnf" path="res://Assets/Units/Characters/Heavy/Heavy_Front.png" id="11_heavy"]
+[ext_resource type="Texture2D" uid="uid://ca7vofpdoodgq" path="res://Assets/Units/Characters/Mortar/Mortar_Front.png" id="12_mortar"]
+[ext_resource type="Texture2D" uid="uid://brkuiocf4e3uk" path="res://Assets/Units/Characters/Tank/Tank_Front.png" id="13_tank"]
 
 [node name="GameHUD" type="Control"]
 layout_mode = 3
@@ -31,6 +39,75 @@ offset_right = -3.0
 grow_horizontal = 2
 grow_vertical = 2
 texture = ExtResource("1_cg26j")
+
+[node name="UnitsContainer" type="HBoxContainer" parent="NinePatchRect"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 344.0
+offset_top = 29.0
+offset_right = -25.0
+offset_bottom = -34.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/separation = 15
+
+[node name="InfantryButton" type="TextureButton" parent="NinePatchRect/UnitsContainer"]
+custom_minimum_size = Vector2(64, 64)
+layout_mode = 2
+texture_normal = ExtResource("6_infantry")
+ignore_texture_size = true
+stretch_mode = 5
+
+[node name="SupportButton" type="TextureButton" parent="NinePatchRect/UnitsContainer"]
+custom_minimum_size = Vector2(64, 64)
+layout_mode = 2
+texture_normal = ExtResource("7_support")
+ignore_texture_size = true
+stretch_mode = 5
+
+[node name="HealButton" type="TextureButton" parent="NinePatchRect/UnitsContainer"]
+custom_minimum_size = Vector2(64, 64)
+layout_mode = 2
+texture_normal = ExtResource("8_healer")
+ignore_texture_size = true
+stretch_mode = 5
+
+[node name="RangeButton" type="TextureButton" parent="NinePatchRect/UnitsContainer"]
+custom_minimum_size = Vector2(64, 64)
+layout_mode = 2
+texture_normal = ExtResource("9_range")
+ignore_texture_size = true
+stretch_mode = 5
+
+[node name="AntiArmorButton" type="TextureButton" parent="NinePatchRect/UnitsContainer"]
+custom_minimum_size = Vector2(64, 64)
+layout_mode = 2
+texture_normal = ExtResource("10_antiarmor")
+ignore_texture_size = true
+stretch_mode = 5
+
+[node name="HeavyButton" type="TextureButton" parent="NinePatchRect/UnitsContainer"]
+custom_minimum_size = Vector2(64, 64)
+layout_mode = 2
+texture_normal = ExtResource("11_heavy")
+ignore_texture_size = true
+stretch_mode = 5
+
+[node name="MortarButton" type="TextureButton" parent="NinePatchRect/UnitsContainer"]
+custom_minimum_size = Vector2(64, 64)
+layout_mode = 2
+texture_normal = ExtResource("12_mortar")
+ignore_texture_size = true
+stretch_mode = 5
+
+[node name="TankButton" type="TextureButton" parent="NinePatchRect/UnitsContainer"]
+custom_minimum_size = Vector2(64, 64)
+layout_mode = 2
+texture_normal = ExtResource("13_tank")
+ignore_texture_size = true
+stretch_mode = 5
 
 [node name="NinePatchRect2" type="NinePatchRect" parent="."]
 layout_mode = 0
@@ -63,7 +140,7 @@ render_target_update_mode = 4
 [node name="MinimapCamera" type="Camera2D" parent="NinePatchRect2/SubViewportContainer/SubViewport"]
 
 [node name="GoldPanel" type="Control" parent="."]
-layout_mode = 0
+anchors_preset = 0
 offset_left = 186.0
 offset_top = 541.0
 offset_right = 279.0
