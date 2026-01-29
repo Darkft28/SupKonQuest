@@ -296,22 +296,38 @@ public partial class CampSimple : Area2D
 	
 	public bool BuyUnit(string unitType)
 	{
-		if (GameManager.Instance == null)
-			return false;
-		
 		var stats = UnitStats.GetStats(unitType);
 		int price = stats.Price;
+		int currentGold = GetGold();
 
-		//vérif possiblité achat
-		if (!GameManager.Instance.SpendGold(TeamId, price))
+		GD.Print($"[Camp #{CampId}] Tentative achat {unitType} - Or: {currentGold}, Cout: {price}, IsNeutral: {IsNeutralCamp}, TeamId: {TeamId}");
+
+		// Vérifier si on a assez d'or
+		if (currentGold < price)
 		{
-			GD.Print($"Pas assez d'or pour acheter {unitType} (cout: {price})");
+			GD.Print($"Pas assez d'or pour acheter {unitType} (cout: {price}, or: {currentGold})");
 			return false;
 		}
 
-		//spawn l'unité
+		// Dépenser l'or selon le type de camp
+		if (IsNeutralCamp)
+		{
+			_localGold -= price;
+		}
+		else
+		{
+			if (GameManager.Instance == null)
+				return false;
+			if (!GameManager.Instance.SpendGold(TeamId, price))
+			{
+				GD.Print($"GameManager.SpendGold a échoué pour TeamId {TeamId}");
+				return false;
+			}
+		}
+
+		// Spawn l'unité
 		SpawnPurchasedUnit(unitType);
-		GD.Print($"Unite {unitType} achetee pour {price} or!");
+		GD.Print($"Unite {unitType} achetee pour {price} or! (reste: {GetGold()})");
 		return true;
 	}
 	

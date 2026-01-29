@@ -1,10 +1,19 @@
 using Godot;
+using System.Collections.Generic;
 
 public partial class GameHUD : Control
 {
 	private Label _goldLabel;
 	private Control _goldPanel;
 	private SelectionManager _selectionManager;
+	private Dictionary<string, TextureButton> _unitButtons = new Dictionary<string, TextureButton>();
+
+	// Liste des types d'unités disponibles dans le HUD
+	private static readonly string[] UnitTypes = new[]
+	{
+		"Infantry", "Support", "Heal", "Range",
+		"AntiArmor", "Heavy", "Mortar", "Tank"
+	};
 
 	public override void _Ready()
 	{
@@ -16,7 +25,63 @@ public partial class GameHUD : Control
 		_goldPanel.Visible = true;
 		_goldLabel.Text = "0";
 
+		// Connecter les boutons d'unités
+		ConnectUnitButtons();
+
 		GD.Print("[HUD] GameHUD initialisé");
+	}
+
+	private void ConnectUnitButtons()
+	{
+		var unitsContainer = GetNode<HBoxContainer>("NinePatchRect/UnitsContainer");
+
+		foreach (string unitType in UnitTypes)
+		{
+			var buttonPath = $"{unitType}/Button";
+			var button = unitsContainer.GetNodeOrNull<TextureButton>(buttonPath);
+
+			if (button != null)
+			{
+				_unitButtons[unitType] = button;
+				// Capturer le type d'unité pour le callback
+				string capturedType = unitType;
+				button.Pressed += () => OnUnitButtonPressed(capturedType);
+				GD.Print($"[HUD] Bouton {unitType} connecté");
+			}
+			else
+			{
+				GD.PrintErr($"[HUD] Bouton {unitType} non trouvé!");
+			}
+		}
+	}
+
+	private void OnUnitButtonPressed(string unitType)
+	{
+		if (_selectionManager == null)
+		{
+			GD.Print("[HUD] Pas de SelectionManager!");
+			return;
+		}
+
+		var selectedCamp = _selectionManager.GetSelectedCamp();
+
+		if (selectedCamp == null || !IsInstanceValid(selectedCamp))
+		{
+			GD.Print("[HUD] Aucun camp sélectionné!");
+			return;
+		}
+
+		// Tenter d'acheter l'unité sur le camp sélectionné
+		bool success = selectedCamp.BuyUnit(unitType);
+
+		if (success)
+		{
+			GD.Print($"[HUD] Unité {unitType} achetée sur le camp #{selectedCamp.CampId}");
+		}
+		else
+		{
+			GD.Print($"[HUD] Impossible d'acheter {unitType} - pas assez d'or");
+		}
 	}
 
 	public override void _Process(double delta)
