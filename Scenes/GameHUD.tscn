@@ -45,68 +45,252 @@ layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_left = 344.0
-offset_top = 29.0
-offset_right = -25.0
-offset_bottom = -34.0
+offset_left = 480.0
+offset_top = 27.0
+offset_right = -23.0
+offset_bottom = -29.0
 grow_horizontal = 2
 grow_vertical = 2
-theme_override_constants/separation = 15
+theme_override_constants/separation = 12
 
-[node name="InfantryButton" type="TextureButton" parent="NinePatchRect/UnitsContainer"]
-custom_minimum_size = Vector2(64, 64)
+[node name="Infantry" type="VBoxContainer" parent="NinePatchRect/UnitsContainer"]
 layout_mode = 2
+alignment = 1
+
+[node name="Button" type="TextureButton" parent="NinePatchRect/UnitsContainer/Infantry"]
+custom_minimum_size = Vector2(50, 50)
+layout_mode = 2
+size_flags_horizontal = 4
 texture_normal = ExtResource("6_infantry")
 ignore_texture_size = true
 stretch_mode = 5
 
-[node name="SupportButton" type="TextureButton" parent="NinePatchRect/UnitsContainer"]
-custom_minimum_size = Vector2(64, 64)
+[node name="PriceContainer" type="HBoxContainer" parent="NinePatchRect/UnitsContainer/Infantry"]
 layout_mode = 2
+size_flags_horizontal = 4
+theme_override_constants/separation = 2
+
+[node name="Price" type="Label" parent="NinePatchRect/UnitsContainer/Infantry/PriceContainer"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 12
+text = "50"
+horizontal_alignment = 1
+
+[node name="GoldIcon" type="TextureRect" parent="NinePatchRect/UnitsContainer/Infantry/PriceContainer"]
+custom_minimum_size = Vector2(14, 14)
+layout_mode = 2
+texture = ExtResource("5_gold")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="Support" type="VBoxContainer" parent="NinePatchRect/UnitsContainer"]
+layout_mode = 2
+alignment = 1
+
+[node name="Button" type="TextureButton" parent="NinePatchRect/UnitsContainer/Support"]
+custom_minimum_size = Vector2(50, 50)
+layout_mode = 2
+size_flags_horizontal = 4
 texture_normal = ExtResource("7_support")
 ignore_texture_size = true
 stretch_mode = 5
 
-[node name="HealButton" type="TextureButton" parent="NinePatchRect/UnitsContainer"]
-custom_minimum_size = Vector2(64, 64)
+[node name="PriceContainer" type="HBoxContainer" parent="NinePatchRect/UnitsContainer/Support"]
 layout_mode = 2
+size_flags_horizontal = 4
+theme_override_constants/separation = 2
+
+[node name="Price" type="Label" parent="NinePatchRect/UnitsContainer/Support/PriceContainer"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 12
+text = "75"
+horizontal_alignment = 1
+
+[node name="GoldIcon" type="TextureRect" parent="NinePatchRect/UnitsContainer/Support/PriceContainer"]
+custom_minimum_size = Vector2(14, 14)
+layout_mode = 2
+texture = ExtResource("5_gold")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="Heal" type="VBoxContainer" parent="NinePatchRect/UnitsContainer"]
+layout_mode = 2
+alignment = 1
+
+[node name="Button" type="TextureButton" parent="NinePatchRect/UnitsContainer/Heal"]
+custom_minimum_size = Vector2(50, 50)
+layout_mode = 2
+size_flags_horizontal = 4
 texture_normal = ExtResource("8_healer")
 ignore_texture_size = true
 stretch_mode = 5
 
-[node name="RangeButton" type="TextureButton" parent="NinePatchRect/UnitsContainer"]
-custom_minimum_size = Vector2(64, 64)
+[node name="PriceContainer" type="HBoxContainer" parent="NinePatchRect/UnitsContainer/Heal"]
 layout_mode = 2
+size_flags_horizontal = 4
+theme_override_constants/separation = 2
+
+[node name="Price" type="Label" parent="NinePatchRect/UnitsContainer/Heal/PriceContainer"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 12
+text = "100"
+horizontal_alignment = 1
+
+[node name="GoldIcon" type="TextureRect" parent="NinePatchRect/UnitsContainer/Heal/PriceContainer"]
+custom_minimum_size = Vector2(14, 14)
+layout_mode = 2
+texture = ExtResource("5_gold")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="Range" type="VBoxContainer" parent="NinePatchRect/UnitsContainer"]
+layout_mode = 2
+alignment = 1
+
+[node name="Button" type="TextureButton" parent="NinePatchRect/UnitsContainer/Range"]
+custom_minimum_size = Vector2(50, 50)
+layout_mode = 2
+size_flags_horizontal = 4
 texture_normal = ExtResource("9_range")
 ignore_texture_size = true
 stretch_mode = 5
 
-[node name="AntiArmorButton" type="TextureButton" parent="NinePatchRect/UnitsContainer"]
-custom_minimum_size = Vector2(64, 64)
+[node name="PriceContainer" type="HBoxContainer" parent="NinePatchRect/UnitsContainer/Range"]
 layout_mode = 2
+size_flags_horizontal = 4
+theme_override_constants/separation = 2
+
+[node name="Price" type="Label" parent="NinePatchRect/UnitsContainer/Range/PriceContainer"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 12
+text = "80"
+horizontal_alignment = 1
+
+[node name="GoldIcon" type="TextureRect" parent="NinePatchRect/UnitsContainer/Range/PriceContainer"]
+custom_minimum_size = Vector2(14, 14)
+layout_mode = 2
+texture = ExtResource("5_gold")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="AntiArmor" type="VBoxContainer" parent="NinePatchRect/UnitsContainer"]
+layout_mode = 2
+alignment = 1
+
+[node name="Button" type="TextureButton" parent="NinePatchRect/UnitsContainer/AntiArmor"]
+custom_minimum_size = Vector2(50, 50)
+layout_mode = 2
+size_flags_horizontal = 4
 texture_normal = ExtResource("10_antiarmor")
 ignore_texture_size = true
 stretch_mode = 5
 
-[node name="HeavyButton" type="TextureButton" parent="NinePatchRect/UnitsContainer"]
-custom_minimum_size = Vector2(64, 64)
+[node name="PriceContainer" type="HBoxContainer" parent="NinePatchRect/UnitsContainer/AntiArmor"]
 layout_mode = 2
+size_flags_horizontal = 4
+theme_override_constants/separation = 2
+
+[node name="Price" type="Label" parent="NinePatchRect/UnitsContainer/AntiArmor/PriceContainer"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 12
+text = "90"
+horizontal_alignment = 1
+
+[node name="GoldIcon" type="TextureRect" parent="NinePatchRect/UnitsContainer/AntiArmor/PriceContainer"]
+custom_minimum_size = Vector2(14, 14)
+layout_mode = 2
+texture = ExtResource("5_gold")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="Heavy" type="VBoxContainer" parent="NinePatchRect/UnitsContainer"]
+layout_mode = 2
+alignment = 1
+
+[node name="Button" type="TextureButton" parent="NinePatchRect/UnitsContainer/Heavy"]
+custom_minimum_size = Vector2(50, 50)
+layout_mode = 2
+size_flags_horizontal = 4
 texture_normal = ExtResource("11_heavy")
 ignore_texture_size = true
 stretch_mode = 5
 
-[node name="MortarButton" type="TextureButton" parent="NinePatchRect/UnitsContainer"]
-custom_minimum_size = Vector2(64, 64)
+[node name="PriceContainer" type="HBoxContainer" parent="NinePatchRect/UnitsContainer/Heavy"]
 layout_mode = 2
+size_flags_horizontal = 4
+theme_override_constants/separation = 2
+
+[node name="Price" type="Label" parent="NinePatchRect/UnitsContainer/Heavy/PriceContainer"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 12
+text = "120"
+horizontal_alignment = 1
+
+[node name="GoldIcon" type="TextureRect" parent="NinePatchRect/UnitsContainer/Heavy/PriceContainer"]
+custom_minimum_size = Vector2(14, 14)
+layout_mode = 2
+texture = ExtResource("5_gold")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="Mortar" type="VBoxContainer" parent="NinePatchRect/UnitsContainer"]
+layout_mode = 2
+alignment = 1
+
+[node name="Button" type="TextureButton" parent="NinePatchRect/UnitsContainer/Mortar"]
+custom_minimum_size = Vector2(50, 50)
+layout_mode = 2
+size_flags_horizontal = 4
 texture_normal = ExtResource("12_mortar")
 ignore_texture_size = true
 stretch_mode = 5
 
-[node name="TankButton" type="TextureButton" parent="NinePatchRect/UnitsContainer"]
-custom_minimum_size = Vector2(64, 64)
+[node name="PriceContainer" type="HBoxContainer" parent="NinePatchRect/UnitsContainer/Mortar"]
 layout_mode = 2
+size_flags_horizontal = 4
+theme_override_constants/separation = 2
+
+[node name="Price" type="Label" parent="NinePatchRect/UnitsContainer/Mortar/PriceContainer"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 12
+text = "110"
+horizontal_alignment = 1
+
+[node name="GoldIcon" type="TextureRect" parent="NinePatchRect/UnitsContainer/Mortar/PriceContainer"]
+custom_minimum_size = Vector2(14, 14)
+layout_mode = 2
+texture = ExtResource("5_gold")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="Tank" type="VBoxContainer" parent="NinePatchRect/UnitsContainer"]
+layout_mode = 2
+alignment = 1
+
+[node name="Button" type="TextureButton" parent="NinePatchRect/UnitsContainer/Tank"]
+custom_minimum_size = Vector2(50, 50)
+layout_mode = 2
+size_flags_horizontal = 4
 texture_normal = ExtResource("13_tank")
 ignore_texture_size = true
+stretch_mode = 5
+
+[node name="PriceContainer" type="HBoxContainer" parent="NinePatchRect/UnitsContainer/Tank"]
+layout_mode = 2
+size_flags_horizontal = 4
+theme_override_constants/separation = 2
+
+[node name="Price" type="Label" parent="NinePatchRect/UnitsContainer/Tank/PriceContainer"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 12
+text = "150"
+horizontal_alignment = 1
+
+[node name="GoldIcon" type="TextureRect" parent="NinePatchRect/UnitsContainer/Tank/PriceContainer"]
+custom_minimum_size = Vector2(14, 14)
+layout_mode = 2
+texture = ExtResource("5_gold")
+expand_mode = 1
 stretch_mode = 5
 
 [node name="NinePatchRect2" type="NinePatchRect" parent="."]
