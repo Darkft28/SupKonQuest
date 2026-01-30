@@ -13,7 +13,12 @@ public partial class Unit : CharacterBody2D
 	private Sprite2D _sprite;
 
 	private Vector2? _targetPosition = null;
-	private const float ArrivalDistance = 10f;
+	private const float ArrivalDistance = 20f;
+	private Vector2 _lastPosition;
+	private int _stuckFrames = 0;
+	private int _moveStartDelay = 0;
+	private const int MaxStuckFrames = 120; // ~2 sec à 60fps
+	private const int MoveStartDelayFrames = 60; // ~1 sec avant de vérifier le blocage
 
 	// Propriétés
 	public float GetCurrentHealth => _currentHealth;
@@ -33,6 +38,10 @@ public partial class Unit : CharacterBody2D
 		}
 
 		_currentHealth = _maxHealth;
+		_lastPosition = GlobalPosition;
+
+		// Créer la collision
+		CreateCollision();
 
 		// Créer et configurer le sprite
 		CreateSprite();
@@ -67,6 +76,15 @@ public partial class Unit : CharacterBody2D
 		}
 	}
 
+	private void CreateCollision()
+	{
+		var collision = new CollisionShape2D();
+		var shape = new CircleShape2D();
+		shape.Radius = 40f;
+		collision.Shape = shape;
+		AddChild(collision);
+	}
+
 	public override void _PhysicsProcess(double delta)
 	{
 		if (!_targetPosition.HasValue)
@@ -78,13 +96,35 @@ public partial class Unit : CharacterBody2D
 		// Arrivé à destination
 		if (distance < ArrivalDistance)
 		{
-			_targetPosition = null;
-			Velocity = Vector2.Zero;
+			Stop();
 			return;
 		}
 
 		Velocity = direction * _stats.Speed;
 		MoveAndSlide();
+
+		// Attendre le délai initial avant de vérifier le blocage
+		if (_moveStartDelay > 0)
+		{
+			_moveStartDelay--;
+			_lastPosition = GlobalPosition;
+			return;
+		}
+
+		// Détection de blocage
+		if (GlobalPosition.DistanceTo(_lastPosition) < 1f)
+		{
+			_stuckFrames++;
+			if (_stuckFrames > MaxStuckFrames)
+			{
+				Stop(); // Bloqué, on arrête
+			}
+		}
+		else
+		{
+			_stuckFrames = 0;
+		}
+		_lastPosition = GlobalPosition;
 	}
 
 	public void TakeDamage(float damage)
@@ -112,6 +152,9 @@ public partial class Unit : CharacterBody2D
 	public void MoveTo(Vector2 target)
 	{
 		_targetPosition = target;
+		_stuckFrames = 0;
+		_moveStartDelay = MoveStartDelayFrames;
+		_lastPosition = GlobalPosition;
 	}
 
 	public void Stop()
