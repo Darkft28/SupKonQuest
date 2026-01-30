@@ -5,7 +5,7 @@ public partial class CampSimple : Area2D
 	[Export] public int TeamId = 1; // id équipe
 	[Export] public bool IsNeutralCamp = false; // camp neutre
 	[Export] public float MaxHealth = 500f; // pv max du camp
-	[Export] public int GoldPerSecond = 3; // or généré par seconde
+	[Export] public int GoldPerSecond = 50; // or généré par seconde (50 pour tests)
 
 	private float _currentHealth;
 	private float _goldTimer = 0f;
@@ -229,7 +229,7 @@ public partial class CampSimple : Area2D
 			var unit = unitScene.Instantiate<Unit>();
 
 			float angle = (i * Mathf.Tau) / bonusUnits.Length;
-			Vector2 offset = new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * 700f;
+			Vector2 offset = new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * 350f;
 
 			unit.GlobalPosition = campPos + offset;
 			unit.UnitType = bonusUnits[i];
@@ -281,7 +281,7 @@ public partial class CampSimple : Area2D
 
 			//caclul de la position de spawn
 			float angle = (i * Mathf.Tau) / UnitTypes.Length;
-			Vector2 offset = new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * 700f;
+			Vector2 offset = new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * 350f;
 
 			unit.GlobalPosition = campPos + offset;
 			unit.UnitType = UnitTypes[i];
@@ -341,7 +341,7 @@ public partial class CampSimple : Area2D
 
 		//random positionement
 		float angle = (float)GD.RandRange(0, Mathf.Tau);
-		Vector2 offset = new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * 700f;
+		Vector2 offset = new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * 350f;
 
 		unit.GlobalPosition = GlobalPosition + offset;
 		unit.UnitType = unitType;

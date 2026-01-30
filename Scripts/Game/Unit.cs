@@ -10,6 +10,7 @@ public partial class Unit : CharacterBody2D
 	private float _currentHealth;
 	private float _maxHealth;
 	private UnitStatsData _stats;
+	private Sprite2D _sprite;
 
 	// Propriétés
 	public float GetCurrentHealth => _currentHealth;
@@ -29,9 +30,37 @@ public partial class Unit : CharacterBody2D
 
 		_currentHealth = _maxHealth;
 
+		// Créer et configurer le sprite
+		CreateSprite();
+
 		// Ajouter au groupe pour faciliter la recherche
 		AddToGroup("units");
 		AddToGroup($"team_{TeamId}");
+	}
+
+	private void CreateSprite()
+	{
+		_sprite = new Sprite2D();
+
+		// Mapper le type d'unité au chemin de texture (gestion des cas particuliers)
+		string texturePath = UnitType switch
+		{
+			"Heal" => "res://Assets/Units/Characters/Healer/healer_Front.png",
+			_ => $"res://Assets/Units/Characters/{UnitType}/{UnitType}_Front.png"
+		};
+
+		var texture = GD.Load<Texture2D>(texturePath);
+
+		if (texture != null)
+		{
+			_sprite.Texture = texture;
+			_sprite.Scale = new Vector2(0.255f, 0.255f);
+			AddChild(_sprite);
+		}
+		else
+		{
+			GD.PrintErr($"Impossible de charger la texture: {texturePath}");
+		}
 	}
 
 	public override void _PhysicsProcess(double delta)
