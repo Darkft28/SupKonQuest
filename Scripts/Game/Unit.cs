@@ -59,6 +59,7 @@ public partial class Unit : CharacterBody2D
 		string texturePath = UnitType switch
 		{
 			"Heal" => "res://Assets/Units/Characters/Healer/healer_Front.png",
+			"AntiArmor" => "res://Assets/Units/Characters/Anti-armor/Anti-armor_front.png",
 			_ => $"res://Assets/Units/Characters/{UnitType}/{UnitType}_Front.png"
 		};
 
@@ -111,8 +112,12 @@ public partial class Unit : CharacterBody2D
 			return;
 		}
 
-		// Détection de blocage
-		if (GlobalPosition.DistanceTo(_lastPosition) < 1f)
+		// Détection de blocage - seuil dynamique basé sur la vitesse
+		// Une unité est bloquée si elle bouge à moins de 10% de sa vitesse normale
+		float expectedMovement = _stats.Speed / 60f; // Distance attendue par frame à 60fps
+		float actualMovement = GlobalPosition.DistanceTo(_lastPosition);
+
+		if (actualMovement < expectedMovement * 0.1f)
 		{
 			_stuckFrames++;
 			if (_stuckFrames > MaxStuckFrames)

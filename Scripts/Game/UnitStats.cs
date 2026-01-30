@@ -55,6 +55,46 @@ public static class UnitStats
 			Speed = 100f,
 			Range = 300f,
 			Price = 80
+		},
+		["AntiArmor"] = new UnitStatsData
+		{
+			Name = "AntiArmor",
+			MaxHealth = 80f,
+			Attack = 35f,
+			Defense = 8f,
+			Speed = 90f,
+			Range = 120f,
+			Price = 120
+		},
+		["Heavy"] = new UnitStatsData
+		{
+			Name = "Heavy",
+			MaxHealth = 150f,
+			Attack = 25f,
+			Defense = 20f,
+			Speed = 70f,
+			Range = 60f,
+			Price = 150
+		},
+		["Mortar"] = new UnitStatsData
+		{
+			Name = "Mortar",
+			MaxHealth = 50f,
+			Attack = 40f,
+			Defense = 3f,
+			Speed = 60f,
+			Range = 400f,
+			Price = 130
+		},
+		["Tank"] = new UnitStatsData
+		{
+			Name = "Tank",
+			MaxHealth = 200f,
+			Attack = 30f,
+			Defense = 25f,
+			Speed = 50f,
+			Range = 100f,
+			Price = 200
 		}
 	};
 
