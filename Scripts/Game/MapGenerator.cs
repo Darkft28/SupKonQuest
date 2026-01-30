@@ -90,11 +90,18 @@ public partial class MapGenerator : Node
 
 		// La caméra est gérée par CameraController
 
-		if (_tileMapSol.GetUsedCells().Count == 0)
+		// Toujours générer la map au démarrage du jeu (pas en éditeur)
+		if (!Engine.IsEditorHint())
 		{
 			SetupNoise();
 			GenererMap();
 			GD.Print("Map générée. Appuyez sur ESPACE pour régénérer.");
+		}
+		else if (_tileMapSol.GetUsedCells().Count == 0)
+		{
+			// En mode éditeur, générer seulement si vide
+			SetupNoise();
+			GenererMap();
 		}
 
 	}

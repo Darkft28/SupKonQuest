@@ -10,10 +10,20 @@ public partial class Unit : CharacterBody2D
 	private float _currentHealth;
 	private float _maxHealth;
 	private UnitStatsData _stats;
+	private Sprite2D _sprite;
+
+	private Vector2? _targetPosition = null;
+	private const float ArrivalDistance = 20f;
+	private Vector2 _lastPosition;
+	private int _stuckFrames = 0;
+	private int _moveStartDelay = 0;
+	private const int MaxStuckFrames = 120; // ~2 sec à 60fps
+	private const int MoveStartDelayFrames = 60; // ~1 sec avant de vérifier le blocage
 
 	// Propriétés
 	public float GetCurrentHealth => _currentHealth;
 	public float MaxHealth => _maxHealth;
+	public bool IsMoving => _targetPosition.HasValue;
 
 	public override void _Ready()
 	{
@@ -28,15 +38,98 @@ public partial class Unit : CharacterBody2D
 		}
 
 		_currentHealth = _maxHealth;
+		_lastPosition = GlobalPosition;
+
+		// Créer la collision
+		CreateCollision();
+
+		// Créer et configurer le sprite
+		CreateSprite();
 
 		// Ajouter au groupe pour faciliter la recherche
 		AddToGroup("units");
 		AddToGroup($"team_{TeamId}");
 	}
 
+	private void CreateSprite()
+	{
+		_sprite = new Sprite2D();
+
+		// Mapper le type d'unité au chemin de texture (gestion des cas particuliers)
+		string texturePath = UnitType switch
+		{
+			"Heal" => "res://Assets/Units/Characters/Healer/healer_Front.png",
+			"AntiArmor" => "res://Assets/Units/Characters/Anti-armor/Anti-armor_front.png",
+			_ => $"res://Assets/Units/Characters/{UnitType}/{UnitType}_Front.png"
+		};
+
+		var texture = GD.Load<Texture2D>(texturePath);
+
+		if (texture != null)
+		{
+			_sprite.Texture = texture;
+			_sprite.Scale = new Vector2(0.255f, 0.255f);
+			AddChild(_sprite);
+		}
+		else
+		{
+			GD.PrintErr($"Impossible de charger la texture: {texturePath}");
+		}
+	}
+
+	private void CreateCollision()
+	{
+		var collision = new CollisionShape2D();
+		var shape = new CircleShape2D();
+		shape.Radius = 40f;
+		collision.Shape = shape;
+		AddChild(collision);
+	}
+
 	public override void _PhysicsProcess(double delta)
 	{
-		// Logique de mouvement à implémenter
+		if (!_targetPosition.HasValue)
+			return;
+
+		Vector2 direction = (_targetPosition.Value - GlobalPosition).Normalized();
+		float distance = GlobalPosition.DistanceTo(_targetPosition.Value);
+
+		// Arrivé à destination
+		if (distance < ArrivalDistance)
+		{
+			Stop();
+			return;
+		}
+
+		Velocity = direction * _stats.Speed;
+		MoveAndSlide();
+
+		// Attendre le délai initial avant de vérifier le blocage
+		if (_moveStartDelay > 0)
+		{
+			_moveStartDelay--;
+			_lastPosition = GlobalPosition;
+			return;
+		}
+
+		// Détection de blocage - seuil dynamique basé sur la vitesse
+		// Une unité est bloquée si elle bouge à moins de 10% de sa vitesse normale
+		float expectedMovement = _stats.Speed / 60f; // Distance attendue par frame à 60fps
+		float actualMovement = GlobalPosition.DistanceTo(_lastPosition);
+
+		if (actualMovement < expectedMovement * 0.1f)
+		{
+			_stuckFrames++;
+			if (_stuckFrames > MaxStuckFrames)
+			{
+				Stop(); // Bloqué, on arrête
+			}
+		}
+		else
+		{
+			_stuckFrames = 0;
+		}
+		_lastPosition = GlobalPosition;
 	}
 
 	public void TakeDamage(float damage)
@@ -63,6 +156,15 @@ public partial class Unit : CharacterBody2D
 
 	public void MoveTo(Vector2 target)
 	{
-		// À implémenter : déplacement vers la cible
+		_targetPosition = target;
+		_stuckFrames = 0;
+		_moveStartDelay = MoveStartDelayFrames;
+		_lastPosition = GlobalPosition;
+	}
+
+	public void Stop()
+	{
+		_targetPosition = null;
+		Velocity = Vector2.Zero;
 	}
 }
