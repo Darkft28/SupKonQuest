@@ -229,7 +229,7 @@ public partial class CampSimple : Area2D
 			var unit = unitScene.Instantiate<Unit>();
 
 			float angle = (i * Mathf.Tau) / bonusUnits.Length;
-			Vector2 offset = new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * 300f;
+			Vector2 offset = new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * 700f;
 
 			unit.GlobalPosition = campPos + offset;
 			unit.UnitType = bonusUnits[i];
@@ -281,7 +281,7 @@ public partial class CampSimple : Area2D
 
 			//caclul de la position de spawn
 			float angle = (i * Mathf.Tau) / UnitTypes.Length;
-			Vector2 offset = new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * 400f;
+			Vector2 offset = new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * 700f;
 
 			unit.GlobalPosition = campPos + offset;
 			unit.UnitType = UnitTypes[i];
@@ -341,7 +341,7 @@ public partial class CampSimple : Area2D
 
 		//random positionement
 		float angle = (float)GD.RandRange(0, Mathf.Tau);
-		Vector2 offset = new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * 350f;
+		Vector2 offset = new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * 700f;
 
 		unit.GlobalPosition = GlobalPosition + offset;
 		unit.UnitType = unitType;
