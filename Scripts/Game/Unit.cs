@@ -12,9 +12,13 @@ public partial class Unit : CharacterBody2D
 	private UnitStatsData _stats;
 	private Sprite2D _sprite;
 
+	private Vector2? _targetPosition = null;
+	private const float ArrivalDistance = 10f;
+
 	// Propriétés
 	public float GetCurrentHealth => _currentHealth;
 	public float MaxHealth => _maxHealth;
+	public bool IsMoving => _targetPosition.HasValue;
 
 	public override void _Ready()
 	{
@@ -65,7 +69,22 @@ public partial class Unit : CharacterBody2D
 
 	public override void _PhysicsProcess(double delta)
 	{
-		// Logique de mouvement à implémenter
+		if (!_targetPosition.HasValue)
+			return;
+
+		Vector2 direction = (_targetPosition.Value - GlobalPosition).Normalized();
+		float distance = GlobalPosition.DistanceTo(_targetPosition.Value);
+
+		// Arrivé à destination
+		if (distance < ArrivalDistance)
+		{
+			_targetPosition = null;
+			Velocity = Vector2.Zero;
+			return;
+		}
+
+		Velocity = direction * _stats.Speed;
+		MoveAndSlide();
 	}
 
 	public void TakeDamage(float damage)
@@ -92,6 +111,12 @@ public partial class Unit : CharacterBody2D
 
 	public void MoveTo(Vector2 target)
 	{
-		// À implémenter : déplacement vers la cible
+		_targetPosition = target;
+	}
+
+	public void Stop()
+	{
+		_targetPosition = null;
+		Velocity = Vector2.Zero;
 	}
 }
