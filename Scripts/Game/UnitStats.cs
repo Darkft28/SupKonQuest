@@ -10,6 +10,7 @@ public class UnitStatsData
 	public float Speed { get; set; }
 	public float Range { get; set; }
 	public int Price { get; set; }
+	public float ProductionTime { get; set; } // Temps de production en secondes
 }
 
 public static class UnitStats
@@ -24,7 +25,8 @@ public static class UnitStats
 			Defense = 10f,
 			Speed = 150f,
 			Range = 50f,
-			Price = 50
+			Price = 50,
+			ProductionTime = 2f
 		},
 		["Support"] = new UnitStatsData
 		{
@@ -34,7 +36,8 @@ public static class UnitStats
 			Defense = 5f,
 			Speed = 120f,
 			Range = 100f,
-			Price = 75
+			Price = 75,
+			ProductionTime = 3f
 		},
 		["Heal"] = new UnitStatsData
 		{
@@ -44,7 +47,8 @@ public static class UnitStats
 			Defense = 3f,
 			Speed = 100f,
 			Range = 150f,
-			Price = 100
+			Price = 100,
+			ProductionTime = 3f
 		},
 		["Range"] = new UnitStatsData
 		{
@@ -54,7 +58,8 @@ public static class UnitStats
 			Defense = 5f,
 			Speed = 100f,
 			Range = 300f,
-			Price = 80
+			Price = 80,
+			ProductionTime = 3f
 		},
 		["AntiArmor"] = new UnitStatsData
 		{
@@ -64,7 +69,8 @@ public static class UnitStats
 			Defense = 8f,
 			Speed = 90f,
 			Range = 120f,
-			Price = 120
+			Price = 120,
+			ProductionTime = 4f
 		},
 		["Heavy"] = new UnitStatsData
 		{
@@ -74,7 +80,8 @@ public static class UnitStats
 			Defense = 20f,
 			Speed = 70f,
 			Range = 60f,
-			Price = 150
+			Price = 150,
+			ProductionTime = 5f
 		},
 		["Mortar"] = new UnitStatsData
 		{
@@ -84,7 +91,8 @@ public static class UnitStats
 			Defense = 3f,
 			Speed = 60f,
 			Range = 400f,
-			Price = 130
+			Price = 130,
+			ProductionTime = 4f
 		},
 		["Tank"] = new UnitStatsData
 		{
@@ -94,7 +102,8 @@ public static class UnitStats
 			Defense = 25f,
 			Speed = 50f,
 			Range = 100f,
-			Price = 200
+			Price = 200,
+			ProductionTime = 6f
 		}
 	};
 
@@ -115,7 +124,8 @@ public static class UnitStats
 			Defense = 5f,
 			Speed = 100f,
 			Range = 50f,
-			Price = 50
+			Price = 50,
+			ProductionTime = 3f
 		};
 	}
 }

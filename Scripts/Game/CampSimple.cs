@@ -10,15 +10,21 @@ public partial class CampSimple : Area2D
 	private float _currentHealth;
 	private float _goldTimer = 0f;
 	private int _localGold = 0; // Or local pour les camps neutres
-	
+
 	// id unique camp
 	public int CampId;
 	private static int _nextCampId = 1;
-	
+
 	private Label _campIdLabel;
 
 	// liste des unites spawned par ce camp (pour verifier si elles sont mortes)
 	private List<Unit> _spawnedUnits = new List<Unit>();
+
+	// File d'attente de production
+	private Queue<string> _productionQueue = new Queue<string>();
+	private string _currentProduction = null;
+	private float _productionTimer = 0f;
+	private const int MaxQueueSize = 7;
 
 	//barre de vie
 	private ColorRect _healthBarBackground;
@@ -124,6 +130,32 @@ public partial class CampSimple : Area2D
 		UpdateHealthBar();
 		CleanDeadUnits();
 		GeneratePassiveGold(delta);
+		ProcessProductionQueue(delta);
+	}
+
+	private void ProcessProductionQueue(double delta)
+	{
+		// Si rien en production, prendre le prochain dans la queue
+		if (_currentProduction == null && _productionQueue.Count > 0)
+		{
+			_currentProduction = _productionQueue.Dequeue();
+			_productionTimer = UnitStats.GetStats(_currentProduction).ProductionTime;
+			GD.Print($"[Camp #{CampId}] Debut production: {_currentProduction} ({_productionTimer}s)");
+		}
+
+		// Si une unité est en production, décrémenter le timer
+		if (_currentProduction != null)
+		{
+			_productionTimer -= (float)delta;
+
+			if (_productionTimer <= 0)
+			{
+				// Production terminée, spawn l'unité
+				SpawnPurchasedUnit(_currentProduction);
+				GD.Print($"[Camp #{CampId}] Production terminee: {_currentProduction}");
+				_currentProduction = null;
+			}
+		}
 	}
 
 	private void GeneratePassiveGold(double delta)
@@ -302,6 +334,14 @@ public partial class CampSimple : Area2D
 
 		GD.Print($"[Camp #{CampId}] Tentative achat {unitType} - Or: {currentGold}, Cout: {price}, IsNeutral: {IsNeutralCamp}, TeamId: {TeamId}");
 
+		// Vérifier si la queue n'est pas pleine
+		int totalInQueue = _productionQueue.Count + (_currentProduction != null ? 1 : 0);
+		if (totalInQueue >= MaxQueueSize)
+		{
+			GD.Print($"File d'attente pleine ({MaxQueueSize} max)");
+			return false;
+		}
+
 		// Vérifier si on a assez d'or
 		if (currentGold < price)
 		{
@@ -325,9 +365,9 @@ public partial class CampSimple : Area2D
 			}
 		}
 
-		// Spawn l'unité
-		SpawnPurchasedUnit(unitType);
-		GD.Print($"Unite {unitType} achetee pour {price} or! (reste: {GetGold()})");
+		// Ajouter à la file d'attente
+		_productionQueue.Enqueue(unitType);
+		GD.Print($"Unite {unitType} ajoutee a la file ({_productionQueue.Count}/{MaxQueueSize}) - Cout: {price}, Reste: {GetGold()}");
 		return true;
 	}
 	
@@ -360,10 +400,44 @@ public partial class CampSimple : Area2D
 			return false;
 		}
 
+		// Vérifier si la queue n'est pas pleine
+		int totalInQueue = _productionQueue.Count + (_currentProduction != null ? 1 : 0);
+		if (totalInQueue >= MaxQueueSize)
+			return false;
+
 		var stats = UnitStats.GetStats(unitType);
-		int gold = GameManager.Instance.GetGold(TeamId);
 		bool canAfford = GameManager.Instance.CanAfford(TeamId, stats.Price);
-		
+
 		return canAfford;
+	}
+
+	// Méthodes pour l'UI de la file d'attente
+	public int GetQueueCount()
+	{
+		return _productionQueue.Count + (_currentProduction != null ? 1 : 0);
+	}
+
+	public int GetMaxQueueSize()
+	{
+		return MaxQueueSize;
+	}
+
+	public string GetCurrentProduction()
+	{
+		return _currentProduction;
+	}
+
+	public float GetProductionProgress()
+	{
+		if (_currentProduction == null)
+			return 0f;
+
+		float totalTime = UnitStats.GetStats(_currentProduction).ProductionTime;
+		return 1f - (_productionTimer / totalTime);
+	}
+
+	public string[] GetQueuedUnits()
+	{
+		return _productionQueue.ToArray();
 	}
 }

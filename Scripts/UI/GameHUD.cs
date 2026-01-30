@@ -15,6 +15,7 @@ public partial class GameHUD : Control
 		"AntiArmor", "Heavy", "Mortar", "Tank"
 	};
 
+
 	public override void _Ready()
 	{
 		// Récupérer les éléments UI
@@ -140,4 +141,5 @@ public partial class GameHUD : Control
 			_goldLabel.Text = "0";
 		}
 	}
+
 }
