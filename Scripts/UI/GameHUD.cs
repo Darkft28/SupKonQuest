@@ -72,6 +72,16 @@ public partial class GameHUD : Control
 			return;
 		}
 
+		// Vérifier pourquoi l'achat pourrait échouer
+		int totalInQueue = selectedCamp.GetQueueCount();
+		int maxQueue = selectedCamp.GetMaxQueueSize();
+
+		if (totalInQueue >= maxQueue)
+		{
+			GD.Print($"[HUD] Impossible d'acheter {unitType} - file d'attente pleine ({totalInQueue}/{maxQueue})");
+			return;
+		}
+
 		// Tenter d'acheter l'unité sur le camp sélectionné
 		bool success = selectedCamp.BuyUnit(unitType);
 
