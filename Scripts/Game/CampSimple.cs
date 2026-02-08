@@ -195,6 +195,93 @@ public partial class CampSimple : Area2D
 		GeneratePassiveGold(delta);
 		ProcessProductionQueue(delta);
 		ProcessTurret(delta);
+		ProcessCaptureCheck(delta);
+	}
+	
+	// Timer pour vérifier la capture
+	private float _captureCheckTimer = 0f;
+	private const float CaptureCheckInterval = 0.5f; // Vérifier toutes les 0.5 secondes
+	
+	private void ProcessCaptureCheck(double delta)
+	{
+		_captureCheckTimer += (float)delta;
+		
+		if (_captureCheckTimer >= CaptureCheckInterval)
+		{
+			_captureCheckTimer = 0f;
+			CheckForCapture();
+		}
+	}
+	
+	private void CheckForCapture()
+	{
+		// Si le camp a encore des défenseurs, pas de capture possible
+		if (!AreAllUnitsDefeated())
+			return;
+		
+		// Chercher des unités ennemies dans la zone du camp
+		int capturingTeamId = FindCapturingTeam();
+		
+		if (capturingTeamId > 0 && capturingTeamId != TeamId)
+		{
+			// Une équipe ennemie est présente sans défenseurs -> capture !
+			GD.Print($"[CAPTURE] Camp #{CampId} (Team {TeamId}) capture par Team {capturingTeamId} - Plus de defenseurs!");
+			CaptureCamp(capturingTeamId);
+		}
+	}
+	
+	private int FindCapturingTeam()
+	{
+		// Chercher les unités dans la zone de capture (même zone que la tourelle)
+		var allUnits = GetTree().GetNodesInGroup("units");
+		
+		// Compter les unités par équipe dans la zone
+		Dictionary<int, int> unitsPerTeam = new Dictionary<int, int>();
+		
+		foreach (var node in allUnits)
+		{
+			if (node is Unit unit)
+			{
+				if (!IsInstanceValid(unit) || !unit.IsInsideTree())
+					continue;
+				
+				if (unit.GetCurrentHealth() <= 0)
+					continue;
+				
+				int unitTeamId = unit.GetTeamId();
+				
+				// Ignorer les unités de notre équipe
+				if (unitTeamId == TeamId)
+					continue;
+				
+				// Vérifier si l'unité est dans la zone de capture
+				float distance = GlobalPosition.DistanceTo(unit.GlobalPosition);
+				
+				if (distance <= TurretRange)
+				{
+					if (!unitsPerTeam.ContainsKey(unitTeamId))
+					{
+						unitsPerTeam[unitTeamId] = 0;
+					}
+					unitsPerTeam[unitTeamId]++;
+				}
+			}
+		}
+		
+		// Trouver l'équipe avec le plus d'unités dans la zone
+		int bestTeam = 0;
+		int bestCount = 0;
+		
+		foreach (var pair in unitsPerTeam)
+		{
+			if (pair.Value > bestCount)
+			{
+				bestTeam = pair.Key;
+				bestCount = pair.Value;
+			}
+		}
+		
+		return bestTeam;
 	}
 	
 	private void ProcessTurret(double delta)
@@ -203,7 +290,7 @@ public partial class CampSimple : Area2D
 		
 		if (_turretTimer >= TurretAttackInterval)
 		{
-			_turretTimer = 2f;
+			_turretTimer = 0f;  // Reset à 0, pas 60 !
 			AttackEnemiesInRange();
 		}
 	}

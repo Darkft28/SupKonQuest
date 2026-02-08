@@ -3,9 +3,19 @@ using System;
 
 public partial class Unit : CharacterBody2D
 {
+	// États de l'unité
+	private enum UnitState
+	{
+		Idle,           // En attente
+		MovingToTarget, // Se déplace vers une cible ennemie
+		Attacking,      // Attaque une cible à portée
+		MovingToPoint   // Se déplace vers un point (ordre du joueur)
+	}
+	
 	[Export] public string UnitType = "Infantry";
 	[Export] public int TeamId = 1;
 	[Export] public bool IsNeutralCampUnit = false;
+	[Export] public float DetectionRange = 400f; // Portée de détection des ennemis
 
 	private float _currentHealth;
 	private float _maxHealth;
@@ -20,10 +30,14 @@ public partial class Unit : CharacterBody2D
 	private const int MaxStuckFrames = 120; // ~2 sec à 60fps
 	private const int MoveStartDelayFrames = 60; // ~1 sec avant de vérifier le blocage
 	
-	// Système de combat
+	// Système de combat avec machine à états
+	private UnitState _currentState = UnitState.Idle;
 	private float _attackTimer = 0f;
 	private const float AttackInterval = 1f; // attaque toutes les secondes
 	private Unit _currentTarget = null;
+	
+	// Zone de détection
+	private Area2D _detectionZone = null;
 	
 	// Tracking pour la mort mutuelle
 	private int _lastAttackerTeamId = 0;
@@ -112,10 +126,105 @@ public partial class Unit : CharacterBody2D
 
 		// Créer et configurer le sprite
 		CreateSprite();
+		
+		// Créer la zone de détection pour le combat
+		CreateDetectionZone();
 
 		// Ajouter au groupe pour faciliter la recherche
 		AddToGroup("units");
 		AddToGroup($"team_{TeamId}");
+		
+		// État initial
+		_currentState = UnitState.Idle;
+	}
+	
+	private void CreateDetectionZone()
+	{
+		_detectionZone = new Area2D();
+		_detectionZone.Name = "DetectionZone";
+		
+		// Créer la forme de collision circulaire
+		var collisionShape = new CollisionShape2D();
+		var circleShape = new CircleShape2D();
+		circleShape.Radius = DetectionRange;
+		collisionShape.Shape = circleShape;
+		
+		_detectionZone.AddChild(collisionShape);
+		AddChild(_detectionZone);
+		
+		// Connecter les signaux pour détecter les entrées/sorties
+		_detectionZone.BodyEntered += OnBodyEnteredDetectionZone;
+		_detectionZone.BodyExited += OnBodyExitedDetectionZone;
+	}
+	
+	private void OnBodyEnteredDetectionZone(Node2D body)
+	{
+		// Si on est en Idle et qu'un ennemi entre dans la zone, on le cible
+		if (body is Unit otherUnit)
+		{
+			if (otherUnit.GetTeamId() != TeamId && otherUnit.GetCurrentHealth() > 0)
+			{
+				// Si on n'a pas de cible, on en prend une
+				if (_currentTarget == null && _currentState == UnitState.Idle)
+				{
+					SetNewTarget(otherUnit);
+				}
+			}
+		}
+	}
+	
+	private void OnBodyExitedDetectionZone(Node2D body)
+	{
+		// Si notre cible sort de la zone de détection, on continue de la poursuivre
+		// (la logique de poursuite gère déjà ce cas)
+	}
+	
+	private void SetNewTarget(Unit target)
+	{
+		_currentTarget = target;
+		
+		float distanceToTarget = GlobalPosition.DistanceTo(target.GlobalPosition);
+		
+		if (distanceToTarget <= _stats.Range)
+		{
+			// À portée d'attaque
+			ChangeState(UnitState.Attacking);
+		}
+		else
+		{
+			// Hors portée, on se déplace vers la cible
+			ChangeState(UnitState.MovingToTarget);
+		}
+	}
+	
+	private void ChangeState(UnitState newState)
+	{
+		if (_currentState == newState)
+			return;
+		
+		_currentState = newState;
+		
+		// Actions à l'entrée dans un nouvel état
+		switch (newState)
+		{
+			case UnitState.Idle:
+				_currentTarget = null;
+				Velocity = Vector2.Zero;
+				break;
+				
+			case UnitState.MovingToTarget:
+				// On va se déplacer vers la cible dans _PhysicsProcess
+				break;
+				
+			case UnitState.Attacking:
+				Velocity = Vector2.Zero;
+				_attackTimer = 0f; // Reset pour attaquer immédiatement
+				break;
+				
+			case UnitState.MovingToPoint:
+				_currentTarget = null; // On annule la cible de combat
+				break;
+		}
 	}
 
 	private void CreateSprite()
@@ -155,25 +264,135 @@ public partial class Unit : CharacterBody2D
 
 	public override void _PhysicsProcess(double delta)
 	{
-		// Système de combat
-		ProcessCombat(delta);
-		
-		if (!_targetPosition.HasValue)
+		// Machine à états principale
+		switch (_currentState)
+		{
+			case UnitState.Idle:
+				ProcessIdleState(delta);
+				break;
+				
+			case UnitState.MovingToTarget:
+				ProcessMovingToTargetState(delta);
+				break;
+				
+			case UnitState.Attacking:
+				ProcessAttackingState(delta);
+				break;
+				
+			case UnitState.MovingToPoint:
+				ProcessMovingToPointState(delta);
+				break;
+		}
+	}
+	
+	private void ProcessIdleState(double delta)
+	{
+		// En Idle, chercher un ennemi dans la zone de détection
+		if (_currentTarget == null)
+		{
+			Unit enemy = FindEnemyInDetectionRange();
+			if (enemy != null)
+			{
+				SetNewTarget(enemy);
+			}
+		}
+	}
+	
+	private void ProcessMovingToTargetState(double delta)
+	{
+		// Vérifier si la cible est encore valide
+		if (!IsTargetValid())
+		{
+			ChangeState(UnitState.Idle);
 			return;
-
+		}
+		
+		float distanceToTarget = GlobalPosition.DistanceTo(_currentTarget.GlobalPosition);
+		
+		// DEBUG: Afficher la distance et la portée
+		// GD.Print($"[DEBUG] {UnitType} (Team {TeamId}) -> MovingToTarget: distance={distanceToTarget:F1}, range={_stats.Range}");
+		
+		// Si à portée d'attaque, passer en mode attaque
+		if (distanceToTarget <= _stats.Range)
+		{
+			GD.Print($"[COMBAT] {UnitType} (Team {TeamId}) passe en mode ATTACKING (distance={distanceToTarget:F1} <= range={_stats.Range})");
+			ChangeState(UnitState.Attacking);
+			return;
+		}
+		
+		// Sinon, se déplacer vers la cible
+		Vector2 direction = (_currentTarget.GlobalPosition - GlobalPosition).Normalized();
+		Velocity = direction * _stats.Speed;
+		MoveAndSlide();
+		
+		// Détection de blocage
+		ProcessStuckDetection();
+	}
+	
+	private void ProcessAttackingState(double delta)
+	{
+		// Vérifier si la cible est encore valide
+		if (!IsTargetValid())
+		{
+			GD.Print($"[COMBAT] {UnitType} (Team {TeamId}) -> cible invalide, retour Idle");
+			ChangeState(UnitState.Idle);
+			return;
+		}
+		
+		float distanceToTarget = GlobalPosition.DistanceTo(_currentTarget.GlobalPosition);
+		
+		// Si la cible s'éloigne trop, la poursuivre
+		// On ajoute une marge de 20 pixels pour éviter les oscillations
+		float rangeWithMargin = _stats.Range + 20f;
+		if (distanceToTarget > rangeWithMargin)
+		{
+			GD.Print($"[COMBAT] {UnitType} (Team {TeamId}) -> cible hors portee (distance={distanceToTarget:F1} > range+marge={rangeWithMargin}), poursuite");
+			ChangeState(UnitState.MovingToTarget);
+			return;
+		}
+		
+		// Attaquer à intervalles réguliers
+		_attackTimer += (float)delta;
+		
+		if (_attackTimer >= AttackInterval)
+		{
+			_attackTimer = 0f;
+			AttackTarget(_currentTarget);
+		}
+	}
+	
+	private void ProcessMovingToPointState(double delta)
+	{
+		// Déplacement vers un point ordonné par le joueur
+		if (!_targetPosition.HasValue)
+		{
+			ChangeState(UnitState.Idle);
+			return;
+		}
+		
 		Vector2 direction = (_targetPosition.Value - GlobalPosition).Normalized();
 		float distance = GlobalPosition.DistanceTo(_targetPosition.Value);
 
 		// Arrivé à destination
 		if (distance < ArrivalDistance)
 		{
-			Stop();
+			_targetPosition = null;
+			ChangeState(UnitState.Idle);
 			return;
 		}
 
 		Velocity = direction * _stats.Speed;
 		MoveAndSlide();
 
+		// Détection de blocage
+		ProcessStuckDetection();
+		
+		// Pendant le déplacement, chercher des ennemis à proximité (optionnel: attaque en mouvement)
+		// Pour l'instant, on reste concentré sur la destination
+	}
+	
+	private void ProcessStuckDetection()
+	{
 		// Attendre le délai initial avant de vérifier le blocage
 		if (_moveStartDelay > 0)
 		{
@@ -183,8 +402,7 @@ public partial class Unit : CharacterBody2D
 		}
 
 		// Détection de blocage - seuil dynamique basé sur la vitesse
-		// Une unité est bloquée si elle bouge à moins de 10% de sa vitesse normale
-		float expectedMovement = _stats.Speed / 60f; // Distance attendue par frame à 60fps
+		float expectedMovement = _stats.Speed / 60f;
 		float actualMovement = GlobalPosition.DistanceTo(_lastPosition);
 
 		if (actualMovement < expectedMovement * 0.1f)
@@ -192,7 +410,24 @@ public partial class Unit : CharacterBody2D
 			_stuckFrames++;
 			if (_stuckFrames > MaxStuckFrames)
 			{
-				Stop(); // Bloqué, on arrête
+				// Bloqué - vérifier si on a une cible proche pour attaquer
+				if (_currentTarget != null && IsTargetValid())
+				{
+					float distanceToTarget = GlobalPosition.DistanceTo(_currentTarget.GlobalPosition);
+					// Si bloqué mais proche de la cible (collision physique), passer en Attacking
+					// On utilise une marge de 120 pixels (collision ~80 + marge)
+					if (distanceToTarget <= 120f)
+					{
+						GD.Print($"[COMBAT] {UnitType} (Team {TeamId}) bloque pres de la cible, passage en ATTACKING");
+						ChangeState(UnitState.Attacking);
+						_stuckFrames = 0;
+						return;
+					}
+				}
+				
+				// Sinon, on arrête et on passe en Idle
+				_targetPosition = null;
+				ChangeState(UnitState.Idle);
 			}
 		}
 		else
@@ -200,6 +435,56 @@ public partial class Unit : CharacterBody2D
 			_stuckFrames = 0;
 		}
 		_lastPosition = GlobalPosition;
+	}
+	
+	private bool IsTargetValid()
+	{
+		if (_currentTarget == null)
+			return false;
+		
+		if (!IsInstanceValid(_currentTarget))
+			return false;
+		
+		if (!_currentTarget.IsInsideTree())
+			return false;
+		
+		if (_currentTarget.GetCurrentHealth() <= 0)
+			return false;
+		
+		return true;
+	}
+	
+	private Unit FindEnemyInDetectionRange()
+	{
+		var allUnits = GetTree().GetNodesInGroup("units");
+		
+		Unit closestEnemy = null;
+		float closestDistance = float.MaxValue;
+		
+		foreach (var node in allUnits)
+		{
+			if (node is Unit otherUnit)
+			{
+				// Ignorer les alliés et soi-même
+				if (otherUnit.GetTeamId() == TeamId)
+					continue;
+				
+				// Ignorer les unités mortes
+				if (otherUnit.GetCurrentHealth() <= 0)
+					continue;
+				
+				// Vérifier la distance de détection
+				float distance = GlobalPosition.DistanceTo(otherUnit.GlobalPosition);
+				
+				if (distance <= DetectionRange && distance < closestDistance)
+				{
+					closestEnemy = otherUnit;
+					closestDistance = distance;
+				}
+			}
+		}
+		
+		return closestEnemy;
 	}
 
 	public void TakeDamage(float damage)
@@ -230,58 +515,6 @@ public partial class Unit : CharacterBody2D
 		QueueFree();
 	}
 	
-	private void ProcessCombat(double delta)
-	{
-		_attackTimer += (float)delta;
-		
-		if (_attackTimer >= AttackInterval)
-		{
-			_attackTimer = 0f;
-			
-			// Chercher une cible ennemie à portée
-			Unit target = FindEnemyInRange();
-			
-			if (target != null)
-			{
-				AttackTarget(target);
-			}
-		}
-	}
-	
-	private Unit FindEnemyInRange()
-	{
-		// Récupérer toutes les unités
-		var allUnits = GetTree().GetNodesInGroup("units");
-		
-		Unit closestEnemy = null;
-		float closestDistance = float.MaxValue;
-		
-		foreach (var node in allUnits)
-		{
-			if (node is Unit otherUnit)
-			{
-				// Ignorer les alliés et soi-même
-				if (otherUnit.GetTeamId() == TeamId)
-					continue;
-				
-				// Ignorer les unités mortes
-				if (otherUnit.GetCurrentHealth() <= 0)
-					continue;
-				
-				// Vérifier la distance
-				float distance = GlobalPosition.DistanceTo(otherUnit.GlobalPosition);
-				
-				if (distance <= _stats.Range && distance < closestDistance)
-				{
-					closestEnemy = otherUnit;
-					closestDistance = distance;
-				}
-			}
-		}
-		
-		return closestEnemy;
-	}
-	
 	private void AttackTarget(Unit target)
 	{
 		if (target == null || !IsInstanceValid(target))
@@ -299,11 +532,15 @@ public partial class Unit : CharacterBody2D
 		_stuckFrames = 0;
 		_moveStartDelay = MoveStartDelayFrames;
 		_lastPosition = GlobalPosition;
+		
+		// Passer en mode déplacement vers un point (ordre du joueur)
+		ChangeState(UnitState.MovingToPoint);
 	}
 
 	public void Stop()
 	{
 		_targetPosition = null;
 		Velocity = Vector2.Zero;
+		ChangeState(UnitState.Idle);
 	}
 }
