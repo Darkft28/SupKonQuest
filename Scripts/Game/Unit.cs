@@ -19,11 +19,78 @@ public partial class Unit : CharacterBody2D
 	private int _moveStartDelay = 0;
 	private const int MaxStuckFrames = 120; // ~2 sec à 60fps
 	private const int MoveStartDelayFrames = 60; // ~1 sec avant de vérifier le blocage
+	
+	// Système de combat
+	private float _attackTimer = 0f;
+	private const float AttackInterval = 1f; // attaque toutes les secondes
+	private Unit _currentTarget = null;
+	
+	// Tracking pour la mort mutuelle
+	private int _lastAttackerTeamId = 0;
 
-	// Propriétés
-	public float GetCurrentHealth => _currentHealth;
-	public float MaxHealth => _maxHealth;
-	public bool IsMoving => _targetPosition.HasValue;
+	// Méthodes Getter et Setter explicites
+	public float GetCurrentHealth()
+	{
+		return _currentHealth;
+	}
+	
+	public void SetCurrentHealth(float value)
+	{
+		_currentHealth = value;
+		if (_currentHealth < 0)
+		{
+			_currentHealth = 0;
+		}
+		if (_currentHealth > _maxHealth)
+		{
+			_currentHealth = _maxHealth;
+		}
+	}
+	
+	public float GetMaxHealth()
+	{
+		return _maxHealth;
+	}
+	
+	public int GetTeamId()
+	{
+		return TeamId;
+	}
+	
+	public void SetTeamId(int newTeamId)
+	{
+		// Retirer l'ancien groupe d'équipe
+		if (IsInGroup($"team_{TeamId}"))
+		{
+			RemoveFromGroup($"team_{TeamId}");
+		}
+		
+		// Mettre à jour le TeamId
+		TeamId = newTeamId;
+		
+		// Ajouter au nouveau groupe d'équipe
+		AddToGroup($"team_{TeamId}");
+	}
+	
+	public string GetUnitType()
+	{
+		return UnitType;
+	}
+	
+	public float GetRange()
+	{
+		return _stats.Range;
+	}
+	
+	public float GetAttack()
+	{
+		return _stats.Attack;
+	}
+	
+	public bool GetIsMoving()
+	{
+		return _targetPosition.HasValue;
+	}
 
 	public override void _Ready()
 	{
@@ -88,6 +155,9 @@ public partial class Unit : CharacterBody2D
 
 	public override void _PhysicsProcess(double delta)
 	{
+		// Système de combat
+		ProcessCombat(delta);
+		
 		if (!_targetPosition.HasValue)
 			return;
 
@@ -134,8 +204,14 @@ public partial class Unit : CharacterBody2D
 
 	public void TakeDamage(float damage)
 	{
+		TakeDamageFrom(damage, 0);
+	}
+	
+	public void TakeDamageFrom(float damage, int attackerTeamId)
+	{
 		float actualDamage = Mathf.Max(0, damage - _stats.Defense);
 		_currentHealth -= actualDamage;
+		_lastAttackerTeamId = attackerTeamId;
 
 		if (_currentHealth <= 0)
 		{
@@ -145,13 +221,76 @@ public partial class Unit : CharacterBody2D
 
 	public void Heal(float amount)
 	{
-		_currentHealth = Mathf.Min(_currentHealth + amount, _maxHealth);
+		SetCurrentHealth(_currentHealth + amount);
 	}
 
 	private void Die()
 	{
 		GD.Print($"Unite {UnitType} (Team {TeamId}) eliminee");
 		QueueFree();
+	}
+	
+	private void ProcessCombat(double delta)
+	{
+		_attackTimer += (float)delta;
+		
+		if (_attackTimer >= AttackInterval)
+		{
+			_attackTimer = 0f;
+			
+			// Chercher une cible ennemie à portée
+			Unit target = FindEnemyInRange();
+			
+			if (target != null)
+			{
+				AttackTarget(target);
+			}
+		}
+	}
+	
+	private Unit FindEnemyInRange()
+	{
+		// Récupérer toutes les unités
+		var allUnits = GetTree().GetNodesInGroup("units");
+		
+		Unit closestEnemy = null;
+		float closestDistance = float.MaxValue;
+		
+		foreach (var node in allUnits)
+		{
+			if (node is Unit otherUnit)
+			{
+				// Ignorer les alliés et soi-même
+				if (otherUnit.GetTeamId() == TeamId)
+					continue;
+				
+				// Ignorer les unités mortes
+				if (otherUnit.GetCurrentHealth() <= 0)
+					continue;
+				
+				// Vérifier la distance
+				float distance = GlobalPosition.DistanceTo(otherUnit.GlobalPosition);
+				
+				if (distance <= _stats.Range && distance < closestDistance)
+				{
+					closestEnemy = otherUnit;
+					closestDistance = distance;
+				}
+			}
+		}
+		
+		return closestEnemy;
+	}
+	
+	private void AttackTarget(Unit target)
+	{
+		if (target == null || !IsInstanceValid(target))
+			return;
+		
+		// Infliger des dégâts à la cible
+		target.TakeDamageFrom(_stats.Attack, TeamId);
+		
+		GD.Print($"{UnitType} (Team {TeamId}) attaque {target.GetUnitType()} (Team {target.GetTeamId()}) - Degats: {_stats.Attack}");
 	}
 
 	public void MoveTo(Vector2 target)

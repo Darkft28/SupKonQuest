@@ -8,10 +8,19 @@ public partial class CampSimple : Area2D
 	[Export] public bool IsNeutralCamp = false; // camp neutre
 	[Export] public float MaxHealth = 500f; // pv max du camp
 	[Export] public int GoldPerSecond = 50; // or généré par seconde (50 pour tests)
+	
+	// Paramètres de la tourelle
+	[Export] public float TurretDamage = 10f; // dégâts par seconde
+	[Export] public float TurretRange = 600f; // portée de la tourelle
+	private float _turretTimer = 0f;
+	private const float TurretAttackInterval = 1f; // attaque toutes les secondes
 
 	private float _currentHealth;
 	private float _goldTimer = 0f;
 	private int _localGold = 0; // Or local pour les camps neutres
+	
+	// Tracking du dernier attaquant pour la mécanique de capture
+	private int _lastAttackerTeamId = 0;
 
 	// id unique camp
 	public int CampId;
@@ -69,6 +78,58 @@ public partial class CampSimple : Area2D
 			return _localGold;
 		}
 		return GameManager.Instance?.GetGold(TeamId) ?? 0;
+	}
+	
+	public int GetTeamId()
+	{
+		return TeamId;
+	}
+	
+	public void SetTeam(int newTeamId, bool isNeutral)
+	{
+		int oldTeamId = TeamId;
+		TeamId = newTeamId;
+		IsNeutralCamp = isNeutral;
+		
+		GD.Print($"[DEBUG] Camp #{CampId} change d'equipe: {oldTeamId} -> {newTeamId} (Neutre: {isNeutral})");
+		
+		// Mettre à jour la couleur de la barre de vie
+		if (_healthBarForeground != null)
+		{
+			_healthBarForeground.Color = GetTeamColor();
+		}
+		
+		// Mettre à jour la couleur du label
+		if (_campIdLabel != null)
+		{
+			_campIdLabel.AddThemeColorOverride("font_color", GetTeamColor());
+		}
+		
+		// Initialiser l'équipe dans le GameManager
+		if (!isNeutral && GameManager.Instance != null)
+		{
+			GameManager.Instance.InitializeTeam(TeamId);
+		}
+		
+		// IMPORTANT: Mettre à jour le TeamId de toutes les unités déjà spawned
+		UpdateSpawnedUnitsTeam();
+	}
+	
+	private void UpdateSpawnedUnitsTeam()
+	{
+		// Nettoyer les unités mortes d'abord
+		CleanDeadUnits();
+		
+		foreach (var unit in _spawnedUnits)
+		{
+			if (unit != null && IsInstanceValid(unit))
+			{
+				int oldUnitTeam = unit.GetTeamId();
+				unit.SetTeamId(TeamId);
+				unit.IsNeutralCampUnit = IsNeutralCamp;
+				GD.Print($"[DEBUG] Unite {unit.GetUnitType()} mise a jour: Team {oldUnitTeam} -> {TeamId}");
+			}
+		}
 	}
 	
 	public override void _Ready()
@@ -133,6 +194,66 @@ public partial class CampSimple : Area2D
 		CleanDeadUnits();
 		GeneratePassiveGold(delta);
 		ProcessProductionQueue(delta);
+		ProcessTurret(delta);
+	}
+	
+	private void ProcessTurret(double delta)
+	{
+		_turretTimer += (float)delta;
+		
+		if (_turretTimer >= TurretAttackInterval)
+		{
+			_turretTimer = 2f;
+			AttackEnemiesInRange();
+		}
+	}
+	
+	private void AttackEnemiesInRange()
+	{
+		// Les camps neutres n'attaquent pas
+		if (IsNeutralCamp)
+			return;
+		
+		// Récupérer toutes les unités
+		var allUnits = GetTree().GetNodesInGroup("units");
+		
+		foreach (var node in allUnits)
+		{
+			if (node is Unit unit)
+			{
+				// Vérifier si l'unité est valide et initialisée
+				if (!IsInstanceValid(unit))
+					continue;
+				
+				// Vérifier si l'unité est dans l'arbre de scène (initialisée)
+				if (!unit.IsInsideTree())
+					continue;
+				
+				// Récupérer le TeamId de l'unité
+				int unitTeamId = unit.GetTeamId();
+				
+				// DEBUG: Afficher les IDs pour diagnostiquer
+				// GD.Print($"[DEBUG TURRET] Camp #{CampId} (Team {TeamId}) voit {unit.GetUnitType()} (Team {unitTeamId})");
+				
+				// Vérifier si c'est un allié (même TeamId)
+				if (unitTeamId == TeamId)
+					continue; // Allié, on ignore
+				
+				// Vérifier si l'unité est vivante
+				if (unit.GetCurrentHealth() <= 0)
+					continue;
+				
+				// Vérifier la distance
+				float distance = GlobalPosition.DistanceTo(unit.GlobalPosition);
+				
+				if (distance <= TurretRange)
+				{
+					// Infliger des dégâts
+					unit.TakeDamage(TurretDamage);
+					GD.Print($"Camp #{CampId} (Team {TeamId}) attaque {unit.GetUnitType()} (Team {unitTeamId}) - Degats: {TurretDamage}");
+				}
+			}
+		}
 	}
 
 	private void ProcessProductionQueue(double delta)
@@ -190,7 +311,7 @@ public partial class CampSimple : Area2D
 
 	private void CleanDeadUnits()
 	{
-		_spawnedUnits.RemoveAll(unit => unit == null || !IsInstanceValid(unit) || unit.GetCurrentHealth <= 0);
+		_spawnedUnits.RemoveAll(unit => unit == null || !IsInstanceValid(unit) || unit.GetCurrentHealth() <= 0);
 	}
 
 	
@@ -206,6 +327,9 @@ public partial class CampSimple : Area2D
 		//attaquable seulement si les unitées sont mortes
 		if (!AreAllUnitsDefeated())
 			return false;
+		
+		// Tracker le dernier attaquant
+		_lastAttackerTeamId = attackerTeamId;
 
 		SetCurrentHealth(GetCurrentHealth() - damage);
 
@@ -215,6 +339,24 @@ public partial class CampSimple : Area2D
 		}
 
 		return true;
+	}
+	
+	// Appelée quand la dernière unité défendant le camp meurt
+	public void OnDefenderDied(int killerTeamId, bool mutualKill)
+	{
+		// Si mort mutuelle (attaquant et défenseur meurent en même temps)
+		if (mutualKill)
+		{
+			// Le camp devient neutre
+			SetTeam(0, true);
+			SetCurrentHealth(MaxHealth);
+			GD.Print($"Camp #{CampId} devient neutre suite a une mort mutuelle!");
+		}
+		else
+		{
+			// Sinon, le camp peut être capturé par l'équipe du tueur
+			_lastAttackerTeamId = killerTeamId;
+		}
 	}
 	
 	private void CaptureCamp(int newTeamId)

@@ -278,6 +278,12 @@ public partial class MapGenerator : Node
 		}
 
 		GD.Print($"{campCount} camps générés");
+		
+		// Notifier le GameManager que les camps sont prêts
+		if (GameManager.Instance != null)
+		{
+			GameManager.Instance.OnMapGenerationComplete();
+		}
 	}
 
 	private bool IsFarEnoughFromCamps(Vector2 position, List<Vector2> existingCamps)
@@ -309,6 +315,12 @@ public partial class MapGenerator : Node
 			SetupNoise();
 			GenererMap();
 			CallDeferred(nameof(InitTerritory));
+			
+			// Notifier le GameManager de la régénération
+			if (GameManager.Instance != null)
+			{
+				GameManager.Instance.OnMapGenerationComplete();
+			}
 		}
 	}
 }
