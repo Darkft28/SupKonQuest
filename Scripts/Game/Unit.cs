@@ -9,13 +9,14 @@ public partial class Unit : CharacterBody2D
 		Idle,           // En attente
 		MovingToTarget, // Se déplace vers une cible ennemie
 		Attacking,      // Attaque une cible à portée
-		MovingToPoint   // Se déplace vers un point (ordre du joueur)
+		MovingToPoint,  // Se déplace vers un point (ordre du joueur)
+		Healing         // Soigne un allie (Healer uniquement)
 	}
 	
 	[Export] public string UnitType = "Infantry";
 	[Export] public int TeamId = 1;
 	[Export] public bool IsNeutralCampUnit = false;
-	[Export] public float DetectionRange = 400f; // Portée de détection des ennemis
+	[Export] public float DetectionRange = 400f; // Sera recalcule dans _Ready
 
 	private float _currentHealth;
 	private float _maxHealth;
@@ -38,9 +39,34 @@ public partial class Unit : CharacterBody2D
 	
 	// Zone de détection
 	private Area2D _detectionZone = null;
+
+	// Destination sauvegardee pour reprendre la route apres un combat en passant
+	private Vector2? _savedTargetPosition = null;
+
+	// Systeme de soin (Healer)
+	private Unit _healTarget = null;
+	private float _healTimer = 0f;
+	private const float HealInterval = 1f;
+	private const float HealAmount = 12f;
 	
 	// Tracking pour la mort mutuelle
 	private int _lastAttackerTeamId = 0;
+
+	// Aura de defense (Support)
+	private const float SupportAuraRadius = 200f;
+	private const float SupportDefenseBonus = 10f;
+	private static readonly Color AuraColor = new Color(0.3f, 0.5f, 1f, 0.12f);
+	private static readonly Color AuraBorderColor = new Color(0.3f, 0.5f, 1f, 0.35f);
+
+	// Barre de vie
+	private const float HealthBarWidth = 80f;
+	private const float HealthBarHeight = 10f;
+	private const float HealthBarOffsetY = -75f; // Au-dessus du sprite
+	private static readonly Color HealthBarBackground = new Color(0.15f, 0.15f, 0.15f, 0.8f);
+	private static readonly Color HealthBarBorder = new Color(0f, 0f, 0f, 0.9f);
+	private static readonly Color HealthColorFull = new Color(0.2f, 0.85f, 0.2f, 1f);    // Vert
+	private static readonly Color HealthColorMid = new Color(1f, 0.8f, 0f, 1f);           // Jaune
+	private static readonly Color HealthColorLow = new Color(0.9f, 0.15f, 0.15f, 1f);     // Rouge
 
 	// Méthodes Getter et Setter explicites
 	public float GetCurrentHealth()
@@ -121,6 +147,9 @@ public partial class Unit : CharacterBody2D
 		_currentHealth = _maxHealth;
 		_lastPosition = GlobalPosition;
 
+		// Detection range = portee de l'arme + 150px de buffer
+		DetectionRange = _stats.Range + 150f;
+
 		// Créer la collision
 		CreateCollision();
 
@@ -159,6 +188,10 @@ public partial class Unit : CharacterBody2D
 	
 	private void OnBodyEnteredDetectionZone(Node2D body)
 	{
+		// Les healers ne combattent pas
+		if (UnitType == "Heal")
+			return;
+
 		// Si on est en Idle et qu'un ennemi entre dans la zone, on le cible
 		if (body is Unit otherUnit)
 		{
@@ -209,6 +242,7 @@ public partial class Unit : CharacterBody2D
 		{
 			case UnitState.Idle:
 				_currentTarget = null;
+				_healTarget = null;
 				Velocity = Vector2.Zero;
 				break;
 				
@@ -262,6 +296,38 @@ public partial class Unit : CharacterBody2D
 		AddChild(collision);
 	}
 
+	public override void _Draw()
+	{
+		// Cercle d'aura du Support
+		if (UnitType == "Support")
+		{
+			DrawCircle(Vector2.Zero, SupportAuraRadius, AuraColor);
+			DrawArc(Vector2.Zero, SupportAuraRadius, 0, Mathf.Tau, 64, AuraBorderColor, 2f);
+		}
+
+		// Barre de vie (seulement si blesse)
+		float healthPercent = _maxHealth > 0 ? _currentHealth / _maxHealth : 0f;
+		if (healthPercent >= 1f)
+			return;
+
+		float barX = -HealthBarWidth / 2f;
+		float barY = HealthBarOffsetY;
+
+		DrawRect(new Rect2(barX - 1, barY - 1, HealthBarWidth + 2, HealthBarHeight + 2), HealthBarBorder);
+		DrawRect(new Rect2(barX, barY, HealthBarWidth, HealthBarHeight), HealthBarBackground);
+
+		Color healthColor;
+		if (healthPercent > 0.6f)
+			healthColor = HealthColorFull;
+		else if (healthPercent > 0.3f)
+			healthColor = HealthColorMid;
+		else
+			healthColor = HealthColorLow;
+
+		float fillWidth = HealthBarWidth * healthPercent;
+		DrawRect(new Rect2(barX, barY, fillWidth, HealthBarHeight), healthColor);
+	}
+
 	public override void _PhysicsProcess(double delta)
 	{
 		// Machine à états principale
@@ -282,18 +348,59 @@ public partial class Unit : CharacterBody2D
 			case UnitState.MovingToPoint:
 				ProcessMovingToPointState(delta);
 				break;
+
+			case UnitState.Healing:
+				ProcessHealingState(delta);
+				break;
 		}
 	}
 	
 	private void ProcessIdleState(double delta)
 	{
-		// En Idle, chercher un ennemi dans la zone de détection
+		// Healer : chercher des allies blesses, jamais d'ennemis
+		if (UnitType == "Heal")
+		{
+			Unit woundedAlly = FindWoundedAllyInRange();
+			if (woundedAlly != null)
+			{
+				_healTarget = woundedAlly;
+				_healTimer = 0f;
+				GD.Print($"[HEAL] Healer T{TeamId} commence a soigner {woundedAlly.GetUnitType()} T{woundedAlly.GetTeamId()} ({woundedAlly.GetCurrentHealth():F0}/{woundedAlly.GetMaxHealth():F0} HP)");
+				ChangeState(UnitState.Healing);
+			}
+			else if (_savedTargetPosition.HasValue)
+			{
+				GD.Print($"[MOVE] {UnitType} T{TeamId} reprend sa route");
+				_targetPosition = _savedTargetPosition;
+				_savedTargetPosition = null;
+				_stuckFrames = 0;
+				_moveStartDelay = MoveStartDelayFrames;
+				_lastPosition = GlobalPosition;
+				_currentState = UnitState.MovingToPoint;
+			}
+			return;
+		}
+
+		// Unites de combat : chercher un ennemi dans la zone de detection
 		if (_currentTarget == null)
 		{
 			Unit enemy = FindEnemyInDetectionRange();
 			if (enemy != null)
 			{
 				SetNewTarget(enemy);
+				return;
+			}
+
+			// Plus d'ennemis : reprendre la route sauvegardee si elle existe
+			if (_savedTargetPosition.HasValue)
+			{
+				GD.Print($"[MOVE] {UnitType} T{TeamId} reprend sa route apres combat");
+				_targetPosition = _savedTargetPosition;
+				_savedTargetPosition = null;
+				_stuckFrames = 0;
+				_moveStartDelay = MoveStartDelayFrames;
+				_lastPosition = GlobalPosition;
+				_currentState = UnitState.MovingToPoint;
 			}
 		}
 	}
@@ -369,7 +476,44 @@ public partial class Unit : CharacterBody2D
 			ChangeState(UnitState.Idle);
 			return;
 		}
-		
+
+		// Healer en deplacement : chercher des allies blesses, pas des ennemis
+		if (UnitType == "Heal")
+		{
+			Unit woundedAlly = FindWoundedAllyInRange();
+			if (woundedAlly != null)
+			{
+				_savedTargetPosition = _targetPosition;
+				_healTarget = woundedAlly;
+				_healTimer = 0f;
+				GD.Print($"[HEAL] Healer T{TeamId} s'arrete pour soigner {woundedAlly.GetUnitType()} T{woundedAlly.GetTeamId()} ({woundedAlly.GetCurrentHealth():F0}/{woundedAlly.GetMaxHealth():F0} HP)");
+				ChangeState(UnitState.Healing);
+				return;
+			}
+		}
+		else
+		{
+			// Unites de combat : chercher des ennemis a proximite pendant le deplacement
+			Unit enemy = FindEnemyInDetectionRange();
+			if (enemy != null)
+			{
+				GD.Print($"[ENGAGE] {UnitType} T{TeamId} detecte {enemy.GetUnitType()} T{enemy.GetTeamId()} en route, combat!");
+				_savedTargetPosition = _targetPosition;
+				_currentTarget = enemy;
+
+				float distanceToEnemy = GlobalPosition.DistanceTo(enemy.GlobalPosition);
+				if (distanceToEnemy <= _stats.Range)
+				{
+					ChangeState(UnitState.Attacking);
+				}
+				else
+				{
+					ChangeState(UnitState.MovingToTarget);
+				}
+				return;
+			}
+		}
+
 		Vector2 direction = (_targetPosition.Value - GlobalPosition).Normalized();
 		float distance = GlobalPosition.DistanceTo(_targetPosition.Value);
 
@@ -377,6 +521,7 @@ public partial class Unit : CharacterBody2D
 		if (distance < ArrivalDistance)
 		{
 			_targetPosition = null;
+			_savedTargetPosition = null;
 			ChangeState(UnitState.Idle);
 			return;
 		}
@@ -386,11 +531,94 @@ public partial class Unit : CharacterBody2D
 
 		// Détection de blocage
 		ProcessStuckDetection();
-		
-		// Pendant le déplacement, chercher des ennemis à proximité (optionnel: attaque en mouvement)
-		// Pour l'instant, on reste concentré sur la destination
 	}
 	
+	private void ProcessHealingState(double delta)
+	{
+		// Verifier si la cible de soin est encore valide et blessee
+		if (_healTarget == null || !IsInstanceValid(_healTarget) || !_healTarget.IsInsideTree()
+			|| _healTarget.GetCurrentHealth() <= 0 || _healTarget.GetCurrentHealth() >= _healTarget.GetMaxHealth())
+		{
+			_healTarget = null;
+			ChangeState(UnitState.Idle);
+			return;
+		}
+
+		float distanceToAlly = GlobalPosition.DistanceTo(_healTarget.GlobalPosition);
+
+		// Si l'allie est trop loin, se rapprocher
+		if (distanceToAlly > _stats.Range)
+		{
+			Vector2 direction = (_healTarget.GlobalPosition - GlobalPosition).Normalized();
+			Velocity = direction * _stats.Speed;
+			MoveAndSlide();
+			return;
+		}
+
+		// A portee : soigner
+		Velocity = Vector2.Zero;
+		_healTimer += (float)delta;
+
+		if (_healTimer >= HealInterval)
+		{
+			_healTimer = 0f;
+			_healTarget.Heal(HealAmount);
+		}
+	}
+
+	public float GetSupportDefenseBonus()
+	{
+		// Un Support ne se buff pas lui-meme
+		if (UnitType == "Support")
+			return 0f;
+
+		var allUnits = GetTree().GetNodesInGroup("units");
+		float bonus = 0f;
+
+		foreach (var node in allUnits)
+		{
+			if (node is Unit ally && ally.UnitType == "Support" && ally.GetTeamId() == TeamId
+				&& ally.GetCurrentHealth() > 0)
+			{
+				float distance = GlobalPosition.DistanceTo(ally.GlobalPosition);
+				if (distance <= SupportAuraRadius)
+				{
+					bonus += SupportDefenseBonus;
+				}
+			}
+		}
+
+		return bonus;
+	}
+
+	private Unit FindWoundedAllyInRange()
+	{
+		var allUnits = GetTree().GetNodesInGroup("units");
+
+		Unit mostWounded = null;
+		float lowestHealthPercent = 1f;
+
+		foreach (var node in allUnits)
+		{
+			if (node is Unit ally && ally != this && ally.GetTeamId() == TeamId
+				&& ally.GetCurrentHealth() > 0 && ally.GetCurrentHealth() < ally.GetMaxHealth())
+			{
+				float distance = GlobalPosition.DistanceTo(ally.GlobalPosition);
+				if (distance <= DetectionRange)
+				{
+					float healthPercent = ally.GetCurrentHealth() / ally.GetMaxHealth();
+					if (healthPercent < lowestHealthPercent)
+					{
+						lowestHealthPercent = healthPercent;
+						mostWounded = ally;
+					}
+				}
+			}
+		}
+
+		return mostWounded;
+	}
+
 	private void ProcessStuckDetection()
 	{
 		// Attendre le délai initial avant de vérifier le blocage
@@ -494,9 +722,12 @@ public partial class Unit : CharacterBody2D
 	
 	public void TakeDamageFrom(float damage, int attackerTeamId)
 	{
-		float actualDamage = Mathf.Max(0, damage - _stats.Defense);
+		// Defense = base + bonus aura Support
+		float totalDefense = _stats.Defense + GetSupportDefenseBonus();
+		float actualDamage = damage * 100f / (100f + totalDefense);
 		_currentHealth -= actualDamage;
 		_lastAttackerTeamId = attackerTeamId;
+		QueueRedraw();
 
 		if (_currentHealth <= 0)
 		{
@@ -506,33 +737,47 @@ public partial class Unit : CharacterBody2D
 
 	public void Heal(float amount)
 	{
+		float hpBefore = _currentHealth;
 		SetCurrentHealth(_currentHealth + amount);
+		QueueRedraw();
+		GD.Print($"[HEAL] {UnitType} T{TeamId} +{amount} HP | {hpBefore:F0} -> {_currentHealth:F0}/{_maxHealth:F0}");
 	}
 
 	private void Die()
 	{
-		GD.Print($"Unite {UnitType} (Team {TeamId}) eliminee");
+		GD.Print($"[MORT] {UnitType} T{TeamId} elimine (tue par T{_lastAttackerTeamId})");
 		QueueFree();
 	}
 	
 	private void AttackTarget(Unit target)
 	{
-		if (target == null || !IsInstanceValid(target))
+		if (target == null || !IsInstanceValid(target) || !target.IsInsideTree())
 			return;
-		
+
+		if (target.GetCurrentHealth() <= 0)
+			return;
+
+		float hpBefore = target.GetCurrentHealth();
+
 		// Infliger des dégâts à la cible
 		target.TakeDamageFrom(_stats.Attack, TeamId);
-		
-		GD.Print($"{UnitType} (Team {TeamId}) attaque {target.GetUnitType()} (Team {target.GetTeamId()}) - Degats: {_stats.Attack}");
+
+		float hpAfter = target.GetCurrentHealth();
+		float auraBonus = target.GetSupportDefenseBonus();
+		float totalDef = target._stats.Defense + auraBonus;
+		float actualDamage = _stats.Attack * 100f / (100f + totalDef);
+		string auraStr = auraBonus > 0 ? $" +{auraBonus:F0} aura" : "";
+		GD.Print($"[ATK] {UnitType} T{TeamId} -> {target.GetUnitType()} T{target.GetTeamId()} | {_stats.Attack} brut -> {actualDamage:F1} reel (def {target._stats.Defense}{auraStr}) | HP {hpBefore:F0} -> {hpAfter:F0}/{target.GetMaxHealth():F0}");
 	}
 
 	public void MoveTo(Vector2 target)
 	{
 		_targetPosition = target;
+		_savedTargetPosition = null; // Nouvel ordre annule la destination sauvegardee
 		_stuckFrames = 0;
 		_moveStartDelay = MoveStartDelayFrames;
 		_lastPosition = GlobalPosition;
-		
+
 		// Passer en mode déplacement vers un point (ordre du joueur)
 		ChangeState(UnitState.MovingToPoint);
 	}
@@ -540,6 +785,7 @@ public partial class Unit : CharacterBody2D
 	public void Stop()
 	{
 		_targetPosition = null;
+		_savedTargetPosition = null;
 		Velocity = Vector2.Zero;
 		ChangeState(UnitState.Idle);
 	}

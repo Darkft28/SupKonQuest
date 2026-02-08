@@ -104,6 +104,8 @@ public partial class TerritoryManager : Node2D
 
 	private Color GetTeamColor(int teamId)
 	{
+		if (teamId <= 0)
+			return new Color(0.5f, 0.5f, 0.5f, 1f); // Gris pour neutre/invalide
 		int index = (teamId - 1) % TeamColors.Length;
 		return TeamColors[index];
 	}
