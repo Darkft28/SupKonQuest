@@ -1,18 +1,17 @@
 using Godot;
 using System;
+using System.Collections.Generic;
 
-// Génération procédurale de la map avec biomes et objets
 [Tool]
 public partial class MapGenerator : Node
 {
-	// --- RÉFÉRENCES ---
 	private TileMapLayer _tileMapSol;
 	private TileMapLayer _tileMapObjets;
 	private Camera2D _camera;
 	private Node2D _unitsContainer;
 	private SelectionManager _selectionManager;
+	private TerritoryManager _territoryManager;
 
-	// Scènes des camps
 	private PackedScene _campScene;
 	private PackedScene _campUpScene;
 
@@ -22,7 +21,7 @@ public partial class MapGenerator : Node
 	private const int HalfHeight = MapHeight / 2;
 	private const int TileSize = 128;
 
-	// IDs des tuiles (correspondant au TileSet)
+	// IDs des tuiles
 	private const int IdEau = 6;
 	private const int IdSable = 1;
 	private const int IdHerbe = 0;
@@ -35,8 +34,9 @@ public partial class MapGenerator : Node
 	private const int IdObjetCamp = 102;
 	private const int IdObjetCampUp = 103;
 
+	// Distance min entre camps (en pixels)
+	private const float MinCampDistance = 2500f;
 
-	// Seed réseau pour synchronisation multijoueur
 	private int? _networkSeed = null;
 
 	private FastNoiseLite _noiseElevation = new FastNoiseLite();
@@ -49,11 +49,9 @@ public partial class MapGenerator : Node
 		_tileMapObjets = GetNode<TileMapLayer>("Objets");
 		_camera = GetNode<Camera2D>("Camera2D");
 
-		// Charger les scènes des camps
 		_campScene = GD.Load<PackedScene>("res://Scenes/camp_simple.tscn");
 		_campUpScene = GD.Load<PackedScene>("res://Scenes/camp_avancé.tscn");
 
-		// Créer ou récupérer le conteneur d'unités
 		_unitsContainer = GetNodeOrNull<Node2D>("Units");
 		if (_unitsContainer == null && !Engine.IsEditorHint())
 		{
@@ -62,7 +60,6 @@ public partial class MapGenerator : Node
 			AddChild(_unitsContainer);
 		}
 
-		// Créer le SelectionManager
 		_selectionManager = GetNodeOrNull<SelectionManager>("SelectionManager");
 		if (_selectionManager == null && !Engine.IsEditorHint())
 		{
@@ -77,7 +74,6 @@ public partial class MapGenerator : Node
 			_camera.Position = Vector2.Zero;
 		}
 
-		// Vérifier si on a une seed réseau depuis GameState
 		if (!Engine.IsEditorHint())
 		{
 			var gameState = GetNodeOrNull<GameState>("/root/GameState");
@@ -88,34 +84,27 @@ public partial class MapGenerator : Node
 			}
 		}
 
-		// La caméra est gérée par CameraController
-
-		// Toujours générer la map au démarrage du jeu (pas en éditeur)
 		if (!Engine.IsEditorHint())
 		{
 			SetupNoise();
 			GenererMap();
+			CallDeferred(nameof(InitTerritory));
 			GD.Print("Map générée. Appuyez sur ESPACE pour régénérer.");
 		}
 		else if (_tileMapSol.GetUsedCells().Count == 0)
 		{
-			// En mode éditeur, générer seulement si vide
 			SetupNoise();
 			GenererMap();
 		}
 
 	}
 
-	/// <summary>
-	/// Définit la seed pour la génération de map (utilisé pour la synchronisation réseau)
-	/// </summary>
 	public void SetSeed(int seed)
 	{
 		_networkSeed = seed;
 		GD.Print($"Seed définie: {seed}");
 	}
 
-	// Propriété exportée pour générer la map depuis l'éditeur
 	[Export]
 	public bool GenererMapMaintenant
 	{
@@ -129,7 +118,6 @@ public partial class MapGenerator : Node
 		}
 	}
 
-	// Initialise les références et génère la map (utilisé en mode Tool)
 	private void InitialiserEtGenerer()
 	{
 		if (_tileMapSol == null) _tileMapSol = GetNode<TileMapLayer>("Sol");
@@ -141,10 +129,8 @@ public partial class MapGenerator : Node
 		GD.Print("Map générée dans l'éditeur.");
 	}
 
-	// Configure les paramètres de bruit pour la génération
 	private void SetupNoise()
 	{
-		// Utiliser la seed réseau si disponible, sinon en générer une aléatoire
 		int baseSeed = _networkSeed ?? (int)GD.Randi();
 
 		_noiseElevation.Seed = baseSeed;
@@ -152,17 +138,14 @@ public partial class MapGenerator : Node
 		_noiseElevation.FractalType = FastNoiseLite.FractalTypeEnum.Fbm;
 		_noiseElevation.FractalOctaves = 5;
 
-		// Bruit pour la forêt (dérivé de la seed de base pour être déterministe)
 		_noiseForet.Seed = baseSeed + 1000;
 		_noiseForet.Frequency = 0.05f;
 
-		// Générateur aléatoire seedé pour le placement des objets
 		_seededRandom = new Random(baseSeed + 2000);
 
 		GD.Print($"Noise initialisé avec seed: {baseSeed}");
 	}
 
-	// Génère la map en parcourant toutes les tuiles
 	private void GenererMap()
 	{
 		GD.Print("Génération en cours...");
@@ -170,7 +153,6 @@ public partial class MapGenerator : Node
 		_tileMapSol.Clear();
 		_tileMapObjets.Clear();
 
-		// Supprimer les anciens camps
 		if (_unitsContainer != null)
 		{
 			foreach (Node child in _unitsContainer.GetChildren())
@@ -180,6 +162,7 @@ public partial class MapGenerator : Node
 		}
 
 		int campCount = 0;
+		var campPositions = new List<Vector2>();
 
 		for (int x = -HalfWidth; x < HalfWidth; x++)
 		{
@@ -193,7 +176,7 @@ public partial class MapGenerator : Node
 				bool spawnCamp = false;
 				bool spawnCampUp = false;
 
-				// Détermination du biome selon l'altitude
+				// Biome selon l'altitude
 				if (altitude < -0.2f)
 				{
 					solId = IdEau;
@@ -220,15 +203,24 @@ public partial class MapGenerator : Node
 						solId = IdHerbe;
 						if (_seededRandom.NextDouble() < 0.001)
 						{
-							spawnCamp = true;
-							if (_seededRandom.NextDouble() < 0.2)
+							Vector2 candidatePos = new Vector2(x * TileSize + TileSize / 2, y * TileSize + TileSize / 2);
+							if (IsFarEnoughFromCamps(candidatePos, campPositions))
 							{
-								spawnCampUp = true;
-								objetId = IdObjetCampUp;
+								spawnCamp = true;
+								if (_seededRandom.NextDouble() < 0.2)
+								{
+									spawnCampUp = true;
+									objetId = IdObjetCampUp;
+								}
+								else
+								{
+									objetId = IdObjetCamp;
+								}
 							}
 							else
 							{
-								objetId = IdObjetCamp;
+								// garder le Random synchronisé
+								_seededRandom.NextDouble();
 							}
 						}
 					}
@@ -262,7 +254,6 @@ public partial class MapGenerator : Node
 					_tileMapObjets.SetCell(coords, objetId, new Vector2I(0, 0));
 				}
 
-				// Spawn les camps (pas en mode éditeur)
 				if ((spawnCamp || spawnCampUp) && !Engine.IsEditorHint() && _unitsContainer != null)
 				{
 					PackedScene campSceneToUse = spawnCampUp ? _campUpScene : _campScene;
@@ -273,14 +264,14 @@ public partial class MapGenerator : Node
 						camp.GlobalPosition = worldPos;
 						camp.Name = $"Camp_{campCount++}";
 
-						// Configurer le camp comme neutre
 						if (camp is CampSimple campSimple)
 						{
 							campSimple.IsNeutralCamp = true;
-							campSimple.TeamId = 0; // Équipe neutre
+							campSimple.TeamId = campCount;
 						}
 
 						_unitsContainer.AddChild(camp);
+						campPositions.Add(worldPos);
 					}
 				}
 			}
@@ -289,12 +280,35 @@ public partial class MapGenerator : Node
 		GD.Print($"{campCount} camps générés");
 	}
 
+	private bool IsFarEnoughFromCamps(Vector2 position, List<Vector2> existingCamps)
+	{
+		foreach (Vector2 campPos in existingCamps)
+		{
+			if (position.DistanceTo(campPos) < MinCampDistance)
+				return false;
+		}
+		return true;
+	}
+
+	private void InitTerritory()
+	{
+		_territoryManager = new TerritoryManager();
+		_territoryManager.Name = "TerritoryManager";
+		AddChild(_territoryManager);
+		MoveChild(_territoryManager, 1); // après Sol pour le Z-order
+		_territoryManager.SetSolLayer(_tileMapSol);
+		_territoryManager.Initialize();
+	}
+
 	public override void _Input(InputEvent @event)
 	{
 		if (@event.IsActionPressed("ui_accept"))
 		{
+			_territoryManager?.QueueFree();
+			_territoryManager = null;
 			SetupNoise();
 			GenererMap();
+			CallDeferred(nameof(InitTerritory));
 		}
 	}
 }

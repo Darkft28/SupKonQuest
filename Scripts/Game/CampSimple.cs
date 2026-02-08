@@ -2,6 +2,8 @@ using Godot;
 using System.Collections.Generic;
 public partial class CampSimple : Area2D
 {
+	[Signal] public delegate void CampCapturedEventHandler(int newTeamId);
+
 	[Export] public int TeamId = 1; // id équipe
 	[Export] public bool IsNeutralCamp = false; // camp neutre
 	[Export] public float MaxHealth = 500f; // pv max du camp
@@ -240,6 +242,7 @@ public partial class CampSimple : Area2D
 		SpawnBonusUnits();
 
 		GD.Print($"Camp capture! Equipe {oldTeamId} -> Equipe {newTeamId}");
+		EmitSignal(SignalName.CampCaptured, newTeamId);
 	}
 	
 	//spawn 3 troupes
@@ -273,25 +276,59 @@ public partial class CampSimple : Area2D
 		}
 	}
 	
+	private static readonly Color[] _teamColors = new Color[]
+	{
+		new Color(1, 0, 0, 1f),        // Rouge
+		new Color(0, 0.5f, 1, 1f),     // Bleu
+		new Color(0, 0.8f, 0, 1f),     // Vert
+		new Color(1, 1, 0, 1f),        // Jaune
+		new Color(1, 0, 1, 1f),        // Magenta
+		new Color(0, 1, 1, 1f),        // Cyan
+		new Color(1, 0.5f, 0, 1f),     // Orange
+		new Color(0.5f, 0, 1, 1f),     // Violet
+		new Color(0.6f, 0.3f, 0, 1f),  // Marron
+		new Color(1, 0.4f, 0.7f, 1f),  // Rose
+		new Color(0, 0.5f, 0, 1f),     // Vert foncé
+		new Color(0.3f, 0.3f, 1, 1f),  // Bleu moyen
+		new Color(1, 0.8f, 0, 1f),     // Or
+		new Color(0, 0.8f, 0.6f, 1f),  // Turquoise
+		new Color(0.8f, 0, 0.4f, 1f),  // Cramoisi
+		new Color(0.5f, 0.8f, 0, 1f),  // Chartreuse
+		new Color(1, 0.6f, 0.4f, 1f),  // Saumon
+		new Color(0.4f, 0, 0.6f, 1f),  // Indigo
+		new Color(0, 0.4f, 0.4f, 1f),  // Sarcelle
+		new Color(0.8f, 0.8f, 0, 1f),  // Olive
+		new Color(0.9f, 0.2f, 0.5f, 1f), // Framboise
+		new Color(0.2f, 0.6f, 1, 1f),  // Azur
+		new Color(0.7f, 1, 0.3f, 1f),  // Lime
+		new Color(1, 0.3f, 0.3f, 1f),  // Corail
+		new Color(0.6f, 0.4f, 1, 1f),  // Lavande
+		new Color(0, 1, 0.5f, 1f),     // Menthe
+		new Color(1, 0.5f, 0.5f, 1f),  // Pêche
+		new Color(0.3f, 0, 0.3f, 1f),  // Prune
+		new Color(0.4f, 0.7f, 0.4f, 1f), // Sauge
+		new Color(0.9f, 0.6f, 0, 1f),  // Ambre
+		new Color(0.5f, 0.5f, 1, 1f),  // Pervenche
+		new Color(0.8f, 0.5f, 0.2f, 1f), // Cuivre
+		new Color(0, 0.6f, 0.3f, 1f),  // Émeraude
+		new Color(0.9f, 0, 0.9f, 1f),  // Fuchsia
+		new Color(0.4f, 0.8f, 0.8f, 1f), // Aigue-marine
+		new Color(0.7f, 0.2f, 0, 1f),  // Rouille
+		new Color(0.5f, 1, 0.5f, 1f),  // Vert pâle
+		new Color(0.3f, 0.5f, 0.7f, 1f), // Acier
+		new Color(1, 0.9f, 0.4f, 1f),  // Crème
+		new Color(0.6f, 0, 0.2f, 1f),  // Bordeaux
+		new Color(0.2f, 0.8f, 0.4f, 1f), // Jade
+		new Color(0.8f, 0.4f, 0.6f, 1f), // Mauve
+	};
+
 	private Color GetTeamColor()
 	{
-		Color[] teamColors = new Color[]
-		{
-			new Color(1, 0, 0, 1f),      // Rouge (Team 1)
-			new Color(0, 0.5f, 1, 1f),   // Bleu (Team 2)
-			new Color(0, 1, 0, 1f),      // Vert (Team 3)
-			new Color(1, 1, 0, 1f),      // Jaune (Team 4)
-			new Color(1, 0, 1, 1f),      // Magenta (Team 5)
-			new Color(0, 1, 1, 1f),      // Cyan (Team 6)
-			new Color(1, 0.5f, 0, 1f),   // Orange (Team 7)
-			new Color(0.5f, 0, 1, 1f),   // Violet (Team 8)
-		};
-
 		if (TeamId <= 0)
-			return new Color(0.5f, 0.5f, 0.5f, 1f); // Gris pour les camps neutres/invalides
+			return new Color(0.5f, 0.5f, 0.5f, 1f);
 
-		int colorIndex = (TeamId - 1) % teamColors.Length;
-		return teamColors[colorIndex];
+		int colorIndex = (TeamId - 1) % _teamColors.Length;
+		return _teamColors[colorIndex];
 	}
 
 	private void SpawnUnits()
