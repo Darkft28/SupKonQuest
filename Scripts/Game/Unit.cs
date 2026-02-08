@@ -244,6 +244,7 @@ public partial class Unit : CharacterBody2D
 				_currentTarget = null;
 				_healTarget = null;
 				Velocity = Vector2.Zero;
+				QueueRedraw(); // Effacer le rayon de soin
 				break;
 				
 			case UnitState.MovingToTarget:
@@ -303,6 +304,21 @@ public partial class Unit : CharacterBody2D
 		{
 			DrawCircle(Vector2.Zero, SupportAuraRadius, AuraColor);
 			DrawArc(Vector2.Zero, SupportAuraRadius, 0, Mathf.Tau, 64, AuraBorderColor, 2f);
+		}
+
+		// Rayon de soin vert du Healer
+		if (UnitType == "Heal" && _currentState == UnitState.Healing
+			&& _healTarget != null && IsInstanceValid(_healTarget) && _healTarget.IsInsideTree())
+		{
+			Vector2 targetLocal = _healTarget.GlobalPosition - GlobalPosition;
+			Color healRayColor = new Color(0.2f, 0.9f, 0.3f, 0.6f);
+			Color healRayGlow = new Color(0.2f, 0.9f, 0.3f, 0.15f);
+			// Glow large
+			DrawLine(Vector2.Zero, targetLocal, healRayGlow, 8f);
+			// Rayon principal
+			DrawLine(Vector2.Zero, targetLocal, healRayColor, 3f);
+			// Petit cercle au point d'impact
+			DrawCircle(targetLocal, 6f, healRayColor);
 		}
 
 		// Barre de vie (seulement si blesse)
@@ -558,6 +574,7 @@ public partial class Unit : CharacterBody2D
 		// A portee : soigner
 		Velocity = Vector2.Zero;
 		_healTimer += (float)delta;
+		QueueRedraw(); // Mettre a jour le rayon vert
 
 		if (_healTimer >= HealInterval)
 		{
@@ -757,9 +774,17 @@ public partial class Unit : CharacterBody2D
 		if (target.GetCurrentHealth() <= 0)
 			return;
 
+		// Range et Mortar : lancer un projectile au lieu d'appliquer les degats directement
+		if (UnitType == "Range" || UnitType == "Mortar")
+		{
+			SpawnProjectile(target);
+			LogAttack(target);
+			return;
+		}
+
 		float hpBefore = target.GetCurrentHealth();
 
-		// Infliger des dégâts à la cible
+		// Autres unites : degats directs
 		target.TakeDamageFrom(_stats.Attack, TeamId);
 
 		float hpAfter = target.GetCurrentHealth();
@@ -768,6 +793,26 @@ public partial class Unit : CharacterBody2D
 		float actualDamage = _stats.Attack * 100f / (100f + totalDef);
 		string auraStr = auraBonus > 0 ? $" +{auraBonus:F0} aura" : "";
 		GD.Print($"[ATK] {UnitType} T{TeamId} -> {target.GetUnitType()} T{target.GetTeamId()} | {_stats.Attack} brut -> {actualDamage:F1} reel (def {target._stats.Defense}{auraStr}) | HP {hpBefore:F0} -> {hpAfter:F0}/{target.GetMaxHealth():F0}");
+	}
+
+	private void SpawnProjectile(Unit target)
+	{
+		var projectile = new Projectile();
+		GetTree().CurrentScene.AddChild(projectile);
+
+		var type = UnitType == "Mortar" ? Projectile.ProjectileType.Cannonball : Projectile.ProjectileType.Arrow;
+		float speed = UnitType == "Mortar" ? 300f : 500f;
+
+		projectile.Initialize(GlobalPosition, target, _stats.Attack, TeamId, type, speed);
+	}
+
+	private void LogAttack(Unit target)
+	{
+		float auraBonus = target.GetSupportDefenseBonus();
+		float totalDef = target._stats.Defense + auraBonus;
+		float actualDamage = _stats.Attack * 100f / (100f + totalDef);
+		string auraStr = auraBonus > 0 ? $" +{auraBonus:F0} aura" : "";
+		GD.Print($"[ATK] {UnitType} T{TeamId} -> {target.GetUnitType()} T{target.GetTeamId()} | {_stats.Attack} brut -> {actualDamage:F1} reel (def {target._stats.Defense}{auraStr}) | HP {target.GetCurrentHealth():F0}/{target.GetMaxHealth():F0} (projectile)");
 	}
 
 	public void MoveTo(Vector2 target)
