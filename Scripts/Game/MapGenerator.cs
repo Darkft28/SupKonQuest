@@ -37,6 +37,9 @@ public partial class MapGenerator : Node
 	// Distance min entre camps (en pixels)
 	private const float MinCampDistance = 2500f;
 
+	// Mode test : spawn seulement 2 camps proches pour tester la victoire
+	private const bool TestMode = true;
+
 	private int? _networkSeed = null;
 
 	private FastNoiseLite _noiseElevation = new FastNoiseLite();
@@ -201,7 +204,7 @@ public partial class MapGenerator : Node
 					else
 					{
 						solId = IdHerbe;
-						if (_seededRandom.NextDouble() < 0.001)
+						if (!TestMode && _seededRandom.NextDouble() < 0.001)
 						{
 							Vector2 candidatePos = new Vector2(x * TileSize + TileSize / 2, y * TileSize + TileSize / 2);
 							if (IsFarEnoughFromCamps(candidatePos, campPositions))
@@ -277,8 +280,37 @@ public partial class MapGenerator : Node
 			}
 		}
 
+		// Mode test : spawn 2 camps proches au centre de la map
+		if (TestMode && !Engine.IsEditorHint() && _unitsContainer != null && _campScene != null)
+		{
+			Vector2 camp1Pos = new Vector2(0, -800);
+			Vector2 camp2Pos = new Vector2(0, 800);
+
+			var camp1 = _campScene.Instantiate<Node2D>();
+			camp1.GlobalPosition = camp1Pos;
+			camp1.Name = $"Camp_{campCount++}";
+			if (camp1 is CampSimple cs1)
+			{
+				cs1.IsNeutralCamp = true;
+				cs1.TeamId = campCount;
+			}
+			_unitsContainer.AddChild(camp1);
+
+			var camp2 = _campScene.Instantiate<Node2D>();
+			camp2.GlobalPosition = camp2Pos;
+			camp2.Name = $"Camp_{campCount++}";
+			if (camp2 is CampSimple cs2)
+			{
+				cs2.IsNeutralCamp = true;
+				cs2.TeamId = campCount;
+			}
+			_unitsContainer.AddChild(camp2);
+
+			GD.Print("MODE TEST: 2 camps spawnes au centre de la map");
+		}
+
 		GD.Print($"{campCount} camps générés");
-		
+
 		// Notifier le GameManager que les camps sont prêts
 		if (GameManager.Instance != null)
 		{
