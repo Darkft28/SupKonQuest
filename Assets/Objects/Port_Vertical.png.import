@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://n5gwi87bok6t"
-path="res://.godot/imported/Port_hor.png-20bb9947b31ef49fad9645de8b38bd36.ctex"
+uid="uid://bsxy1snn685pa"
+path="res://.godot/imported/Port_Vertical.png-1f8b75d6b91cb5dcd438f51f3c8e83de.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://Assets/Objects/Port_hor.png"
-dest_files=["res://.godot/imported/Port_hor.png-20bb9947b31ef49fad9645de8b38bd36.ctex"]
+source_file="res://Assets/Objects/Port_Vertical.png"
+dest_files=["res://.godot/imported/Port_Vertical.png-1f8b75d6b91cb5dcd438f51f3c8e83de.ctex"]
 
 [params]
 

@@ -11,7 +11,7 @@ public partial class TerritoryManager : Node2D
 	private const int TileSize = 128;
 
 	// Rayon du territoire autour d'un camp (en tuiles)
-	private const int DefaultTerritoryRadius = 5;
+	private const int DefaultTerritoryRadius = 8;
 
 	// teamId par tuile, -1 = wilderness
 	private int[,] _territoryMap = new int[MapWidth, MapHeight];

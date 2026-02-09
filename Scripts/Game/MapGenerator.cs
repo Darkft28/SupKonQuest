@@ -35,10 +35,10 @@ public partial class MapGenerator : Node
 	private const int IdObjetCampUp = 103;
 
 	// Distance min entre camps (en pixels)
-	private const float MinCampDistance = 2500f;
+	private const float MinCampDistance = 3500f;
 
 	// Mode test : spawn seulement 2 camps proches pour tester la victoire
-	private const bool TestMode = true;
+	private const bool TestMode = false;
 
 	private int? _networkSeed = null;
 
@@ -275,6 +275,11 @@ public partial class MapGenerator : Node
 
 						_unitsContainer.AddChild(camp);
 						campPositions.Add(worldPos);
+
+						if (camp is CampSimple campPort)
+						{
+							campPort.TrySpawnPort(_tileMapSol);
+						}
 					}
 				}
 			}
@@ -295,6 +300,10 @@ public partial class MapGenerator : Node
 				cs1.TeamId = campCount;
 			}
 			_unitsContainer.AddChild(camp1);
+			if (camp1 is CampSimple csPort1)
+			{
+				csPort1.TrySpawnPort(_tileMapSol);
+			}
 
 			var camp2 = _campScene.Instantiate<Node2D>();
 			camp2.GlobalPosition = camp2Pos;
@@ -305,6 +314,10 @@ public partial class MapGenerator : Node
 				cs2.TeamId = campCount;
 			}
 			_unitsContainer.AddChild(camp2);
+			if (camp2 is CampSimple csPort2)
+			{
+				csPort2.TrySpawnPort(_tileMapSol);
+			}
 
 			GD.Print("MODE TEST: 2 camps spawnes au centre de la map");
 		}

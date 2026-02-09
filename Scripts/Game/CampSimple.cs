@@ -37,6 +37,10 @@ public partial class CampSimple : Area2D
 	private float _productionTimer = 0f;
 	private const int MaxQueueSize = 7;
 
+	// Port
+	public bool HasPort { get; private set; }
+	private Sprite2D _portSprite;
+
 	//barre de vie
 	private ColorRect _healthBarBackground;
 	private ColorRect _healthBarForeground;
@@ -705,5 +709,132 @@ public partial class CampSimple : Area2D
 	public string[] GetQueuedUnits()
 	{
 		return _productionQueue.ToArray();
+	}
+
+	public void TrySpawnPort(TileMapLayer tileMapSol)
+	{
+		if (tileMapSol == null)
+			return;
+
+		const int TileSize = 128;
+		const float CampScale = 3f;
+		const float PortScale = 0.15f;
+		const float LandOverlap = 0.2f; // 20% du port sur terre, 80% dans l'eau
+		const float PortLongAxis = 1256f; // longueur en pixels des deux textures
+
+		Vector2I campTile = tileMapSol.LocalToMap(GlobalPosition);
+
+		// Directions cardinales : N, S, E, W
+		Vector2I[] directions = new Vector2I[]
+		{
+			new Vector2I(0, -1), // Nord
+			new Vector2I(0, 1),  // Sud
+			new Vector2I(1, 0),  // Est
+			new Vector2I(-1, 0), // Ouest
+		};
+
+		// 1) Trouver la meilleure direction (plus d'eau)
+		int bestWaterCount = 0;
+		int bestDirectionIndex = -1;
+
+		for (int d = 0; d < directions.Length; d++)
+		{
+			int waterCount = 0;
+			Vector2I dir = directions[d];
+
+			for (int dist = 1; dist <= 8; dist++)
+			{
+				for (int offset = -2; offset <= 2; offset++)
+				{
+					Vector2I tilePos;
+					if (dir.X == 0)
+						tilePos = campTile + new Vector2I(offset, dir.Y * dist);
+					else
+						tilePos = campTile + new Vector2I(dir.X * dist, offset);
+
+					if (tileMapSol.GetCellSourceId(tilePos) == 6)
+						waterCount++;
+				}
+			}
+
+			if (waterCount > bestWaterCount)
+			{
+				bestWaterCount = waterCount;
+				bestDirectionIndex = d;
+			}
+		}
+
+		if (bestWaterCount < 3 || bestDirectionIndex < 0)
+			return;
+
+		// 2) Trouver la distance de la première tuile d'eau (ligne centrale, offset=0)
+		Vector2I bestDir = directions[bestDirectionIndex];
+		int waterDist = -1;
+		for (int dist = 1; dist <= 8; dist++)
+		{
+			Vector2I tilePos;
+			if (bestDir.X == 0)
+				tilePos = campTile + new Vector2I(0, bestDir.Y * dist);
+			else
+				tilePos = campTile + new Vector2I(bestDir.X * dist, 0);
+
+			if (tileMapSol.GetCellSourceId(tilePos) == 6)
+			{
+				waterDist = dist;
+				break;
+			}
+		}
+
+		if (waterDist < 0)
+			waterDist = 3;
+
+		HasPort = true;
+		_portSprite = new Sprite2D();
+
+		// 3) Calculer la position du port
+		// Côte = bord entre dernière tuile terre et première tuile eau
+		// En monde : (waterDist - 0.5) * TileSize depuis le centre du camp
+		// En local camp (scale 3) : diviser par CampScale
+		float coastLocalDist = (waterDist - 0.5f) * TileSize / CampScale;
+
+		// Demi-longueur du port en coordonnées locales du camp
+		float halfLen = PortLongAxis * PortScale / 2f;
+		// Décalage du centre vers l'eau pour avoir 20% terre / 80% eau
+		float shift = (1f - 2f * LandOverlap) * halfLen;
+
+		string texturePath;
+		Vector2 portPosition;
+
+		switch (bestDirectionIndex)
+		{
+			case 0: // Nord - eau vers Y négatif
+				texturePath = "res://Assets/Objects/Port_Vertical.png";
+				_portSprite.FlipV = true;
+				portPosition = new Vector2(0, -(coastLocalDist + shift));
+				break;
+			case 1: // Sud - eau vers Y positif
+				texturePath = "res://Assets/Objects/Port_Vertical.png";
+				portPosition = new Vector2(0, coastLocalDist + shift);
+				break;
+			case 2: // Est - eau vers X positif
+				texturePath = "res://Assets/Objects/Port.png";
+				portPosition = new Vector2(coastLocalDist + shift, 0);
+				break;
+			case 3: // Ouest - eau vers X négatif
+				texturePath = "res://Assets/Objects/Port.png";
+				_portSprite.FlipH = true;
+				portPosition = new Vector2(-(coastLocalDist + shift), 0);
+				break;
+			default:
+				return;
+		}
+
+		_portSprite.Texture = GD.Load<Texture2D>(texturePath);
+		_portSprite.Position = portPosition;
+		_portSprite.Scale = new Vector2(PortScale, PortScale);
+		AddChild(_portSprite);
+
+		string[] dirNames = { "Nord", "Sud", "Est", "Ouest" };
+		GD.Print($"[PORT] Camp #{CampId} - Port direction {dirNames[bestDirectionIndex]} (eau a {waterDist} tuiles, {bestWaterCount} tuiles d'eau)");
 	}
 }
