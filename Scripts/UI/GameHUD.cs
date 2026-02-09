@@ -7,6 +7,9 @@ public partial class GameHUD : Control
 	private Control _goldPanel;
 	private SelectionManager _selectionManager;
 	private Dictionary<string, TextureButton> _unitButtons = new Dictionary<string, TextureButton>();
+	private Dictionary<string, TextureButton> _shipButtons = new Dictionary<string, TextureButton>();
+	private HBoxContainer _unitsContainer;
+	private HBoxContainer _shipsContainer;
 
 	// Liste des types d'unités disponibles dans le HUD
 	private static readonly string[] UnitTypes = new[]
@@ -15,6 +18,10 @@ public partial class GameHUD : Control
 		"AntiArmor", "Heavy", "Mortar", "Tank"
 	};
 
+	private static readonly string[] ShipTypes = new[]
+	{
+		"Destroyer", "Fregate", "Transport"
+	};
 
 	public override void _Ready()
 	{
@@ -26,25 +33,27 @@ public partial class GameHUD : Control
 		_goldPanel.Visible = true;
 		_goldLabel.Text = "0";
 
-		// Connecter les boutons d'unités
+		// Recuperer les conteneurs
+		_unitsContainer = GetNode<HBoxContainer>("NinePatchRect/UnitsContainer");
+		_shipsContainer = GetNode<HBoxContainer>("NinePatchRect/ShipsContainer");
+
+		// Connecter les boutons d'unités et de bateaux
 		ConnectUnitButtons();
+		ConnectShipButtons();
 
 		GD.Print("[HUD] GameHUD initialisé");
 	}
 
 	private void ConnectUnitButtons()
 	{
-		var unitsContainer = GetNode<HBoxContainer>("NinePatchRect/UnitsContainer");
-
 		foreach (string unitType in UnitTypes)
 		{
 			var buttonPath = $"{unitType}/Button";
-			var button = unitsContainer.GetNodeOrNull<TextureButton>(buttonPath);
+			var button = _unitsContainer.GetNodeOrNull<TextureButton>(buttonPath);
 
 			if (button != null)
 			{
 				_unitButtons[unitType] = button;
-				// Capturer le type d'unité pour le callback
 				string capturedType = unitType;
 				button.Pressed += () => OnUnitButtonPressed(capturedType);
 				GD.Print($"[HUD] Bouton {unitType} connecté");
@@ -52,6 +61,27 @@ public partial class GameHUD : Control
 			else
 			{
 				GD.PrintErr($"[HUD] Bouton {unitType} non trouvé!");
+			}
+		}
+	}
+
+	private void ConnectShipButtons()
+	{
+		foreach (string shipType in ShipTypes)
+		{
+			var buttonPath = $"{shipType}/Button";
+			var button = _shipsContainer.GetNodeOrNull<TextureButton>(buttonPath);
+
+			if (button != null)
+			{
+				_shipButtons[shipType] = button;
+				string capturedType = shipType;
+				button.Pressed += () => OnShipButtonPressed(capturedType);
+				GD.Print($"[HUD] Bouton bateau {shipType} connecté");
+			}
+			else
+			{
+				GD.PrintErr($"[HUD] Bouton bateau {shipType} non trouvé!");
 			}
 		}
 	}
@@ -95,6 +125,34 @@ public partial class GameHUD : Control
 		}
 	}
 
+	private void OnShipButtonPressed(string shipType)
+	{
+		if (_selectionManager == null)
+		{
+			GD.Print("[HUD] Pas de SelectionManager!");
+			return;
+		}
+
+		var selectedPort = _selectionManager.GetSelectedPort();
+
+		if (selectedPort == null || !IsInstanceValid(selectedPort))
+		{
+			GD.Print("[HUD] Aucun port sélectionné!");
+			return;
+		}
+
+		bool success = selectedPort.BuyShip(shipType);
+
+		if (success)
+		{
+			GD.Print($"[HUD] Bateau {shipType} acheté sur le port du camp #{selectedPort.CampId}");
+		}
+		else
+		{
+			GD.Print($"[HUD] Impossible d'acheter {shipType}");
+		}
+	}
+
 	public override void _Process(double delta)
 	{
 		// Chercher le SelectionManager si pas encore trouvé
@@ -104,6 +162,7 @@ public partial class GameHUD : Control
 		}
 
 		UpdateGoldDisplay();
+		UpdateContainerVisibility();
 	}
 
 	private void FindSelectionManager()
@@ -121,9 +180,35 @@ public partial class GameHUD : Control
 		}
 	}
 
+	private void UpdateContainerVisibility()
+	{
+		if (_selectionManager == null) return;
+
+		var selectedCamp = _selectionManager.GetSelectedCamp();
+		var selectedPort = _selectionManager.GetSelectedPort();
+
+		if (selectedPort != null && IsInstanceValid(selectedPort))
+		{
+			// Port selectionne -> afficher bateaux, masquer unites
+			_shipsContainer.Visible = true;
+			_unitsContainer.Visible = false;
+		}
+		else if (selectedCamp != null && IsInstanceValid(selectedCamp))
+		{
+			// Camp selectionne -> afficher unites, masquer bateaux
+			_unitsContainer.Visible = true;
+			_shipsContainer.Visible = false;
+		}
+		else
+		{
+			// Rien selectionne -> masquer les deux
+			_unitsContainer.Visible = false;
+			_shipsContainer.Visible = false;
+		}
+	}
+
 	private void UpdateGoldDisplay()
 	{
-		// Pas de camp sélectionné ou pas de SelectionManager → afficher 0
 		if (_selectionManager == null)
 		{
 			_goldLabel.Text = "0";
@@ -133,23 +218,25 @@ public partial class GameHUD : Control
 		if (GameManager.Instance == null)
 		{
 			_goldLabel.Text = "0";
-			GD.Print("[HUD] GameManager.Instance est NULL!");
 			return;
 		}
 
 		var selectedCamp = _selectionManager.GetSelectedCamp();
+		var selectedPort = _selectionManager.GetSelectedPort();
 
-		if (selectedCamp != null && IsInstanceValid(selectedCamp))
+		if (selectedPort != null && IsInstanceValid(selectedPort))
 		{
-			// Camp sélectionné → afficher l'or du camp
+			int gold = selectedPort.GetGold();
+			_goldLabel.Text = $"{gold}";
+		}
+		else if (selectedCamp != null && IsInstanceValid(selectedCamp))
+		{
 			int gold = selectedCamp.GetGold();
 			_goldLabel.Text = $"{gold}";
 		}
 		else
 		{
-			// Pas de camp sélectionné → afficher 0
 			_goldLabel.Text = "0";
 		}
 	}
-
 }

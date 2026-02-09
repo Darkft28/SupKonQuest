@@ -41,6 +41,14 @@ public partial class CampSimple : Area2D
 	public bool HasPort { get; private set; }
 	private Sprite2D _portSprite;
 
+	// File d'attente de production navale
+	private Queue<string> _shipProductionQueue = new Queue<string>();
+	private string _currentShipProduction = null;
+	private float _shipProductionTimer = 0f;
+	private const int MaxShipQueueSize = 5;
+	private List<Ship> _spawnedShips = new List<Ship>();
+	private TileMapLayer _tileMapSol;
+
 	//barre de vie
 	private ColorRect _healthBarBackground;
 	private ColorRect _healthBarForeground;
@@ -200,6 +208,7 @@ public partial class CampSimple : Area2D
 		ProcessProductionQueue(delta);
 		ProcessTurret(delta);
 		ProcessCaptureCheck(delta);
+		ProcessShipProductionQueue(delta);
 	}
 	
 	// Timer pour vérifier la capture
@@ -497,7 +506,7 @@ public partial class CampSimple : Area2D
 			var unit = unitScene.Instantiate<Unit>();
 
 			float angle = (i * Mathf.Tau) / bonusUnits.Length;
-			Vector2 offset = new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * 350f;
+			Vector2 offset = new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * 525f;
 
 			unit.GlobalPosition = campPos + offset;
 			unit.UnitType = bonusUnits[i];
@@ -583,7 +592,7 @@ public partial class CampSimple : Area2D
 
 			//caclul de la position de spawn
 			float angle = (i * Mathf.Tau) / UnitTypes.Length;
-			Vector2 offset = new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * 350f;
+			Vector2 offset = new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * 525f;
 
 			unit.GlobalPosition = campPos + offset;
 			unit.UnitType = UnitTypes[i];
@@ -651,7 +660,7 @@ public partial class CampSimple : Area2D
 
 		//random positionement
 		float angle = (float)GD.RandRange(0, Mathf.Tau);
-		Vector2 offset = new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * 350f;
+		Vector2 offset = new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * 525f;
 
 		unit.GlobalPosition = GlobalPosition + offset;
 		unit.UnitType = unitType;
@@ -711,13 +720,231 @@ public partial class CampSimple : Area2D
 		return _productionQueue.ToArray();
 	}
 
+	// --- Production navale ---
+
+	public void SetTileMapSol(TileMapLayer tileMapSol)
+	{
+		_tileMapSol = tileMapSol;
+	}
+
+	private void ProcessShipProductionQueue(double delta)
+	{
+		if (!HasPort) return;
+
+		if (_currentShipProduction == null && _shipProductionQueue.Count > 0)
+		{
+			_currentShipProduction = _shipProductionQueue.Dequeue();
+			_shipProductionTimer = ShipStats.GetStats(_currentShipProduction).ProductionTime;
+			GD.Print($"[Camp #{CampId}] Debut production navale: {_currentShipProduction} ({_shipProductionTimer}s)");
+		}
+
+		if (_currentShipProduction != null)
+		{
+			_shipProductionTimer -= (float)delta;
+
+			if (_shipProductionTimer <= 0)
+			{
+				SpawnShip(_currentShipProduction);
+				GD.Print($"[Camp #{CampId}] Production navale terminee: {_currentShipProduction}");
+				_currentShipProduction = null;
+			}
+		}
+	}
+
+	public bool BuyShip(string shipType)
+	{
+		if (!HasPort) return false;
+
+		var stats = ShipStats.GetStats(shipType);
+		int price = stats.Price;
+		int currentGold = GetGold();
+
+		GD.Print($"[Camp #{CampId}] Tentative achat bateau {shipType} - Or: {currentGold}, Cout: {price}");
+
+		int totalInQueue = _shipProductionQueue.Count + (_currentShipProduction != null ? 1 : 0);
+		if (totalInQueue >= MaxShipQueueSize)
+		{
+			GD.Print($"File navale pleine ({MaxShipQueueSize} max)");
+			return false;
+		}
+
+		if (currentGold < price)
+		{
+			GD.Print($"Pas assez d'or pour acheter {shipType} (cout: {price}, or: {currentGold})");
+			return false;
+		}
+
+		if (IsNeutralCamp)
+		{
+			_localGold -= price;
+		}
+		else
+		{
+			if (GameManager.Instance == null) return false;
+			if (!GameManager.Instance.SpendGold(TeamId, price)) return false;
+		}
+
+		_shipProductionQueue.Enqueue(shipType);
+		GD.Print($"Bateau {shipType} ajoute a la file navale ({_shipProductionQueue.Count}/{MaxShipQueueSize}) - Cout: {price}");
+		return true;
+	}
+
+	public bool CanBuyShip(string shipType)
+	{
+		if (!HasPort) return false;
+		if (GameManager.Instance == null) return false;
+
+		int totalInQueue = _shipProductionQueue.Count + (_currentShipProduction != null ? 1 : 0);
+		if (totalInQueue >= MaxShipQueueSize) return false;
+
+		var stats = ShipStats.GetStats(shipType);
+		return GameManager.Instance.CanAfford(TeamId, stats.Price);
+	}
+
+	private void SpawnShip(string shipType)
+	{
+		var shipScene = GD.Load<PackedScene>("res://Scenes/Ship.tscn");
+		if (shipScene == null)
+		{
+			GD.PrintErr("Impossible de charger Ship.tscn");
+			return;
+		}
+
+		var ship = shipScene.Instantiate<Ship>();
+		ship.ShipType = shipType;
+		ship.TeamId = TeamId;
+
+		// Positionner le bateau sur l'eau pres du port avec decalage
+		Vector2 portGlobalPos = GetPortGlobalPosition();
+		Vector2 spawnPos = FindWaterSpawnPosition(portGlobalPos);
+
+		// Decaler les bateaux pour eviter l'empilement
+		_spawnedShips.RemoveAll(s => s == null || !IsInstanceValid(s));
+		if (_spawnedShips.Count > 0)
+		{
+			float angle = _spawnedShips.Count * Mathf.Tau / 6f;
+			Vector2 offset = new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * 100f;
+			Vector2 offsetPos = spawnPos + offset;
+			Vector2I offsetTile = _tileMapSol.LocalToMap(_tileMapSol.ToLocal(offsetPos));
+			if (_tileMapSol != null && _tileMapSol.GetCellSourceId(offsetTile) == 6)
+				spawnPos = offsetPos;
+		}
+
+		ship.GlobalPosition = spawnPos;
+		if (_tileMapSol != null)
+		{
+			ship.SetTileMapSol(_tileMapSol);
+		}
+
+		GetParent().AddChild(ship);
+		_spawnedShips.Add(ship);
+		GD.Print($"[Camp #{CampId}] Bateau {shipType} spawne a {spawnPos}");
+	}
+
+	private Vector2 FindWaterSpawnPosition(Vector2 portPos)
+	{
+		if (_tileMapSol == null) return portPos;
+
+		Vector2I portTile = _tileMapSol.LocalToMap(_tileMapSol.ToLocal(portPos));
+
+		// Passe 1: chercher eau profonde (entouree d'eau) a partir de radius 2
+		// pour eviter de spawner au bord de la cote
+		for (int radius = 2; radius <= 8; radius++)
+		{
+			for (int dx = -radius; dx <= radius; dx++)
+			{
+				for (int dy = -radius; dy <= radius; dy++)
+				{
+					if (Mathf.Abs(dx) != radius && Mathf.Abs(dy) != radius) continue;
+
+					Vector2I checkTile = portTile + new Vector2I(dx, dy);
+					if (IsDeepWaterTile(checkTile))
+					{
+						return _tileMapSol.ToGlobal(_tileMapSol.MapToLocal(checkTile));
+					}
+				}
+			}
+		}
+
+		// Passe 2: fallback sur simple tuile d'eau (radius 2+)
+		for (int radius = 2; radius <= 8; radius++)
+		{
+			for (int dx = -radius; dx <= radius; dx++)
+			{
+				for (int dy = -radius; dy <= radius; dy++)
+				{
+					if (Mathf.Abs(dx) != radius && Mathf.Abs(dy) != radius) continue;
+
+					Vector2I checkTile = portTile + new Vector2I(dx, dy);
+					if (_tileMapSol.GetCellSourceId(checkTile) == 6)
+					{
+						return _tileMapSol.ToGlobal(_tileMapSol.MapToLocal(checkTile));
+					}
+				}
+			}
+		}
+
+		return portPos;
+	}
+
+	private bool IsDeepWaterTile(Vector2I tile)
+	{
+		// Verifier que la tuile ET ses 8 voisins sont de l'eau
+		for (int dx = -1; dx <= 1; dx++)
+		{
+			for (int dy = -1; dy <= 1; dy++)
+			{
+				if (_tileMapSol.GetCellSourceId(tile + new Vector2I(dx, dy)) != 6)
+					return false;
+			}
+		}
+		return true;
+	}
+
+	public Vector2 GetPortGlobalPosition()
+	{
+		if (_portSprite != null)
+		{
+			return _portSprite.GlobalPosition;
+		}
+		return GlobalPosition;
+	}
+
+	public int GetShipQueueCount()
+	{
+		return _shipProductionQueue.Count + (_currentShipProduction != null ? 1 : 0);
+	}
+
+	public int GetMaxShipQueueSize()
+	{
+		return MaxShipQueueSize;
+	}
+
+	public string GetCurrentShipProduction()
+	{
+		return _currentShipProduction;
+	}
+
+	public float GetShipProductionProgress()
+	{
+		if (_currentShipProduction == null) return 0f;
+		float totalTime = ShipStats.GetStats(_currentShipProduction).ProductionTime;
+		return 1f - (_shipProductionTimer / totalTime);
+	}
+
+	public string[] GetQueuedShips()
+	{
+		return _shipProductionQueue.ToArray();
+	}
+
 	public void TrySpawnPort(TileMapLayer tileMapSol)
 	{
+		_tileMapSol = tileMapSol;
 		if (tileMapSol == null)
 			return;
 
 		const int TileSize = 128;
-		const float CampScale = 3f;
+		const float CampScale = 4.5f;
 		const float PortScale = 0.15f;
 		const float LandOverlap = 0.2f; // 20% du port sur terre, 80% dans l'eau
 		const float PortLongAxis = 1256f; // longueur en pixels des deux textures
@@ -808,12 +1035,13 @@ public partial class CampSimple : Area2D
 		switch (bestDirectionIndex)
 		{
 			case 0: // Nord - eau vers Y négatif
-				texturePath = "res://Assets/Objects/Port_Vertical.png";
-				_portSprite.FlipV = true;
+				texturePath = "res://Assets/Objects/Port.png";
+				_portSprite.Rotation = -Mathf.Pi / 2f;
 				portPosition = new Vector2(0, -(coastLocalDist + shift));
 				break;
 			case 1: // Sud - eau vers Y positif
-				texturePath = "res://Assets/Objects/Port_Vertical.png";
+				texturePath = "res://Assets/Objects/Port.png";
+				_portSprite.Rotation = Mathf.Pi / 2f;
 				portPosition = new Vector2(0, coastLocalDist + shift);
 				break;
 			case 2: // Est - eau vers X positif

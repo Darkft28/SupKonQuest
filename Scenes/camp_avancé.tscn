@@ -7,7 +7,7 @@
 size = Vector2(393, 390)
 
 [node name="Camp_avancé" type="Area2D"]
-scale = Vector2(3, 3)
+scale = Vector2(4.5, 4.5)
 script = ExtResource("2_script")
 MaxHealth = 750.0
 
