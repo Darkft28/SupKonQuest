@@ -675,6 +675,38 @@ public partial class Ship : CharacterBody2D
 		return true;
 	}
 
+	// Distance max de debarquement depuis la position actuelle du transport
+	private const float MaxUnloadDistance = 2000f;
+	// Nombre de tuiles max entre le point de debarquement et l'eau
+	private const int MaxCoastTileDistance = 3;
+
+	// Verifie si la position de debarquement est valide (cote + distance)
+	public bool IsValidUnloadPosition(Vector2 landPosition)
+	{
+		// Verifier la distance max depuis le transport
+		float distance = GlobalPosition.DistanceTo(landPosition);
+		if (distance > MaxUnloadDistance)
+			return false;
+
+		// Verifier que la position est pres de la cote (eau a moins de N tuiles)
+		if (_tileMapSol == null)
+			return false;
+
+		Vector2I landTile = _tileMapSol.LocalToMap(_tileMapSol.ToLocal(landPosition));
+
+		for (int dx = -MaxCoastTileDistance; dx <= MaxCoastTileDistance; dx++)
+		{
+			for (int dy = -MaxCoastTileDistance; dy <= MaxCoastTileDistance; dy++)
+			{
+				Vector2I checkTile = landTile + new Vector2I(dx, dy);
+				if (_tileMapSol.GetCellSourceId(checkTile) == 6)
+					return true;
+			}
+		}
+
+		return false;
+	}
+
 	// Transport : naviguer vers la cote puis debarquer
 	public void MoveToUnload(Vector2 landPosition)
 	{

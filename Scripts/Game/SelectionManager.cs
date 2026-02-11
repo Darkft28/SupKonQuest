@@ -312,12 +312,19 @@ public partial class SelectionManager : Node2D
 
 				if (!isWater)
 				{
-					// Envoyer les Transports vers la cote, ils debarqueront a l'arrivee
+					// Verifier et envoyer les Transports vers la cote pour debarquement
 					foreach (var ship in _selectedShips)
 					{
 						if (IsInstanceValid(ship) && ship.GetShipType() == "Transport" && ship.GetLoadedUnitCount() > 0)
 						{
-							ship.MoveToUnload(target);
+							if (ship.IsValidUnloadPosition(target))
+							{
+								ship.MoveToUnload(target);
+							}
+							else
+							{
+								GD.Print($"[TRANSPORT] Debarquement refuse: trop loin ou pas sur la cote");
+							}
 						}
 					}
 					return;
