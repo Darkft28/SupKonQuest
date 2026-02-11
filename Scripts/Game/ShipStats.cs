@@ -28,7 +28,7 @@ public static class ShipStats
 			Range = 0f,
 			Price = 150,
 			ProductionTime = 5f,
-			Capacity = 4
+			Capacity = 10
 		},
 		["Fregate"] = new ShipStatsData
 		{

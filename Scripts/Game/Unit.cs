@@ -11,7 +11,8 @@ public partial class Unit : CharacterBody2D
 		Attacking,      // Attaque une cible à portée
 		MovingToPoint,  // Se déplace vers un point (ordre du joueur)
 		Healing,        // Soigne un allie (Healer uniquement)
-		MovingToTransport // Se deplace vers un Transport pour embarquer
+		MovingToTransport, // Se deplace vers un Transport pour embarquer
+		AttackingCamp     // Attaque un camp ennemi/neutre
 	}
 	
 	[Export] public string UnitType = "Infantry";
@@ -53,6 +54,10 @@ public partial class Unit : CharacterBody2D
 	// Transport : bateau cible pour embarquement
 	private Ship _targetTransport = null;
 	private const float BoardingDistance = 250f;
+
+	// Attaque de camp
+	private CampSimple _campTarget = null;
+	private const float CampAttackDetectionRange = 600f;
 
 	// Tracking pour la mort mutuelle
 	private int _lastAttackerTeamId = 0;
@@ -264,10 +269,18 @@ public partial class Unit : CharacterBody2D
 			case UnitState.MovingToPoint:
 				_currentTarget = null; // On annule la cible de combat
 				_targetTransport = null;
+				_campTarget = null;
 				break;
 
 			case UnitState.MovingToTransport:
 				_currentTarget = null;
+				_campTarget = null;
+				break;
+
+			case UnitState.AttackingCamp:
+				_currentTarget = null;
+				_targetTransport = null;
+				_attackTimer = 0f;
 				break;
 		}
 	}
@@ -382,6 +395,10 @@ public partial class Unit : CharacterBody2D
 			case UnitState.MovingToTransport:
 				ProcessMovingToTransportState(delta);
 				break;
+
+			case UnitState.AttackingCamp:
+				ProcessAttackingCampState(delta);
+				break;
 		}
 	}
 	
@@ -418,6 +435,15 @@ public partial class Unit : CharacterBody2D
 			if (enemy != null)
 			{
 				SetNewTarget(enemy);
+				return;
+			}
+
+			// Chercher un camp attaquable (defenseurs morts, ennemi/neutre)
+			CampSimple camp = FindAttackableCampInRange();
+			if (camp != null)
+			{
+				_campTarget = camp;
+				ChangeState(UnitState.AttackingCamp);
 				return;
 			}
 
@@ -540,6 +566,17 @@ public partial class Unit : CharacterBody2D
 				{
 					ChangeState(UnitState.MovingToTarget);
 				}
+				return;
+			}
+
+			// Chercher un camp attaquable en route
+			CampSimple camp = FindAttackableCampInRange();
+			if (camp != null)
+			{
+				GD.Print($"[ENGAGE] {UnitType} T{TeamId} detecte Camp #{camp.GetCampId()} sans defenseurs, attaque!");
+				_savedTargetPosition = _targetPosition;
+				_campTarget = camp;
+				ChangeState(UnitState.AttackingCamp);
 				return;
 			}
 		}
@@ -833,6 +870,7 @@ public partial class Unit : CharacterBody2D
 	{
 		_targetPosition = target;
 		_savedTargetPosition = null; // Nouvel ordre annule la destination sauvegardee
+		_campTarget = null;
 		_stuckFrames = 0;
 		_moveStartDelay = MoveStartDelayFrames;
 		_lastPosition = GlobalPosition;
@@ -921,11 +959,126 @@ public partial class Unit : CharacterBody2D
 		_lastPosition = GlobalPosition;
 	}
 
+	private void ProcessAttackingCampState(double delta)
+	{
+		// Verifier si le camp est encore valide
+		if (_campTarget == null || !IsInstanceValid(_campTarget) || !_campTarget.IsInsideTree())
+		{
+			_campTarget = null;
+			ReturnToSavedPositionOrIdle();
+			return;
+		}
+
+		// Si le camp est devenu allie (capture par notre equipe)
+		if (_campTarget.GetTeamId() == TeamId)
+		{
+			_campTarget = null;
+			ReturnToSavedPositionOrIdle();
+			return;
+		}
+
+		// Si des defenseurs sont reapparus, les combattre d'abord
+		if (!_campTarget.AreAllUnitsDefeated())
+		{
+			Unit enemy = FindEnemyInDetectionRange();
+			if (enemy != null)
+			{
+				_campTarget = null;
+				SetNewTarget(enemy);
+				return;
+			}
+			// Pas d'ennemi direct, attendre
+			_campTarget = null;
+			ReturnToSavedPositionOrIdle();
+			return;
+		}
+
+		// Priorite aux ennemis proches
+		Unit nearbyEnemy = FindEnemyInDetectionRange();
+		if (nearbyEnemy != null)
+		{
+			_campTarget = null;
+			SetNewTarget(nearbyEnemy);
+			return;
+		}
+
+		float distanceToCamp = GlobalPosition.DistanceTo(_campTarget.GlobalPosition);
+
+		// Se rapprocher si trop loin
+		if (distanceToCamp > _stats.Range)
+		{
+			Vector2 direction = (_campTarget.GlobalPosition - GlobalPosition).Normalized();
+			Velocity = direction * _stats.Speed;
+			MoveAndSlide();
+			return;
+		}
+
+		// A portee : attaquer le camp
+		Velocity = Vector2.Zero;
+		_attackTimer += (float)delta;
+
+		if (_attackTimer >= AttackInterval)
+		{
+			_attackTimer = 0f;
+			_campTarget.TakeDamage(_stats.Attack, TeamId);
+			GD.Print($"[ATK CAMP] {UnitType} T{TeamId} -> Camp #{_campTarget.GetCampId()} | {_stats.Attack} degats | HP {_campTarget.GetCurrentHealth():F0}/{_campTarget.MaxHealth}");
+		}
+	}
+
+	private CampSimple FindAttackableCampInRange()
+	{
+		var allCamps = GetTree().GetNodesInGroup("camps");
+		CampSimple closestCamp = null;
+		float closestDistance = float.MaxValue;
+
+		foreach (var node in allCamps)
+		{
+			if (node is CampSimple camp)
+			{
+				// Ignorer les camps allies
+				if (camp.GetTeamId() == TeamId)
+					continue;
+
+				// Le camp doit avoir ses defenseurs morts
+				if (!camp.AreAllUnitsDefeated())
+					continue;
+
+				float distance = GlobalPosition.DistanceTo(camp.GlobalPosition);
+				if (distance <= CampAttackDetectionRange && distance < closestDistance)
+				{
+					closestCamp = camp;
+					closestDistance = distance;
+				}
+			}
+		}
+
+		return closestCamp;
+	}
+
+	private void ReturnToSavedPositionOrIdle()
+	{
+		if (_savedTargetPosition.HasValue)
+		{
+			GD.Print($"[MOVE] {UnitType} T{TeamId} reprend sa route apres attaque de camp");
+			_targetPosition = _savedTargetPosition;
+			_savedTargetPosition = null;
+			_stuckFrames = 0;
+			_moveStartDelay = MoveStartDelayFrames;
+			_lastPosition = GlobalPosition;
+			_currentState = UnitState.MovingToPoint;
+		}
+		else
+		{
+			ChangeState(UnitState.Idle);
+		}
+	}
+
 	public void Stop()
 	{
 		_targetPosition = null;
 		_savedTargetPosition = null;
 		_targetTransport = null;
+		_campTarget = null;
 		Velocity = Vector2.Zero;
 		ChangeState(UnitState.Idle);
 	}
