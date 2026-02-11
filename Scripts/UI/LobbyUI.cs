@@ -4,10 +4,9 @@ public partial class LobbyUI : Control
 {
 	// Références aux éléments UI
 	private Label _titleLabel;
-	private Label _ipLabel;
-	private Label _portLabel;
-	private LineEdit _ipInput;
-	private LineEdit _portInput;
+	private Label _codeLabel;
+	private LineEdit _codeInput;
+	private Label _codeDisplayLabel;
 	private Button _hostButton;
 	private Button _joinButton;
 	private Button _startButton;
@@ -29,10 +28,9 @@ public partial class LobbyUI : Control
 
 		// Récupérer les éléments UI
 		_titleLabel = GetNode<Label>("VBoxContainer/Title");
-		_ipLabel = GetNode<Label>("VBoxContainer/ConnectionPanel/VBoxContainer/IPContainer/Label");
-		_portLabel = GetNode<Label>("VBoxContainer/ConnectionPanel/VBoxContainer/PortContainer/Label");
-		_ipInput = GetNode<LineEdit>("VBoxContainer/ConnectionPanel/VBoxContainer/IPContainer/IPInput");
-		_portInput = GetNode<LineEdit>("VBoxContainer/ConnectionPanel/VBoxContainer/PortContainer/PortInput");
+		_codeLabel = GetNode<Label>("VBoxContainer/ConnectionPanel/VBoxContainer/CodeContainer/Label");
+		_codeInput = GetNode<LineEdit>("VBoxContainer/ConnectionPanel/VBoxContainer/CodeContainer/CodeInput");
+		_codeDisplayLabel = GetNode<Label>("VBoxContainer/ConnectionPanel/VBoxContainer/CodeDisplay");
 		_hostButton = GetNode<Button>("VBoxContainer/ConnectionPanel/VBoxContainer/ButtonContainer/HostButton");
 		_joinButton = GetNode<Button>("VBoxContainer/ConnectionPanel/VBoxContainer/ButtonContainer/JoinButton");
 		_startButton = GetNode<Button>("VBoxContainer/LobbyPanel/VBoxContainer/StartButton");
@@ -63,9 +61,8 @@ public partial class LobbyUI : Control
 		}
 
 		// État initial
-		_portInput.Text = NetworkManager.DefaultPort.ToString();
-		_ipInput.Text = "127.0.0.1";
 		_startButton.Visible = false;
+		_codeDisplayLabel.Text = "";
 
 		UpdateTexts();
 	}
@@ -75,8 +72,7 @@ public partial class LobbyUI : Control
 		if (LocalizationManager.Instance == null) return;
 
 		_titleLabel.Text = LocalizationManager.Instance.GetText("lobby_title");
-		_ipLabel.Text = LocalizationManager.Instance.GetText("ip_address");
-		_portLabel.Text = LocalizationManager.Instance.GetText("port");
+		_codeLabel.Text = LocalizationManager.Instance.GetText("room_code");
 		_hostButton.Text = LocalizationManager.Instance.GetText("host");
 		_joinButton.Text = LocalizationManager.Instance.GetText("join");
 		_playersLabel.Text = LocalizationManager.Instance.GetText("players_connected");
@@ -111,12 +107,15 @@ public partial class LobbyUI : Control
 
 	private void OnHostPressed()
 	{
-		int port = int.TryParse(_portInput.Text, out int p) ? p : NetworkManager.DefaultPort;
-
-		var error = _networkManager.HostGame(port);
+		var error = _networkManager.HostGame();
 		if (error == Error.Ok)
 		{
-			UpdateStatus($"{LocalizationManager.Instance.GetText("server_started")} {port}");
+			// Afficher le code de salon en gros
+			_codeDisplayLabel.Text = _networkManager.RoomCode;
+			_codeInput.Editable = false;
+			_codeInput.Text = _networkManager.RoomCode;
+
+			UpdateStatus($"{LocalizationManager.Instance.GetText("room_created")} {_networkManager.RoomCode}");
 			_hostButton.Disabled = true;
 			_joinButton.Disabled = true;
 			_startButton.Visible = true;
@@ -130,26 +129,19 @@ public partial class LobbyUI : Control
 
 	private void OnJoinPressed()
 	{
-		string ip = _ipInput.Text;
-		int port = int.TryParse(_portInput.Text, out int p) ? p : NetworkManager.DefaultPort;
+		string code = _codeInput.Text.ToUpper().Trim();
 
-		if (string.IsNullOrWhiteSpace(ip))
+		if (string.IsNullOrWhiteSpace(code) || code.Length < 6)
 		{
-			UpdateStatus(LocalizationManager.Instance.GetText("error_enter_ip"));
+			UpdateStatus(LocalizationManager.Instance.GetText("error_enter_code"));
 			return;
 		}
 
-		var error = _networkManager.JoinGame(ip, port);
-		if (error == Error.Ok)
-		{
-			UpdateStatus($"{LocalizationManager.Instance.GetText("connecting_to")} {ip}:{port}...");
-			_hostButton.Disabled = true;
-			_joinButton.Disabled = true;
-		}
-		else
-		{
-			UpdateStatus($"{LocalizationManager.Instance.GetText("error_connect")} ({error})");
-		}
+		UpdateStatus($"{LocalizationManager.Instance.GetText("searching_room")} {code}...");
+		_hostButton.Disabled = true;
+		_joinButton.Disabled = true;
+
+		_networkManager.JoinWithCode(code);
 	}
 
 	private void OnStartPressed()
@@ -198,7 +190,7 @@ public partial class LobbyUI : Control
 
 	private void OnConnectionFailed()
 	{
-		UpdateStatus(LocalizationManager.Instance.GetText("connection_failed"));
+		UpdateStatus(LocalizationManager.Instance.GetText("room_not_found"));
 		_hostButton.Disabled = false;
 		_joinButton.Disabled = false;
 	}
@@ -209,6 +201,9 @@ public partial class LobbyUI : Control
 		_hostButton.Disabled = false;
 		_joinButton.Disabled = false;
 		_startButton.Visible = false;
+		_codeDisplayLabel.Text = "";
+		_codeInput.Editable = true;
+		_codeInput.Text = "";
 		_playerList.Clear();
 	}
 

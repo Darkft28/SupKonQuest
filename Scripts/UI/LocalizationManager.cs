@@ -69,19 +69,14 @@ public partial class LocalizationManager : Node
 			{ Language.EN, "Multiplayer" },
 			{ Language.ES, "Multijugador" }
 		}},
-		{ "ip_address", new Dictionary<Language, string> {
-			{ Language.FR, "Adresse IP:" },
-			{ Language.EN, "IP Address:" },
-			{ Language.ES, "Dirección IP:" }
-		}},
-		{ "port", new Dictionary<Language, string> {
-			{ Language.FR, "Port:" },
-			{ Language.EN, "Port:" },
-			{ Language.ES, "Puerto:" }
+		{ "room_code", new Dictionary<Language, string> {
+			{ Language.FR, "Code:" },
+			{ Language.EN, "Code:" },
+			{ Language.ES, "Código:" }
 		}},
 		{ "host", new Dictionary<Language, string> {
-			{ Language.FR, "Héberger" },
-			{ Language.EN, "Host" },
+			{ Language.FR, "Créer" },
+			{ Language.EN, "Create" },
 			{ Language.ES, "Crear" }
 		}},
 		{ "join", new Dictionary<Language, string> {
@@ -104,30 +99,30 @@ public partial class LocalizationManager : Node
 			{ Language.EN, "Waiting..." },
 			{ Language.ES, "Esperando..." }
 		}},
-		{ "server_started", new Dictionary<Language, string> {
-			{ Language.FR, "Serveur démarré sur le port" },
-			{ Language.EN, "Server started on port" },
-			{ Language.ES, "Servidor iniciado en el puerto" }
+		{ "room_created", new Dictionary<Language, string> {
+			{ Language.FR, "Salon créé! Code:" },
+			{ Language.EN, "Room created! Code:" },
+			{ Language.ES, "Sala creada! Código:" }
 		}},
 		{ "error_start_server", new Dictionary<Language, string> {
-			{ Language.FR, "Erreur: impossible de démarrer le serveur" },
-			{ Language.EN, "Error: unable to start server" },
-			{ Language.ES, "Error: no se puede iniciar el servidor" }
+			{ Language.FR, "Erreur: impossible de créer le salon" },
+			{ Language.EN, "Error: unable to create room" },
+			{ Language.ES, "Error: no se puede crear la sala" }
 		}},
-		{ "error_enter_ip", new Dictionary<Language, string> {
-			{ Language.FR, "Erreur: entrez une adresse IP" },
-			{ Language.EN, "Error: enter an IP address" },
-			{ Language.ES, "Error: ingrese una dirección IP" }
+		{ "error_enter_code", new Dictionary<Language, string> {
+			{ Language.FR, "Entrez un code à 6 caractères" },
+			{ Language.EN, "Enter a 6 character code" },
+			{ Language.ES, "Ingrese un código de 6 caracteres" }
 		}},
-		{ "connecting_to", new Dictionary<Language, string> {
-			{ Language.FR, "Connexion à" },
-			{ Language.EN, "Connecting to" },
-			{ Language.ES, "Conectando a" }
+		{ "searching_room", new Dictionary<Language, string> {
+			{ Language.FR, "Recherche du salon" },
+			{ Language.EN, "Searching for room" },
+			{ Language.ES, "Buscando sala" }
 		}},
-		{ "error_connect", new Dictionary<Language, string> {
-			{ Language.FR, "Erreur: impossible de se connecter" },
-			{ Language.EN, "Error: unable to connect" },
-			{ Language.ES, "Error: no se puede conectar" }
+		{ "room_not_found", new Dictionary<Language, string> {
+			{ Language.FR, "Salon introuvable sur le réseau" },
+			{ Language.EN, "Room not found on network" },
+			{ Language.ES, "Sala no encontrada en la red" }
 		}},
 		{ "only_host_start", new Dictionary<Language, string> {
 			{ Language.FR, "Seul l'hôte peut lancer la partie" },

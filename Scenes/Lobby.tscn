@@ -55,31 +55,26 @@ layout_mode = 2
 layout_mode = 2
 theme_override_constants/separation = 10
 
-[node name="IPContainer" type="HBoxContainer" parent="VBoxContainer/ConnectionPanel/VBoxContainer"]
+[node name="CodeContainer" type="HBoxContainer" parent="VBoxContainer/ConnectionPanel/VBoxContainer"]
 layout_mode = 2
 
-[node name="Label" type="Label" parent="VBoxContainer/ConnectionPanel/VBoxContainer/IPContainer"]
+[node name="Label" type="Label" parent="VBoxContainer/ConnectionPanel/VBoxContainer/CodeContainer"]
 custom_minimum_size = Vector2(100, 0)
 layout_mode = 2
-text = "Adresse IP:"
+text = "Code:"
 
-[node name="IPInput" type="LineEdit" parent="VBoxContainer/ConnectionPanel/VBoxContainer/IPContainer"]
+[node name="CodeInput" type="LineEdit" parent="VBoxContainer/ConnectionPanel/VBoxContainer/CodeContainer"]
 layout_mode = 2
 size_flags_horizontal = 3
-placeholder_text = "127.0.0.1"
+placeholder_text = "ABC123"
+max_length = 6
 
-[node name="PortContainer" type="HBoxContainer" parent="VBoxContainer/ConnectionPanel/VBoxContainer"]
+[node name="CodeDisplay" type="Label" parent="VBoxContainer/ConnectionPanel/VBoxContainer"]
 layout_mode = 2
-
-[node name="Label" type="Label" parent="VBoxContainer/ConnectionPanel/VBoxContainer/PortContainer"]
-custom_minimum_size = Vector2(100, 0)
-layout_mode = 2
-text = "Port:"
-
-[node name="PortInput" type="LineEdit" parent="VBoxContainer/ConnectionPanel/VBoxContainer/PortContainer"]
-layout_mode = 2
-size_flags_horizontal = 3
-placeholder_text = "7777"
+theme_override_font_sizes/font_size = 28
+theme_override_colors/font_color = Color(1, 0.84, 0, 1)
+text = ""
+horizontal_alignment = 1
 
 [node name="ButtonContainer" type="HBoxContainer" parent="VBoxContainer/ConnectionPanel/VBoxContainer"]
 layout_mode = 2
@@ -95,7 +90,7 @@ theme_override_styles/normal = SubResource("StyleBoxTexture_btn")
 theme_override_styles/hover = SubResource("StyleBoxTexture_btn")
 theme_override_styles/pressed = SubResource("StyleBoxTexture_btn")
 theme_override_styles/focus = SubResource("StyleBoxTexture_btn")
-text = "Héberger"
+text = "Créer"
 
 [node name="JoinButton" type="Button" parent="VBoxContainer/ConnectionPanel/VBoxContainer/ButtonContainer"]
 custom_minimum_size = Vector2(152, 40)
