@@ -7,6 +7,9 @@ public partial class GameHUD : Control
 	private Control _goldPanel;
 	private SelectionManager _selectionManager;
 	private Dictionary<string, TextureButton> _unitButtons = new Dictionary<string, TextureButton>();
+	private Dictionary<string, TextureButton> _shipButtons = new Dictionary<string, TextureButton>();
+	private HBoxContainer _unitsContainer;
+	private HBoxContainer _shipsContainer;
 
 	// Liste des types d'unités disponibles dans le HUD
 	private static readonly string[] UnitTypes = new[]
@@ -15,6 +18,10 @@ public partial class GameHUD : Control
 		"AntiArmor", "Heavy", "Mortar", "Tank"
 	};
 
+	private static readonly string[] ShipTypes = new[]
+	{
+		"Destroyer", "Fregate", "Transport"
+	};
 
 	public override void _Ready()
 	{
@@ -26,25 +33,27 @@ public partial class GameHUD : Control
 		_goldPanel.Visible = true;
 		_goldLabel.Text = "0";
 
-		// Connecter les boutons d'unités
+		// Recuperer les conteneurs
+		_unitsContainer = GetNode<HBoxContainer>("NinePatchRect/UnitsContainer");
+		_shipsContainer = GetNode<HBoxContainer>("NinePatchRect/ShipsContainer");
+
+		// Connecter les boutons d'unités et de bateaux
 		ConnectUnitButtons();
+		ConnectShipButtons();
 
 		GD.Print("[HUD] GameHUD initialisé");
 	}
 
 	private void ConnectUnitButtons()
 	{
-		var unitsContainer = GetNode<HBoxContainer>("NinePatchRect/UnitsContainer");
-
 		foreach (string unitType in UnitTypes)
 		{
 			var buttonPath = $"{unitType}/Button";
-			var button = unitsContainer.GetNodeOrNull<TextureButton>(buttonPath);
+			var button = _unitsContainer.GetNodeOrNull<TextureButton>(buttonPath);
 
 			if (button != null)
 			{
 				_unitButtons[unitType] = button;
-				// Capturer le type d'unité pour le callback
 				string capturedType = unitType;
 				button.Pressed += () => OnUnitButtonPressed(capturedType);
 				GD.Print($"[HUD] Bouton {unitType} connecté");
@@ -54,6 +63,33 @@ public partial class GameHUD : Control
 				GD.PrintErr($"[HUD] Bouton {unitType} non trouvé!");
 			}
 		}
+	}
+
+	private void ConnectShipButtons()
+	{
+		foreach (string shipType in ShipTypes)
+		{
+			var buttonPath = $"{shipType}/Button";
+			var button = _shipsContainer.GetNodeOrNull<TextureButton>(buttonPath);
+
+			if (button != null)
+			{
+				_shipButtons[shipType] = button;
+				string capturedType = shipType;
+				button.Pressed += () => OnShipButtonPressed(capturedType);
+				GD.Print($"[HUD] Bouton bateau {shipType} connecté");
+			}
+			else
+			{
+				GD.PrintErr($"[HUD] Bouton bateau {shipType} non trouvé!");
+			}
+		}
+	}
+
+	private int GetLocalTeamId()
+	{
+		var gameState = GetNodeOrNull<GameState>("/root/GameState");
+		return gameState?.LocalTeamId ?? 1;
 	}
 
 	private void OnUnitButtonPressed(string unitType)
@@ -72,7 +108,13 @@ public partial class GameHUD : Control
 			return;
 		}
 
-		// Vérifier pourquoi l'achat pourrait échouer
+		// Reseau : ne pas acheter sur un camp qui ne nous appartient pas
+		if (selectedCamp.GetTeamId() != GetLocalTeamId())
+		{
+			GD.Print($"[HUD] Ce camp appartient a l'equipe {selectedCamp.GetTeamId()}, pas a nous ({GetLocalTeamId()})");
+			return;
+		}
+
 		int totalInQueue = selectedCamp.GetQueueCount();
 		int maxQueue = selectedCamp.GetMaxQueueSize();
 
@@ -95,6 +137,41 @@ public partial class GameHUD : Control
 		}
 	}
 
+	private void OnShipButtonPressed(string shipType)
+	{
+		if (_selectionManager == null)
+		{
+			GD.Print("[HUD] Pas de SelectionManager!");
+			return;
+		}
+
+		var selectedPort = _selectionManager.GetSelectedPort();
+
+		if (selectedPort == null || !IsInstanceValid(selectedPort))
+		{
+			GD.Print("[HUD] Aucun port sélectionné!");
+			return;
+		}
+
+		// Reseau : ne pas acheter sur un port qui ne nous appartient pas
+		if (selectedPort.GetTeamId() != GetLocalTeamId())
+		{
+			GD.Print($"[HUD] Ce port appartient a l'equipe {selectedPort.GetTeamId()}, pas a nous ({GetLocalTeamId()})");
+			return;
+		}
+
+		bool success = selectedPort.BuyShip(shipType);
+
+		if (success)
+		{
+			GD.Print($"[HUD] Bateau {shipType} acheté sur le port du camp #{selectedPort.CampId}");
+		}
+		else
+		{
+			GD.Print($"[HUD] Impossible d'acheter {shipType}");
+		}
+	}
+
 	public override void _Process(double delta)
 	{
 		// Chercher le SelectionManager si pas encore trouvé
@@ -104,6 +181,7 @@ public partial class GameHUD : Control
 		}
 
 		UpdateGoldDisplay();
+		UpdateContainerVisibility();
 	}
 
 	private void FindSelectionManager()
@@ -121,35 +199,44 @@ public partial class GameHUD : Control
 		}
 	}
 
-	private void UpdateGoldDisplay()
+	private void UpdateContainerVisibility()
 	{
-		// Pas de camp sélectionné ou pas de SelectionManager → afficher 0
-		if (_selectionManager == null)
-		{
-			_goldLabel.Text = "0";
-			return;
-		}
-
-		if (GameManager.Instance == null)
-		{
-			_goldLabel.Text = "0";
-			GD.Print("[HUD] GameManager.Instance est NULL!");
-			return;
-		}
+		if (_selectionManager == null) return;
 
 		var selectedCamp = _selectionManager.GetSelectedCamp();
+		var selectedPort = _selectionManager.GetSelectedPort();
 
-		if (selectedCamp != null && IsInstanceValid(selectedCamp))
+		if (selectedPort != null && IsInstanceValid(selectedPort))
 		{
-			// Camp sélectionné → afficher l'or du camp
-			int gold = selectedCamp.GetGold();
-			_goldLabel.Text = $"{gold}";
+			// Port selectionne -> afficher bateaux, masquer unites
+			_shipsContainer.Visible = true;
+			_unitsContainer.Visible = false;
+		}
+		else if (selectedCamp != null && IsInstanceValid(selectedCamp))
+		{
+			// Camp selectionne -> afficher unites, masquer bateaux
+			_unitsContainer.Visible = true;
+			_shipsContainer.Visible = false;
 		}
 		else
 		{
-			// Pas de camp sélectionné → afficher 0
-			_goldLabel.Text = "0";
+			// Rien selectionne -> masquer les deux
+			_unitsContainer.Visible = false;
+			_shipsContainer.Visible = false;
 		}
 	}
 
+	private void UpdateGoldDisplay()
+	{
+		if (GameManager.Instance == null)
+		{
+			_goldLabel.Text = "0";
+			return;
+		}
+
+		// Toujours afficher l'or de notre equipe
+		int localTeam = GetLocalTeamId();
+		int gold = GameManager.Instance.GetGold(localTeam);
+		_goldLabel.Text = $"{gold}";
+	}
 }

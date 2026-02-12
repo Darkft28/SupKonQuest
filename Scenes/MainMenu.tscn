@@ -1,11 +1,11 @@
 [gd_scene load_steps=8 format=3 uid="uid://d2v1sgk2tlmyr"]
 
 [ext_resource type="Texture2D" uid="uid://b04lypslc5oeg" path="res://Assets/Menu/Texture/Menu_bg.png" id="1_0fbet"]
-[ext_resource type="Texture2D" uid="uid://g4eqed2gwko4" path="res://Assets/Menu/Texture/Title.png" id="2_62e2m"]
+[ext_resource type="Texture2D" uid="uid://j0eqoi64tmqd" path="res://Assets/Menu/Texture/Title_stone.png" id="2_62e2m"]
 [ext_resource type="Script" uid="uid://da4avmuek04c0" path="res://Scripts/UI/ButtonPlay.cs" id="4_iy58a"]
-[ext_resource type="Texture2D" uid="uid://cx4j1ibd7hv4t" path="res://Assets/Menu/Texture/Button.png" id="5_cmrfp"]
+[ext_resource type="Texture2D" uid="uid://clbmelrr2gjaw" path="res://Assets/Menu/Texture/Button_stone.png" id="5_cmrfp"]
 [ext_resource type="Script" uid="uid://cp4uowk8v5pn5" path="res://Scripts/UI/Button3Quit.cs" id="6_fj5cn"]
-[ext_resource type="Script" path="res://Scripts/UI/MainMenu.cs" id="8_mainmenu"]
+[ext_resource type="Script" uid="uid://o7wkq34odbuj" path="res://Scripts/UI/MainMenu.cs" id="8_mainmenu"]
 
 [sub_resource type="StyleBoxTexture" id="StyleBoxTexture_btn"]
 texture = ExtResource("5_cmrfp")
@@ -63,8 +63,8 @@ size_flags_horizontal = 4
 size_flags_vertical = 4
 theme_override_font_sizes/font_size = 24
 theme_override_styles/normal = SubResource("StyleBoxTexture_btn")
-theme_override_styles/hover = SubResource("StyleBoxTexture_btn")
 theme_override_styles/pressed = SubResource("StyleBoxTexture_btn")
+theme_override_styles/hover = SubResource("StyleBoxTexture_btn")
 theme_override_styles/focus = SubResource("StyleBoxTexture_btn")
 text = "Jouer"
 script = ExtResource("4_iy58a")
@@ -76,8 +76,8 @@ size_flags_horizontal = 4
 size_flags_vertical = 4
 theme_override_font_sizes/font_size = 24
 theme_override_styles/normal = SubResource("StyleBoxTexture_btn")
-theme_override_styles/hover = SubResource("StyleBoxTexture_btn")
 theme_override_styles/pressed = SubResource("StyleBoxTexture_btn")
+theme_override_styles/hover = SubResource("StyleBoxTexture_btn")
 theme_override_styles/focus = SubResource("StyleBoxTexture_btn")
 text = "Options"
 
@@ -88,8 +88,8 @@ size_flags_horizontal = 4
 size_flags_vertical = 4
 theme_override_font_sizes/font_size = 24
 theme_override_styles/normal = SubResource("StyleBoxTexture_btn")
-theme_override_styles/hover = SubResource("StyleBoxTexture_btn")
 theme_override_styles/pressed = SubResource("StyleBoxTexture_btn")
+theme_override_styles/hover = SubResource("StyleBoxTexture_btn")
 theme_override_styles/focus = SubResource("StyleBoxTexture_btn")
 text = "Quitter"
 script = ExtResource("6_fj5cn")

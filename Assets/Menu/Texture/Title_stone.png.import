@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://n5gwi87bok6t"
-path="res://.godot/imported/Port_hor.png-20bb9947b31ef49fad9645de8b38bd36.ctex"
+uid="uid://j0eqoi64tmqd"
+path="res://.godot/imported/Title_stone.png-ef7fd9ba63f7f9e8c689365f67f34e19.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://Assets/Objects/Port_hor.png"
-dest_files=["res://.godot/imported/Port_hor.png-20bb9947b31ef49fad9645de8b38bd36.ctex"]
+source_file="res://Assets/Menu/Texture/Title_stone.png"
+dest_files=["res://.godot/imported/Title_stone.png-ef7fd9ba63f7f9e8c689365f67f34e19.ctex"]
 
 [params]
 

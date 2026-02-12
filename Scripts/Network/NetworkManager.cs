@@ -5,7 +5,8 @@ using System.Collections.Generic;
 public partial class NetworkManager : Node
 {
 	public const int DefaultPort = 7777;
-	public const int MaxPlayers = 4;
+	public const int DiscoveryPort = 7778;
+	public const int MaxPlayers = 2;
 
 	private ENetMultiplayerPeer _peer;
 
@@ -24,6 +25,20 @@ public partial class NetworkManager : Node
 
 	// Est-ce qu'on est connecté ?
 	public bool IsConnected => _peer != null && _peer.GetConnectionStatus() == MultiplayerPeer.ConnectionStatus.Connected;
+
+	// Code de salon
+	public string RoomCode { get; private set; } = "";
+
+	// Decouverte UDP LAN
+	private PacketPeerUdp _discoveryPeer;
+	private bool _isSearching = false;
+	private string _searchCode = "";
+	private float _searchTimer = 0f;
+	private float _broadcastTimer = 0f;
+	private const float SearchTimeout = 5f;
+	private const float BroadcastInterval = 0.5f;
+	private const string DiscoveryPrefix = "SUPKONQUEST_DISCOVER:";
+	private const string FoundPrefix = "SUPKONQUEST_FOUND:";
 
 	public override void _Ready()
 	{
@@ -45,11 +60,36 @@ public partial class NetworkManager : Node
 		Multiplayer.ServerDisconnected -= OnServerDisconnected;
 	}
 
+	public override void _Process(double delta)
+	{
+		ProcessDiscovery(delta);
+	}
+
+	// --- Code de salon ---
+
+	private string GenerateRoomCode()
+	{
+		// Pas de I, O, 0, 1 pour eviter les confusions
+		const string chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+		var rng = new RandomNumberGenerator();
+		rng.Randomize();
+		string code = "";
+		for (int i = 0; i < 6; i++)
+		{
+			code += chars[(int)(rng.Randi() % chars.Length)];
+		}
+		return code;
+	}
+
+	// --- Hebergement et connexion ---
+
 	/// <summary>
-	/// Crée un serveur et héberge une partie
+	/// Crée un serveur avec un code de salon et demarre l'ecoute UDP
 	/// </summary>
 	public Error HostGame(int port = DefaultPort)
 	{
+		RoomCode = GenerateRoomCode();
+
 		_peer = new ENetMultiplayerPeer();
 		var error = _peer.CreateServer(port, MaxPlayers);
 
@@ -57,6 +97,7 @@ public partial class NetworkManager : Node
 		{
 			GD.PrintErr($"Erreur lors de la création du serveur: {error}");
 			_peer = null;
+			RoomCode = "";
 			return error;
 		}
 
@@ -65,12 +106,15 @@ public partial class NetworkManager : Node
 		// L'hôte s'ajoute lui-même à la liste des joueurs
 		Players[1] = "Hôte";
 
-		GD.Print($"Serveur démarré sur le port {port}");
+		// Demarrer l'ecoute UDP pour la decouverte LAN
+		StartDiscoveryListener();
+
+		GD.Print($"Serveur demarre sur le port {port} - Code salon: {RoomCode}");
 		return Error.Ok;
 	}
 
 	/// <summary>
-	/// Rejoint une partie via IP
+	/// Rejoint une partie via IP (utilise en interne apres decouverte)
 	/// </summary>
 	public Error JoinGame(string ip, int port = DefaultPort)
 	{
@@ -91,10 +135,32 @@ public partial class NetworkManager : Node
 	}
 
 	/// <summary>
+	/// Recherche un salon par code sur le reseau local via UDP broadcast
+	/// </summary>
+	public void JoinWithCode(string code)
+	{
+		_searchCode = code.ToUpper().Trim();
+		_isSearching = true;
+		_searchTimer = 0f;
+		_broadcastTimer = 0f;
+
+		_discoveryPeer = new PacketPeerUdp();
+		_discoveryPeer.Bind(0); // Port aleatoire pour recevoir les reponses
+		_discoveryPeer.SetBroadcastEnabled(true);
+
+		// Premier broadcast immediat
+		SendDiscoveryBroadcast();
+		GD.Print($"[DISCOVERY] Recherche du salon {_searchCode} sur le reseau local...");
+	}
+
+	/// <summary>
 	/// Se déconnecter du réseau
 	/// </summary>
 	public void Disconnect()
 	{
+		// Fermer la decouverte UDP
+		StopDiscovery();
+
 		if (_peer != null)
 		{
 			_peer.Close();
@@ -103,8 +169,125 @@ public partial class NetworkManager : Node
 
 		Multiplayer.MultiplayerPeer = null;
 		Players.Clear();
+		RoomCode = "";
+		_isSearching = false;
 
 		GD.Print("Déconnecté du réseau");
+	}
+
+	// --- Decouverte UDP LAN ---
+
+	private void StartDiscoveryListener()
+	{
+		_discoveryPeer = new PacketPeerUdp();
+		var error = _discoveryPeer.Bind(DiscoveryPort);
+		if (error != Error.Ok)
+		{
+			GD.PrintErr($"Erreur bind UDP discovery port {DiscoveryPort}: {error}");
+			_discoveryPeer = null;
+		}
+		else
+		{
+			GD.Print($"[DISCOVERY] Ecoute UDP sur le port {DiscoveryPort}");
+		}
+	}
+
+	private void SendDiscoveryBroadcast()
+	{
+		if (_discoveryPeer == null) return;
+
+		string message = $"{DiscoveryPrefix}{_searchCode}";
+		byte[] data = System.Text.Encoding.UTF8.GetBytes(message);
+		_discoveryPeer.SetDestAddress("255.255.255.255", DiscoveryPort);
+		_discoveryPeer.PutPacket(data);
+	}
+
+	private void ProcessDiscovery(double delta)
+	{
+		if (_discoveryPeer == null) return;
+
+		// Host : repondre aux requetes de decouverte
+		if (_peer != null && IsServer && !string.IsNullOrEmpty(RoomCode))
+		{
+			while (_discoveryPeer.GetAvailablePacketCount() > 0)
+			{
+				byte[] packet = _discoveryPeer.GetPacket();
+				string message = System.Text.Encoding.UTF8.GetString(packet);
+
+				string expectedRequest = $"{DiscoveryPrefix}{RoomCode}";
+				if (message == expectedRequest)
+				{
+					string senderIp = (string)_discoveryPeer.Call("get_packet_ip");
+					int senderPort = (int)_discoveryPeer.Call("get_packet_port");
+
+					string response = $"{FoundPrefix}{RoomCode}:{DefaultPort}";
+					byte[] responseData = System.Text.Encoding.UTF8.GetBytes(response);
+
+					_discoveryPeer.SetDestAddress(senderIp, senderPort);
+					_discoveryPeer.PutPacket(responseData);
+
+					GD.Print($"[DISCOVERY] Repondu a {senderIp}:{senderPort} pour le salon {RoomCode}");
+				}
+			}
+		}
+
+		// Client : chercher un salon
+		if (_isSearching)
+		{
+			_searchTimer += (float)delta;
+			_broadcastTimer += (float)delta;
+
+			// Re-broadcast periodiquement
+			if (_broadcastTimer >= BroadcastInterval)
+			{
+				_broadcastTimer = 0f;
+				SendDiscoveryBroadcast();
+			}
+
+			// Verifier les reponses
+			while (_discoveryPeer.GetAvailablePacketCount() > 0)
+			{
+				byte[] packet = _discoveryPeer.GetPacket();
+				string message = System.Text.Encoding.UTF8.GetString(packet);
+				string hostIp = (string)_discoveryPeer.Call("get_packet_ip");
+
+				string expectedPrefix = $"{FoundPrefix}{_searchCode}:";
+				if (message.StartsWith(expectedPrefix))
+				{
+					string portStr = message.Substring(expectedPrefix.Length);
+					int port = int.TryParse(portStr, out int p) ? p : DefaultPort;
+
+					_isSearching = false;
+					RoomCode = _searchCode;
+
+					// Fermer le socket de recherche avant de connecter
+					_discoveryPeer.Close();
+					_discoveryPeer = null;
+
+					GD.Print($"[DISCOVERY] Salon {_searchCode} trouve a {hostIp}:{port}!");
+					JoinGame(hostIp, port);
+					return;
+				}
+			}
+
+			// Timeout
+			if (_searchTimer >= SearchTimeout)
+			{
+				_isSearching = false;
+				StopDiscovery();
+				EmitSignal(SignalName.ConnectionFailed);
+				GD.Print("[DISCOVERY] Timeout: salon non trouve sur le reseau local");
+			}
+		}
+	}
+
+	private void StopDiscovery()
+	{
+		if (_discoveryPeer != null)
+		{
+			_discoveryPeer.Close();
+			_discoveryPeer = null;
+		}
 	}
 
 	// --- Callbacks des événements réseau ---

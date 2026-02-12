@@ -24,7 +24,7 @@ public static class UnitStats
 			Attack = 15f,
 			Defense = 10f,
 			Speed = 150f,
-			Range = 50f,
+			Range = 100f,  // Augmenté de 50 à 100 pour compenser les collisions
 			Price = 50,
 			ProductionTime = 2f
 		},
@@ -79,7 +79,7 @@ public static class UnitStats
 			Attack = 25f,
 			Defense = 20f,
 			Speed = 70f,
-			Range = 60f,
+			Range = 100f,  // Augmenté de 60 à 100 pour compenser les collisions
 			Price = 150,
 			ProductionTime = 5f
 		},

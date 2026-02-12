@@ -1,4 +1,4 @@
-[gd_scene load_steps=14 format=3 uid="uid://do8135h5uk8sg"]
+[gd_scene load_steps=17 format=3 uid="uid://do8135h5uk8sg"]
 
 [ext_resource type="Texture2D" uid="uid://dkxomydt6wuqt" path="res://Assets/Hud/Texture/Barre.png" id="1_cg26j"]
 [ext_resource type="Texture2D" uid="uid://byg3624b0db4o" path="res://Assets/Hud/Texture/MapHUD.png" id="2_s6mu7"]
@@ -13,6 +13,9 @@
 [ext_resource type="Texture2D" uid="uid://d13wt48l5hfnf" path="res://Assets/Units/Characters/Heavy/Heavy_Front.png" id="11_heavy"]
 [ext_resource type="Texture2D" uid="uid://ca7vofpdoodgq" path="res://Assets/Units/Characters/Mortar/Mortar_Front.png" id="12_mortar"]
 [ext_resource type="Texture2D" uid="uid://brkuiocf4e3uk" path="res://Assets/Units/Characters/Tank/Tank_Front.png" id="13_tank"]
+[ext_resource type="Texture2D" path="res://Assets/Units/Ships/Destroyer/Destroyers_Front.png" id="14_destroyer"]
+[ext_resource type="Texture2D" path="res://Assets/Units/Ships/Frégate/frégate_Front.png" id="15_fregate"]
+[ext_resource type="Texture2D" path="res://Assets/Units/Ships/Transport/Transport_Front.png" id="16_transport"]
 
 [node name="GameHUD" type="Control"]
 layout_mode = 3
@@ -287,6 +290,110 @@ text = "150"
 horizontal_alignment = 1
 
 [node name="GoldIcon" type="TextureRect" parent="NinePatchRect/UnitsContainer/Tank/PriceContainer"]
+custom_minimum_size = Vector2(14, 14)
+layout_mode = 2
+texture = ExtResource("5_gold")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="ShipsContainer" type="HBoxContainer" parent="NinePatchRect"]
+visible = false
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 480.0
+offset_top = 27.0
+offset_right = -23.0
+offset_bottom = -29.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/separation = 12
+
+[node name="Destroyer" type="VBoxContainer" parent="NinePatchRect/ShipsContainer"]
+layout_mode = 2
+alignment = 1
+
+[node name="Button" type="TextureButton" parent="NinePatchRect/ShipsContainer/Destroyer"]
+custom_minimum_size = Vector2(50, 50)
+layout_mode = 2
+size_flags_horizontal = 4
+texture_normal = ExtResource("14_destroyer")
+ignore_texture_size = true
+stretch_mode = 5
+
+[node name="PriceContainer" type="HBoxContainer" parent="NinePatchRect/ShipsContainer/Destroyer"]
+layout_mode = 2
+size_flags_horizontal = 4
+theme_override_constants/separation = 2
+
+[node name="Price" type="Label" parent="NinePatchRect/ShipsContainer/Destroyer/PriceContainer"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 12
+text = "300"
+horizontal_alignment = 1
+
+[node name="GoldIcon" type="TextureRect" parent="NinePatchRect/ShipsContainer/Destroyer/PriceContainer"]
+custom_minimum_size = Vector2(14, 14)
+layout_mode = 2
+texture = ExtResource("5_gold")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="Fregate" type="VBoxContainer" parent="NinePatchRect/ShipsContainer"]
+layout_mode = 2
+alignment = 1
+
+[node name="Button" type="TextureButton" parent="NinePatchRect/ShipsContainer/Fregate"]
+custom_minimum_size = Vector2(50, 50)
+layout_mode = 2
+size_flags_horizontal = 4
+texture_normal = ExtResource("15_fregate")
+ignore_texture_size = true
+stretch_mode = 5
+
+[node name="PriceContainer" type="HBoxContainer" parent="NinePatchRect/ShipsContainer/Fregate"]
+layout_mode = 2
+size_flags_horizontal = 4
+theme_override_constants/separation = 2
+
+[node name="Price" type="Label" parent="NinePatchRect/ShipsContainer/Fregate/PriceContainer"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 12
+text = "200"
+horizontal_alignment = 1
+
+[node name="GoldIcon" type="TextureRect" parent="NinePatchRect/ShipsContainer/Fregate/PriceContainer"]
+custom_minimum_size = Vector2(14, 14)
+layout_mode = 2
+texture = ExtResource("5_gold")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="Transport" type="VBoxContainer" parent="NinePatchRect/ShipsContainer"]
+layout_mode = 2
+alignment = 1
+
+[node name="Button" type="TextureButton" parent="NinePatchRect/ShipsContainer/Transport"]
+custom_minimum_size = Vector2(50, 50)
+layout_mode = 2
+size_flags_horizontal = 4
+texture_normal = ExtResource("16_transport")
+ignore_texture_size = true
+stretch_mode = 5
+
+[node name="PriceContainer" type="HBoxContainer" parent="NinePatchRect/ShipsContainer/Transport"]
+layout_mode = 2
+size_flags_horizontal = 4
+theme_override_constants/separation = 2
+
+[node name="Price" type="Label" parent="NinePatchRect/ShipsContainer/Transport/PriceContainer"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 12
+text = "150"
+horizontal_alignment = 1
+
+[node name="GoldIcon" type="TextureRect" parent="NinePatchRect/ShipsContainer/Transport/PriceContainer"]
 custom_minimum_size = Vector2(14, 14)
 layout_mode = 2
 texture = ExtResource("5_gold")

@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://bcs4psp740row"
-path="res://.godot/imported/Port_Front.png-6a495fbe92ac7ab16472bc3d35b4254f.ctex"
+uid="uid://dk314u0qsqluj"
+path="res://.godot/imported/Mortar_Ammo.png-8cc2e5c6e50af98374b333359183986b.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://Assets/Objects/Port_Front.png"
-dest_files=["res://.godot/imported/Port_Front.png-6a495fbe92ac7ab16472bc3d35b4254f.ctex"]
+source_file="res://Assets/Units/Characters/Mortar/Mortar_Ammo.png"
+dest_files=["res://.godot/imported/Mortar_Ammo.png-8cc2e5c6e50af98374b333359183986b.ctex"]
 
 [params]
 

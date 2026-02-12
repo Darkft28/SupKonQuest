@@ -46,6 +46,11 @@ public partial class GameModeMenu : Control
 
 	private void OnSoloPressed()
 	{
+		// Reinitialiser LocalTeamId pour le solo (evite un reste de session multi)
+		var gameState = GetNodeOrNull<GameState>("/root/GameState");
+		if (gameState != null)
+			gameState.LocalTeamId = 1;
+
 		GetTree().ChangeSceneToFile("res://Scenes/Game.tscn");
 	}
 
@@ -57,6 +62,10 @@ public partial class GameModeMenu : Control
 	private void OnIAPressed()
 	{
 		// TODO: Implémenter le mode IA
+		var gameState = GetNodeOrNull<GameState>("/root/GameState");
+		if (gameState != null)
+			gameState.LocalTeamId = 1;
+
 		GetTree().ChangeSceneToFile("res://Scenes/Game.tscn");
 	}
 

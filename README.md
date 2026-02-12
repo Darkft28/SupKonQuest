@@ -286,3 +286,4 @@ Ne jamais push directement sur main. Les features partent de develop et y sont m
 ## Auteur
 
 - **Darkft28** - [GitHub](https://github.com/Darkft28)
+- **Louis27940** - [GitHub](https://github.com/Louis27940)
