@@ -7,6 +7,9 @@ public partial class GameState : Node
 	// Seed de la map pour génération identique
 	public int MapSeed { get; private set; }
 
+	// Equipe locale : Server=1, Client=2
+	public int LocalTeamId { get; set; } = 1;
+
 	// Signaux
 	[Signal] public delegate void GameStartingEventHandler(int seed);
 	[Signal] public delegate void PlayerListUpdatedEventHandler();
@@ -50,6 +53,9 @@ public partial class GameState : Node
 			return;
 		}
 
+		// Serveur = Team 1
+		LocalTeamId = 1;
+
 		// Générer la seed
 		GenerateSeed();
 
@@ -66,6 +72,9 @@ public partial class GameState : Node
 	[Rpc(MultiplayerApi.RpcMode.Authority, CallLocal = false, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
 	private void RpcReceiveSeedAndStart(int seed)
 	{
+		// Client = Team 2
+		LocalTeamId = 2;
+
 		GD.Print($"Seed reçue du serveur: {seed}");
 		SetSeed(seed);
 		EmitSignal(SignalName.GameStarting, seed);

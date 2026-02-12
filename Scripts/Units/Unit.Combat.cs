@@ -118,6 +118,13 @@ public partial class Unit
 
 		float hpBefore = target.GetCurrentHealth();
 
+		// Reseau : si la cible est un puppet (remote), envoyer via RPC
+		if (!target.IsLocalAuthority && !string.IsNullOrEmpty(target.NetworkId))
+		{
+			NetworkSync.Instance?.SendUnitDamage(target.NetworkId, _stats.Attack, TeamId);
+			return;
+		}
+
 		// Autres unites : degats directs
 		target.TakeDamageFrom(_stats.Attack, TeamId);
 
@@ -172,6 +179,13 @@ public partial class Unit
 	private void Die()
 	{
 		GD.Print($"[MORT] {UnitType} T{TeamId} elimine (tue par T{_lastAttackerTeamId})");
+
+		// Reseau : notifier l'autre peer de la mort
+		if (IsLocalAuthority && !string.IsNullOrEmpty(NetworkId))
+		{
+			NetworkSync.Instance?.SendEntityDied(NetworkId);
+		}
+
 		QueueFree();
 	}
 

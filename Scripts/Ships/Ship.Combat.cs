@@ -78,6 +78,12 @@ public partial class Ship
 			_loadedUnits.Clear();
 		}
 
+		// Reseau : notifier l'autre peer de la mort
+		if (IsLocalAuthority && !string.IsNullOrEmpty(NetworkId))
+		{
+			NetworkSync.Instance?.SendEntityDied(NetworkId);
+		}
+
 		QueueFree();
 	}
 

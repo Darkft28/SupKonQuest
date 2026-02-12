@@ -97,6 +97,71 @@ public partial class CampSimple : Area2D
 		return TeamId;
 	}
 
+	// Reseau : ce peer a-t-il l'autorite sur ce camp ?
+	public bool IsLocallyOwned()
+	{
+		var gameState = GetNodeOrNull<GameState>("/root/GameState");
+		int localTeamId = gameState?.LocalTeamId ?? 1;
+
+		// Camps neutres : le serveur (team 1) a l'autorite
+		if (IsNeutralCamp || TeamId == 0)
+			return localTeamId == 1;
+
+		return TeamId == localTeamId;
+	}
+
+	// Reseau : mettre a jour l'autorite des defenseurs apres assignation
+	public void UpdateDefendersAuthority()
+	{
+		bool isLocal = IsLocallyOwned();
+		foreach (var unit in _spawnedUnits)
+		{
+			if (unit != null && IsInstanceValid(unit))
+			{
+				unit.IsLocalAuthority = isLocal;
+			}
+		}
+	}
+
+	// Reseau : appliquer une capture recue du peer distant
+	public void ApplyRemoteCapture(int newTeamId)
+	{
+		int oldTeamId = TeamId;
+		TeamId = newTeamId;
+		IsNeutralCamp = false;
+
+		SetCurrentHealth(MaxHealth);
+
+		if (_healthBarForeground != null)
+			_healthBarForeground.Color = GetTeamColor();
+
+		if (_campIdLabel != null)
+			_campIdLabel.AddThemeColorOverride("font_color", GetTeamColor());
+
+		// Bonus or
+		if (GameManager.Instance != null)
+		{
+			GameManager.Instance.GiveCaptureBonus(newTeamId);
+			if (_localGold > 0)
+			{
+				GameManager.Instance.AddGold(newTeamId, _localGold);
+				_localGold = 0;
+			}
+		}
+
+		// Spawn bonus units (le remote les recevra via RPC spawn)
+		// Pas de spawn ici car c'est le peer autorisant qui spawn et broadcast
+
+		GD.Print($"[NET] Camp #{CampId} capture a distance: Team {oldTeamId} -> {newTeamId}");
+		EmitSignal(SignalName.CampCaptured, newTeamId);
+	}
+
+	// Reseau : reset l'ID counter pour les IDs deterministes
+	public static void ResetCampIdCounter()
+	{
+		_nextCampId = 1;
+	}
+
 	public void SetTeam(int newTeamId, bool isNeutral)
 	{
 		int oldTeamId = TeamId;
@@ -183,6 +248,9 @@ public partial class CampSimple : Area2D
 
 	private void GeneratePassiveGold(double delta)
 	{
+		// Reseau : seul le peer qui possede ce camp genere son or
+		if (!IsLocallyOwned()) return;
+
 		_goldTimer += (float)delta;
 		if (_goldTimer >= 1.0f)
 		{

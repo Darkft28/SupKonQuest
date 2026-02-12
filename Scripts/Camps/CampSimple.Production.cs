@@ -4,6 +4,9 @@ public partial class CampSimple
 {
 	private void ProcessProductionQueue(double delta)
 	{
+		// Reseau : seul le peer qui possede ce camp traite la production
+		if (!IsLocallyOwned()) return;
+
 		// Si rien en production, prendre le prochain dans la queue
 		if (_currentProduction == null && _productionQueue.Count > 0)
 		{
@@ -89,8 +92,17 @@ public partial class CampSimple
 		unit.TeamId = TeamId;
 		unit.IsNeutralCampUnit = false;
 
+		// Reseau : assigner un NetworkId et broadcaster le spawn
+		string networkId = NetworkEntityRegistry.GenerateId();
+		unit.NetworkId = networkId;
+		unit.IsLocalAuthority = true;
+
 		GetParent().AddChild(unit);
 		_spawnedUnits.Add(unit);
+
+		// Envoyer le spawn aux autres peers
+		NetworkSync.Instance?.SendSpawnUnit(networkId, unitType, TeamId,
+			unit.GlobalPosition.X, unit.GlobalPosition.Y, unit.GetCurrentHealth(), false);
 	}
 
 	private void SpawnUnits()
@@ -118,6 +130,10 @@ public partial class CampSimple
 			unit.UnitType = UnitTypes[i];
 			unit.TeamId = TeamId;
 			unit.IsNeutralCampUnit = IsNeutralCamp; //plus fortes
+
+			// Reseau : ID deterministe pour les defenseurs initiaux
+			unit.NetworkId = $"camp_{CampId}_unit_{i}";
+			// L'autorite sera assignee apres AssignCampsToPlayers
 
 			//ajoute l'unité au camp
 			GetParent().AddChild(unit);

@@ -19,6 +19,10 @@ public partial class CampSimple
 		if (IsNeutralCamp)
 			return;
 
+		// Reseau : seul le peer qui possede ce camp fait tirer la tourelle
+		if (!IsLocallyOwned())
+			return;
+
 		// Récupérer toutes les unités
 		var allUnits = GetTree().GetNodesInGroup("units");
 
@@ -50,8 +54,15 @@ public partial class CampSimple
 
 				if (distance <= TurretRange)
 				{
-					// Infliger des dégâts
-					unit.TakeDamage(TurretDamage);
+					// Infliger des degats (localement ou via RPC)
+					if (unit.IsLocalAuthority)
+					{
+						unit.TakeDamage(TurretDamage);
+					}
+					else if (!string.IsNullOrEmpty(unit.NetworkId))
+					{
+						NetworkSync.Instance?.SendUnitDamage(unit.NetworkId, TurretDamage, TeamId);
+					}
 					GD.Print($"Camp #{CampId} (Team {TeamId}) attaque {unit.GetUnitType()} (Team {unitTeamId}) - Degats: {TurretDamage}");
 				}
 			}
@@ -63,6 +74,13 @@ public partial class CampSimple
 		//attaquable seulement si les unitées sont mortes
 		if (!AreAllUnitsDefeated())
 			return false;
+
+		// Reseau : si on n'a pas l'autorite sur ce camp, envoyer via RPC
+		if (!IsLocallyOwned())
+		{
+			NetworkSync.Instance?.SendCampDamage(CampId, damage, attackerTeamId);
+			return true;
+		}
 
 		// Tracker le dernier attaquant
 		_lastAttackerTeamId = attackerTeamId;
@@ -99,23 +117,24 @@ public partial class CampSimple
 	{
 		int oldTeamId = TeamId;
 		TeamId = newTeamId;
-		IsNeutralCamp = false; //les camps neutre ne le sont plus apt=res capture
-
+		IsNeutralCamp = false;
 
 		SetCurrentHealth(MaxHealth);
 
-		//changement couleur barre de vie
 		if (_healthBarForeground != null)
 		{
 			_healthBarForeground.Color = GetTeamColor();
 		}
 
-		//or gagné pour la capture
+		if (_campIdLabel != null)
+		{
+			_campIdLabel.AddThemeColorOverride("font_color", GetTeamColor());
+		}
+
 		if (GameManager.Instance != null)
 		{
 			GameManager.Instance.GiveCaptureBonus(newTeamId);
 
-			// Transferer l'or accumule du camp neutre au conquerant
 			if (_localGold > 0)
 			{
 				GameManager.Instance.AddGold(newTeamId, _localGold);
@@ -124,27 +143,24 @@ public partial class CampSimple
 			}
 		}
 
-		//spawn quelques troupes après capture
 		SpawnBonusUnits();
 
 		GD.Print($"Camp capture! Equipe {oldTeamId} -> Equipe {newTeamId}");
 		EmitSignal(SignalName.CampCaptured, newTeamId);
+
+		// Reseau : notifier l'autre peer
+		NetworkSync.Instance?.SendCampCaptured(CampId, newTeamId);
 	}
 
-	//spawn 3 troupes
 	private void SpawnBonusUnits()
 	{
 		var unitScene = GD.Load<PackedScene>("res://Scenes/Unit.tscn");
 		if (unitScene == null)
 			return;
 
-		//position du camp
 		Vector2 campPos = GlobalPosition;
-
-
 		string[] bonusUnits = new[] { "Infantry", "Range", "Infantry" };
 
-		//spawn en cercle
 		for (int i = 0; i < bonusUnits.Length; i++)
 		{
 			var unit = unitScene.Instantiate<Unit>();
@@ -157,8 +173,16 @@ public partial class CampSimple
 			unit.TeamId = TeamId;
 			unit.IsNeutralCampUnit = false;
 
+			// Reseau : assigner un NetworkId et broadcaster
+			string networkId = NetworkEntityRegistry.GenerateId();
+			unit.NetworkId = networkId;
+			unit.IsLocalAuthority = true;
+
 			GetParent().AddChild(unit);
 			_spawnedUnits.Add(unit);
+
+			NetworkSync.Instance?.SendSpawnUnit(networkId, bonusUnits[i], TeamId,
+				unit.GlobalPosition.X, unit.GlobalPosition.Y, unit.GetCurrentHealth(), false);
 		}
 	}
 }

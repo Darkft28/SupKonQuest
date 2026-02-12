@@ -20,6 +20,11 @@ public partial class Unit : CharacterBody2D
 	[Export] public bool IsNeutralCampUnit = false;
 	[Export] public float DetectionRange = 400f; // Sera recalcule dans _Ready
 
+	// Reseau
+	public string NetworkId = "";
+	public bool IsLocalAuthority = true;
+	private Vector2? _networkTargetPosition = null;
+
 	private float _currentHealth;
 	private float _maxHealth;
 	private UnitStatsData _stats;
@@ -173,8 +178,36 @@ public partial class Unit : CharacterBody2D
 		AddToGroup("units");
 		AddToGroup($"team_{TeamId}");
 
+		// Reseau : enregistrer dans le registre
+		if (!string.IsNullOrEmpty(NetworkId))
+		{
+			NetworkEntityRegistry.Register(NetworkId, this);
+		}
+
 		// État initial
 		_currentState = UnitState.Idle;
+	}
+
+	public override void _ExitTree()
+	{
+		if (!string.IsNullOrEmpty(NetworkId))
+		{
+			NetworkEntityRegistry.Unregister(NetworkId);
+		}
+	}
+
+	// Reseau : appliquer l'etat recu du peer distant
+	public void ApplyNetworkState(Vector2 pos, float health, int state)
+	{
+		_networkTargetPosition = pos;
+		_currentHealth = health;
+		QueueRedraw();
+	}
+
+	// Reseau : retourner l'etat courant en int
+	public int GetStateInt()
+	{
+		return (int)_currentState;
 	}
 
 	private void ChangeState(UnitState newState)
@@ -224,6 +257,16 @@ public partial class Unit : CharacterBody2D
 
 	public override void _PhysicsProcess(double delta)
 	{
+		// Puppet : interpoler vers la position reseau, pas d'IA
+		if (!IsLocalAuthority)
+		{
+			if (_networkTargetPosition.HasValue)
+			{
+				GlobalPosition = GlobalPosition.Lerp(_networkTargetPosition.Value, 10f * (float)delta);
+			}
+			return;
+		}
+
 		// Machine à états principale
 		switch (_currentState)
 		{

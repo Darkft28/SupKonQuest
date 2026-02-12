@@ -14,8 +14,16 @@ public partial class Ship
 		if (_loadedUnits.Count >= _stats.Capacity) return false;
 		if (unit == null || !IsInstanceValid(unit)) return false;
 
+		string unitNetId = unit.NetworkId;
 		_loadedUnits.Add((unit.GetUnitType(), unit.GetTeamId(), unit.GetCurrentHealth()));
 		GD.Print($"[TRANSPORT] {unit.GetUnitType()} T{unit.GetTeamId()} embarque ({_loadedUnits.Count}/{_stats.Capacity}) HP:{unit.GetCurrentHealth():F0}");
+
+		// Reseau : notifier l'autre peer que l'unite a embarque
+		if (!string.IsNullOrEmpty(unitNetId) && !string.IsNullOrEmpty(NetworkId))
+		{
+			NetworkSync.Instance?.SendUnitBoarded(unitNetId, NetworkId);
+		}
+
 		unit.QueueFree();
 		QueueRedraw();
 		return true;
@@ -99,6 +107,14 @@ public partial class Ship
 		var unitScene = GD.Load<PackedScene>("res://Scenes/Unit.tscn");
 		if (unitScene == null) return;
 
+		// Preparer les donnees pour le RPC batch
+		var netIds = new System.Collections.Generic.List<string>();
+		var types = new System.Collections.Generic.List<string>();
+		var posXs = new System.Collections.Generic.List<float>();
+		var posYs = new System.Collections.Generic.List<float>();
+		var hps = new System.Collections.Generic.List<float>();
+		int unloadTeamId = 0;
+
 		for (int i = 0; i < _loadedUnits.Count; i++)
 		{
 			var (type, teamId, health) = _loadedUnits[i];
@@ -112,13 +128,32 @@ public partial class Ship
 			unit.TeamId = teamId;
 			unit.IsNeutralCampUnit = false;
 
-			GetTree().CurrentScene.AddChild(unit);
+			// Reseau : assigner un NetworkId
+			string networkId = NetworkEntityRegistry.GenerateId();
+			unit.NetworkId = networkId;
+			unit.IsLocalAuthority = true;
 
-			// Restaurer la sante d'embarquement
+			GetTree().CurrentScene.AddChild(unit);
 			unit.SetCurrentHealth(health);
+
+			unloadTeamId = teamId;
+			netIds.Add(networkId);
+			types.Add(type);
+			posXs.Add(unit.GlobalPosition.X);
+			posYs.Add(unit.GlobalPosition.Y);
+			hps.Add(health);
 		}
 
 		GD.Print($"[TRANSPORT] {_loadedUnits.Count} unites debarquees a {landPosition}");
+
+		// Reseau : broadcaster le debarquement
+		if (netIds.Count > 0 && !string.IsNullOrEmpty(NetworkId))
+		{
+			NetworkSync.Instance?.SendTransportUnloaded(NetworkId,
+				netIds.ToArray(), types.ToArray(), unloadTeamId,
+				posXs.ToArray(), posYs.ToArray(), hps.ToArray());
+		}
+
 		_loadedUnits.Clear();
 		QueueRedraw();
 	}

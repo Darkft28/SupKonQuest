@@ -241,14 +241,26 @@ public partial class SelectionManager : Node2D
 		_selectedPort = null;
 	}
 
+	private int GetLocalTeamId()
+	{
+		var gameState = GetNodeOrNull<GameState>("/root/GameState");
+		return gameState?.LocalTeamId ?? 1;
+	}
+
 	private void SelectUnit(Unit unit)
 	{
+		// Reseau : ne selectionner que ses propres unites
+		if (unit.GetTeamId() != GetLocalTeamId()) return;
+
 		_selectedUnits.Add(unit);
 		unit.Modulate = new Color(1, 1, 0.5f, 1); // Jaune pour montrer la sélection
 	}
 
 	private void SelectShip(Ship ship)
 	{
+		// Reseau : ne selectionner que ses propres bateaux
+		if (ship.GetTeamId() != GetLocalTeamId()) return;
+
 		_selectedShips.Add(ship);
 		ship.Modulate = new Color(0.5f, 1, 1, 1); // Cyan pour les bateaux
 	}

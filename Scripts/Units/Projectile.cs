@@ -121,7 +121,15 @@ public partial class Projectile : Node2D
 		if (_targetUnit != null && IsInstanceValid(_targetUnit) && _targetUnit.IsInsideTree()
 			&& _targetUnit.GetCurrentHealth() > 0)
 		{
-			_targetUnit.TakeDamageFrom(_damage, _attackerTeamId);
+			// Reseau : si la cible est un puppet, envoyer via RPC
+			if (!_targetUnit.IsLocalAuthority && !string.IsNullOrEmpty(_targetUnit.NetworkId))
+			{
+				NetworkSync.Instance?.SendUnitDamage(_targetUnit.NetworkId, _damage, _attackerTeamId);
+			}
+			else
+			{
+				_targetUnit.TakeDamageFrom(_damage, _attackerTeamId);
+			}
 		}
 		QueueFree();
 	}

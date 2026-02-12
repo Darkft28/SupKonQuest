@@ -11,6 +11,9 @@ public partial class CampSimple
 	{
 		if (!HasPort) return;
 
+		// Reseau : seul le peer qui possede ce camp traite la production navale
+		if (!IsLocallyOwned()) return;
+
 		if (_currentShipProduction == null && _shipProductionQueue.Count > 0)
 		{
 			_currentShipProduction = _shipProductionQueue.Dequeue();
@@ -116,9 +119,18 @@ public partial class CampSimple
 			ship.SetTileMapSol(_tileMapSol);
 		}
 
+		// Reseau : assigner un NetworkId et broadcaster le spawn
+		string networkId = NetworkEntityRegistry.GenerateId();
+		ship.NetworkId = networkId;
+		ship.IsLocalAuthority = true;
+
 		GetParent().AddChild(ship);
 		_spawnedShips.Add(ship);
 		GD.Print($"[Camp #{CampId}] Bateau {shipType} spawne a {spawnPos}");
+
+		// Envoyer le spawn aux autres peers
+		NetworkSync.Instance?.SendSpawnShip(networkId, shipType, TeamId,
+			ship.GlobalPosition.X, ship.GlobalPosition.Y, ship.GetCurrentHealth());
 	}
 
 	private Vector2 FindWaterSpawnPosition(Vector2 portPos)

@@ -86,6 +86,12 @@ public partial class GameHUD : Control
 		}
 	}
 
+	private int GetLocalTeamId()
+	{
+		var gameState = GetNodeOrNull<GameState>("/root/GameState");
+		return gameState?.LocalTeamId ?? 1;
+	}
+
 	private void OnUnitButtonPressed(string unitType)
 	{
 		if (_selectionManager == null)
@@ -102,7 +108,13 @@ public partial class GameHUD : Control
 			return;
 		}
 
-		// Vérifier pourquoi l'achat pourrait échouer
+		// Reseau : ne pas acheter sur un camp qui ne nous appartient pas
+		if (selectedCamp.GetTeamId() != GetLocalTeamId())
+		{
+			GD.Print($"[HUD] Ce camp appartient a l'equipe {selectedCamp.GetTeamId()}, pas a nous ({GetLocalTeamId()})");
+			return;
+		}
+
 		int totalInQueue = selectedCamp.GetQueueCount();
 		int maxQueue = selectedCamp.GetMaxQueueSize();
 
@@ -138,6 +150,13 @@ public partial class GameHUD : Control
 		if (selectedPort == null || !IsInstanceValid(selectedPort))
 		{
 			GD.Print("[HUD] Aucun port sélectionné!");
+			return;
+		}
+
+		// Reseau : ne pas acheter sur un port qui ne nous appartient pas
+		if (selectedPort.GetTeamId() != GetLocalTeamId())
+		{
+			GD.Print($"[HUD] Ce port appartient a l'equipe {selectedPort.GetTeamId()}, pas a nous ({GetLocalTeamId()})");
 			return;
 		}
 
@@ -209,34 +228,15 @@ public partial class GameHUD : Control
 
 	private void UpdateGoldDisplay()
 	{
-		if (_selectionManager == null)
-		{
-			_goldLabel.Text = "0";
-			return;
-		}
-
 		if (GameManager.Instance == null)
 		{
 			_goldLabel.Text = "0";
 			return;
 		}
 
-		var selectedCamp = _selectionManager.GetSelectedCamp();
-		var selectedPort = _selectionManager.GetSelectedPort();
-
-		if (selectedPort != null && IsInstanceValid(selectedPort))
-		{
-			int gold = selectedPort.GetGold();
-			_goldLabel.Text = $"{gold}";
-		}
-		else if (selectedCamp != null && IsInstanceValid(selectedCamp))
-		{
-			int gold = selectedCamp.GetGold();
-			_goldLabel.Text = $"{gold}";
-		}
-		else
-		{
-			_goldLabel.Text = "0";
-		}
+		// Toujours afficher l'or de notre equipe
+		int localTeam = GetLocalTeamId();
+		int gold = GameManager.Instance.GetGold(localTeam);
+		_goldLabel.Text = $"{gold}";
 	}
 }

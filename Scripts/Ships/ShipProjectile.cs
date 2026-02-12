@@ -81,7 +81,15 @@ public partial class ShipProjectile : Node2D
 		if (_targetShip != null && IsInstanceValid(_targetShip) && _targetShip.IsInsideTree()
 			&& _targetShip.GetCurrentHealth() > 0)
 		{
-			_targetShip.TakeDamageFrom(_damage, _attackerTeamId);
+			// Reseau : si la cible est un puppet, envoyer via RPC
+			if (!_targetShip.IsLocalAuthority && !string.IsNullOrEmpty(_targetShip.NetworkId))
+			{
+				NetworkSync.Instance?.SendShipDamage(_targetShip.NetworkId, _damage, _attackerTeamId);
+			}
+			else
+			{
+				_targetShip.TakeDamageFrom(_damage, _attackerTeamId);
+			}
 		}
 		QueueFree();
 	}

@@ -71,16 +71,16 @@ public partial class GameManager : Node
 			return;
 		}
 
-		// Mélanger la liste des camps de manière aléatoire
+		// Utiliser une seed deterministe pour le shuffle (meme resultat sur les 2 peers)
+		var gameState = GetNodeOrNull<GameState>("/root/GameState");
+		int seed = gameState?.MapSeed ?? (int)GD.Randi();
+
 		List<CampSimple> shuffledCamps = new List<CampSimple>(_allCamps);
-		ShuffleList(shuffledCamps);
+		ShuffleList(shuffledCamps, seed);
 
-		// Calculer le nombre de camps par joueur
 		int campsPerPlayer = shuffledCamps.Count / NumberOfPlayers;
-
 		int campIndex = 0;
 
-		// Attribuer les camps équitablement aux joueurs
 		for (int playerId = 1; playerId <= NumberOfPlayers; playerId++)
 		{
 			for (int i = 0; i < campsPerPlayer; i++)
@@ -94,11 +94,9 @@ public partial class GameManager : Node
 				}
 			}
 
-			// Initialiser l'or de l'équipe
 			InitializeTeam(playerId);
 		}
 
-		// Les camps restants deviennent neutres
 		while (campIndex < shuffledCamps.Count)
 		{
 			CampSimple camp = shuffledCamps[campIndex];
@@ -106,16 +104,44 @@ public partial class GameManager : Node
 			GD.Print($"Camp #{camp.GetCampId()} est Neutre");
 			campIndex++;
 		}
+
+		// Mettre a jour l'autorite des defenseurs
+		foreach (var camp in _allCamps)
+		{
+			camp.UpdateDefendersAuthority();
+		}
+
+		// En multijoueur, le serveur broadcast les assignations
+		BroadcastCampAssignments();
 	}
 
-	private void ShuffleList(List<CampSimple> list)
+	private void BroadcastCampAssignments()
 	{
-		RandomNumberGenerator rng = new RandomNumberGenerator();
-		rng.Randomize();
+		if (NetworkSync.Instance == null || !NetworkSync.Instance.IsMultiplayer()) return;
+		if (!NetworkSync.Instance.IsServer()) return;
+
+		var campIds = new List<int>();
+		var teamIds = new List<int>();
+		var isNeutral = new List<bool>();
+
+		foreach (var camp in _allCamps)
+		{
+			campIds.Add(camp.GetCampId());
+			teamIds.Add(camp.GetTeamId());
+			isNeutral.Add(camp.IsNeutralCamp);
+		}
+
+		NetworkSync.Instance.SendSyncCampAssignments(campIds.ToArray(), teamIds.ToArray(), isNeutral.ToArray());
+		GD.Print($"[NET] Camp assignments broadcast: {campIds.Count} camps");
+	}
+
+	private void ShuffleList(List<CampSimple> list, int seed)
+	{
+		var rng = new System.Random(seed);
 
 		for (int i = list.Count - 1; i > 0; i--)
 		{
-			int j = rng.RandiRange(0, i);
+			int j = rng.Next(0, i + 1);
 			CampSimple temp = list[i];
 			list[i] = list[j];
 			list[j] = temp;
@@ -124,13 +150,19 @@ public partial class GameManager : Node
 
 	public override void _Process(double delta)
 	{
-		// Or passif chaque seconde
+		// Or passif chaque seconde (chaque peer gere l'or de sa propre equipe)
 		_passiveGoldTimer += (float)delta;
 		if (_passiveGoldTimer >= 1.0f)
 		{
 			_passiveGoldTimer = 0f;
+			var gameState = GetNodeOrNull<GameState>("/root/GameState");
+			int localTeamId = gameState?.LocalTeamId ?? 0;
+
 			foreach (var teamId in _teamGold.Keys)
 			{
+				// En multi, ne donner l'or passif qu'a notre equipe
+				if (localTeamId > 0 && teamId != localTeamId)
+					continue;
 				_teamGold[teamId] += PassiveGoldPerSecond;
 			}
 		}

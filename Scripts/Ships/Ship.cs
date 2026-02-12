@@ -16,6 +16,11 @@ public partial class Ship : CharacterBody2D
 	[Export] public int TeamId = 1;
 	[Export] public float DetectionRange = 500f;
 
+	// Reseau
+	public string NetworkId = "";
+	public bool IsLocalAuthority = true;
+	private Vector2? _networkTargetPosition = null;
+
 	private float _currentHealth;
 	private float _maxHealth;
 	private ShipStatsData _stats;
@@ -92,6 +97,12 @@ public partial class Ship : CharacterBody2D
 		AddToGroup("ships");
 		AddToGroup($"team_{TeamId}");
 
+		// Reseau : enregistrer dans le registre
+		if (!string.IsNullOrEmpty(NetworkId))
+		{
+			NetworkEntityRegistry.Register(NetworkId, this);
+		}
+
 		_currentState = ShipState.Idle;
 
 		// Chercher le TileMapSol dans la scene si pas deja set
@@ -99,6 +110,22 @@ public partial class Ship : CharacterBody2D
 		{
 			FindTileMapSol();
 		}
+	}
+
+	public override void _ExitTree()
+	{
+		if (!string.IsNullOrEmpty(NetworkId))
+		{
+			NetworkEntityRegistry.Unregister(NetworkId);
+		}
+	}
+
+	// Reseau : appliquer l'etat recu du peer distant
+	public void ApplyNetworkState(Vector2 pos, float health)
+	{
+		_networkTargetPosition = pos;
+		_currentHealth = health;
+		QueueRedraw();
 	}
 
 	private void ChangeState(ShipState newState)
@@ -127,6 +154,16 @@ public partial class Ship : CharacterBody2D
 
 	public override void _PhysicsProcess(double delta)
 	{
+		// Puppet : interpoler vers la position reseau, pas d'IA
+		if (!IsLocalAuthority)
+		{
+			if (_networkTargetPosition.HasValue)
+			{
+				GlobalPosition = GlobalPosition.Lerp(_networkTargetPosition.Value, 10f * (float)delta);
+			}
+			return;
+		}
+
 		switch (_currentState)
 		{
 			case ShipState.Idle:

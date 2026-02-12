@@ -73,6 +73,14 @@ public partial class MapGenerator : Node
 
 		if (!Engine.IsEditorHint())
 		{
+			// Ajouter NetworkSync si pas deja present
+			if (GetNodeOrNull<NetworkSync>("NetworkSync") == null)
+			{
+				var networkSync = new NetworkSync();
+				networkSync.Name = "NetworkSync";
+				AddChild(networkSync);
+			}
+
 			SetupNoise();
 			GenererMap();
 			CallDeferred(nameof(InitTerritory));
@@ -136,6 +144,10 @@ public partial class MapGenerator : Node
 	private void GenererMap()
 	{
 		GD.Print("Génération en cours...");
+
+		// Reset les IDs deterministes pour le multi
+		CampSimple.ResetCampIdCounter();
+		NetworkEntityRegistry.Clear();
 
 		_tileMapSol.Clear();
 		_tileMapObjets.Clear();
