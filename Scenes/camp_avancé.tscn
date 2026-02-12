@@ -1,7 +1,7 @@
 [gd_scene load_steps=4 format=3 uid="uid://dmr5flq3rf88g"]
 
 [ext_resource type="Texture2D" uid="uid://dadcmn6ktuuy2" path="res://Assets/Objects/Camps_UP.png" id="1_5qf04"]
-[ext_resource type="Script" uid="uid://b57i42jahy20f" path="res://Scripts/Game/CampSimple.cs" id="2_script"]
+[ext_resource type="Script" uid="uid://b57i42jahy20f" path="res://Scripts/Camps/CampSimple.cs" id="2_script"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_sucw0"]
 size = Vector2(393, 390)

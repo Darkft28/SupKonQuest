@@ -4,7 +4,7 @@ using System.Collections.Generic;
 public partial class GameManager : Node
 {
 	private static GameManager _instance;
-	
+
 	public static GameManager Instance
 	{
 		get { return _instance; }
@@ -19,36 +19,36 @@ public partial class GameManager : Node
 	private const int PassiveGoldPerSecond = 5;
 
 	private float _passiveGoldTimer = 0f;
-	
-	// Timer pour vérifier la victoire
-	private float _victoryCheckTimer = 0f;
-	private const float VictoryCheckInterval = 1f;
-	
+
 	// Liste des camps de la scène
 	private List<CampSimple> _allCamps = new List<CampSimple>();
-	
+
 	// Nombre de joueurs
 	private const int NumberOfPlayers = 2;
+
+	// Gestionnaire de victoire
+	private VictoryManager _victoryManager;
 
 	public override void _Ready()
 	{
 		_instance = this;
+		_victoryManager = new VictoryManager(this);
 		// L'initialisation des camps sera faite après la génération de la map
 		// via OnMapGenerationComplete()
 	}
-	
+
 	// Méthode publique appelée par MapGenerator après la génération des camps
 	public void OnMapGenerationComplete()
 	{
 		InitializeCamps();
 	}
-	
+
 	private void InitializeCamps()
 	{
 		// Récupérer tous les camps de la scène
 		_allCamps.Clear();
 		var campNodes = GetTree().GetNodesInGroup("camps");
-		
+
 		foreach (var node in campNodes)
 		{
 			if (node is CampSimple camp)
@@ -56,13 +56,13 @@ public partial class GameManager : Node
 				_allCamps.Add(camp);
 			}
 		}
-		
+
 		GD.Print($"Nombre de camps trouves: {_allCamps.Count}");
-		
+
 		// Attribuer les camps aux joueurs
 		AssignCampsToPlayers();
 	}
-	
+
 	private void AssignCampsToPlayers()
 	{
 		if (_allCamps.Count == 0)
@@ -70,16 +70,16 @@ public partial class GameManager : Node
 			GD.Print("Aucun camp a attribuer");
 			return;
 		}
-		
+
 		// Mélanger la liste des camps de manière aléatoire
 		List<CampSimple> shuffledCamps = new List<CampSimple>(_allCamps);
 		ShuffleList(shuffledCamps);
-		
+
 		// Calculer le nombre de camps par joueur
 		int campsPerPlayer = shuffledCamps.Count / NumberOfPlayers;
-		
+
 		int campIndex = 0;
-		
+
 		// Attribuer les camps équitablement aux joueurs
 		for (int playerId = 1; playerId <= NumberOfPlayers; playerId++)
 		{
@@ -93,11 +93,11 @@ public partial class GameManager : Node
 					campIndex++;
 				}
 			}
-			
+
 			// Initialiser l'or de l'équipe
 			InitializeTeam(playerId);
 		}
-		
+
 		// Les camps restants deviennent neutres
 		while (campIndex < shuffledCamps.Count)
 		{
@@ -107,12 +107,12 @@ public partial class GameManager : Node
 			campIndex++;
 		}
 	}
-	
+
 	private void ShuffleList(List<CampSimple> list)
 	{
 		RandomNumberGenerator rng = new RandomNumberGenerator();
 		rng.Randomize();
-		
+
 		for (int i = list.Count - 1; i > 0; i--)
 		{
 			int j = rng.RandiRange(0, i);
@@ -134,91 +134,14 @@ public partial class GameManager : Node
 				_teamGold[teamId] += PassiveGoldPerSecond;
 			}
 		}
-		
+
 		// Vérification périodique de victoire
-		_victoryCheckTimer += (float)delta;
-		if (_victoryCheckTimer >= VictoryCheckInterval)
-		{
-			_victoryCheckTimer = 0f;
-			CheckVictoryCondition();
-		}
+		_victoryManager.Update(delta);
 	}
-	
-	private void CheckVictoryCondition()
+
+	public List<CampSimple> GetAllCamps()
 	{
-		if (_allCamps.Count == 0)
-			return;
-		
-		// Compter les camps par équipe (hors neutres)
-		Dictionary<int, int> campCountByTeam = new Dictionary<int, int>();
-		int nonNeutralCamps = 0;
-		
-		foreach (var camp in _allCamps)
-		{
-			if (camp == null || !IsInstanceValid(camp))
-				continue;
-			
-			int teamId = camp.GetTeamId();
-			
-			// Ignorer les camps neutres (teamId <= 0)
-			if (teamId <= 0)
-				continue;
-			
-			nonNeutralCamps++;
-			
-			if (!campCountByTeam.ContainsKey(teamId))
-			{
-				campCountByTeam[teamId] = 0;
-			}
-			campCountByTeam[teamId]++;
-		}
-		
-		// Vérifier si un joueur possède tous les camps non-neutres
-		foreach (var pair in campCountByTeam)
-		{
-			if (pair.Value == nonNeutralCamps && nonNeutralCamps > 0)
-			{
-				DeclareVictory(pair.Key);
-				return;
-			}
-		}
-	}
-	
-	private void DeclareVictory(int winningTeamId)
-	{
-		GD.Print($"========================================");
-		GD.Print($"   VICTOIRE! Joueur {winningTeamId} a gagne!");
-		GD.Print($"========================================");
-		
-		// Afficher un message à l'écran
-		DisplayVictoryMessage(winningTeamId);
-	}
-	
-	private void DisplayVictoryMessage(int winningTeamId)
-	{
-		// Créer un label pour afficher la victoire
-		Label victoryLabel = new Label();
-		victoryLabel.Text = $"VICTOIRE!\nLe Joueur {winningTeamId} a conquis tous les camps!";
-		victoryLabel.HorizontalAlignment = HorizontalAlignment.Center;
-		victoryLabel.VerticalAlignment = VerticalAlignment.Center;
-		victoryLabel.AddThemeFontSizeOverride("font_size", 48);
-		victoryLabel.AddThemeColorOverride("font_color", new Color(1, 0.84f, 0, 1)); // Or
-		victoryLabel.AddThemeColorOverride("font_outline_color", new Color(0, 0, 0, 1));
-		victoryLabel.AddThemeConstantOverride("outline_size", 5);
-		
-		// Positionner au centre de l'écran
-		victoryLabel.SetAnchorsPreset(Control.LayoutPreset.Center);
-		victoryLabel.GrowHorizontal = Control.GrowDirection.Both;
-		victoryLabel.GrowVertical = Control.GrowDirection.Both;
-		
-		// Ajouter à la scène
-		var canvasLayer = new CanvasLayer();
-		canvasLayer.Layer = 100;
-		canvasLayer.AddChild(victoryLabel);
-		GetTree().Root.AddChild(canvasLayer);
-		
-		// Mettre le jeu en pause
-		GetTree().Paused = true;
+		return _allCamps;
 	}
 
 	public void InitializeTeam(int teamId)

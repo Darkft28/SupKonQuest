@@ -21,22 +21,6 @@ public partial class MapGenerator : Node
 	private const int HalfHeight = MapHeight / 2;
 	private const int TileSize = 128;
 
-	// IDs des tuiles
-	private const int IdEau = 6;
-	private const int IdSable = 1;
-	private const int IdHerbe = 0;
-	private const int IdForet = 3;
-	private const int IdRoche = 5;
-	private const int IdNeige = 4;
-
-	private const int IdObjetArbre = 100;
-	private const int IdObjetMontagne = 101;
-	private const int IdObjetCamp = 102;
-	private const int IdObjetCampUp = 103;
-
-	// Distance min entre camps (en pixels)
-	private const float MinCampDistance = 3500f;
-
 	// Mode test : spawn seulement 2 camps proches pour tester la victoire
 	private const bool TestMode = false;
 
@@ -164,163 +148,13 @@ public partial class MapGenerator : Node
 			}
 		}
 
-		int campCount = 0;
-		var campPositions = new List<Vector2>();
+		// Générer le terrain
+		TerrainGenerator.Generate(_tileMapSol, _tileMapObjets, _noiseElevation, _noiseForet, _seededRandom,
+			HalfWidth, HalfHeight, TileSize, TestMode);
 
-		for (int x = -HalfWidth; x < HalfWidth; x++)
-		{
-			for (int y = -HalfHeight; y < HalfHeight; y++)
-			{
-				float altitude = _noiseElevation.GetNoise2D(x, y);
-				float densiteArbre = _noiseForet.GetNoise2D(x, y);
-
-				int solId = -1;
-				int objetId = -1;
-				bool spawnCamp = false;
-				bool spawnCampUp = false;
-
-				// Biome selon l'altitude
-				if (altitude < -0.2f)
-				{
-					solId = IdEau;
-				}
-				else if (altitude < -0.15f)
-				{
-					solId = IdSable;
-				}
-				else if (altitude < 0.4f)
-				{
-					if (densiteArbre > 0.2f)
-					{
-						solId = IdForet;
-						if (densiteArbre > 0.3f)
-						{
-							if (_seededRandom.NextDouble() < 0.25)
-							{
-								objetId = IdObjetArbre;
-							}
-						}
-					}
-					else
-					{
-						solId = IdHerbe;
-						if (!TestMode && _seededRandom.NextDouble() < 0.001)
-						{
-							Vector2 candidatePos = new Vector2(x * TileSize + TileSize / 2, y * TileSize + TileSize / 2);
-							if (IsFarEnoughFromCamps(candidatePos, campPositions))
-							{
-								spawnCamp = true;
-								if (_seededRandom.NextDouble() < 0.2)
-								{
-									spawnCampUp = true;
-									objetId = IdObjetCampUp;
-								}
-								else
-								{
-									objetId = IdObjetCamp;
-								}
-							}
-							else
-							{
-								// garder le Random synchronisé
-								_seededRandom.NextDouble();
-							}
-						}
-					}
-				}
-				else if (altitude < 0.55f)
-				{
-					solId = IdRoche;
-					if (altitude < 0.66f)
-					{
-						if (_seededRandom.NextDouble() < 0.25)
-						{
-							objetId = IdObjetMontagne;
-						}
-					}
-
-				}
-				else
-				{
-					solId = IdNeige;
-				}
-
-				Vector2I coords = new Vector2I(x, y);
-
-				if (solId != -1)
-				{
-					_tileMapSol.SetCell(coords, solId, new Vector2I(0, 0));
-				}
-
-				if (objetId != -1)
-				{
-					_tileMapObjets.SetCell(coords, objetId, new Vector2I(0, 0));
-				}
-
-				if ((spawnCamp || spawnCampUp) && !Engine.IsEditorHint() && _unitsContainer != null)
-				{
-					PackedScene campSceneToUse = spawnCampUp ? _campUpScene : _campScene;
-					if (campSceneToUse != null)
-					{
-						var camp = campSceneToUse.Instantiate<Node2D>();
-						Vector2 worldPos = new Vector2(x * TileSize + TileSize / 2, y * TileSize + TileSize / 2);
-						camp.GlobalPosition = worldPos;
-						camp.Name = $"Camp_{campCount++}";
-
-						if (camp is CampSimple campSimple)
-						{
-							campSimple.IsNeutralCamp = true;
-							campSimple.TeamId = campCount;
-						}
-
-						_unitsContainer.AddChild(camp);
-						campPositions.Add(worldPos);
-
-						if (camp is CampSimple campPort)
-						{
-							campPort.TrySpawnPort(_tileMapSol);
-						}
-					}
-				}
-			}
-		}
-
-		// Mode test : spawn 2 camps proches au centre de la map
-		if (TestMode && !Engine.IsEditorHint() && _unitsContainer != null && _campScene != null)
-		{
-			Vector2 camp1Pos = new Vector2(0, -800);
-			Vector2 camp2Pos = new Vector2(0, 800);
-
-			var camp1 = _campScene.Instantiate<Node2D>();
-			camp1.GlobalPosition = camp1Pos;
-			camp1.Name = $"Camp_{campCount++}";
-			if (camp1 is CampSimple cs1)
-			{
-				cs1.IsNeutralCamp = true;
-				cs1.TeamId = campCount;
-			}
-			_unitsContainer.AddChild(camp1);
-			if (camp1 is CampSimple csPort1)
-			{
-				csPort1.TrySpawnPort(_tileMapSol);
-			}
-
-			var camp2 = _campScene.Instantiate<Node2D>();
-			camp2.GlobalPosition = camp2Pos;
-			camp2.Name = $"Camp_{campCount++}";
-			if (camp2 is CampSimple cs2)
-			{
-				cs2.IsNeutralCamp = true;
-				cs2.TeamId = campCount;
-			}
-			_unitsContainer.AddChild(camp2);
-			if (camp2 is CampSimple csPort2)
-			{
-				csPort2.TrySpawnPort(_tileMapSol);
-			}
-
-			GD.Print("MODE TEST: 2 camps spawnes au centre de la map");
-		}
+		// Placer les camps
+		int campCount = CampPlacer.PlaceCamps(_tileMapSol, _tileMapObjets, _noiseElevation, _noiseForet, _seededRandom,
+			_unitsContainer, _campScene, _campUpScene, HalfWidth, HalfHeight, TileSize, TestMode);
 
 		GD.Print($"{campCount} camps générés");
 
@@ -329,16 +163,6 @@ public partial class MapGenerator : Node
 		{
 			GameManager.Instance.OnMapGenerationComplete();
 		}
-	}
-
-	private bool IsFarEnoughFromCamps(Vector2 position, List<Vector2> existingCamps)
-	{
-		foreach (Vector2 campPos in existingCamps)
-		{
-			if (position.DistanceTo(campPos) < MinCampDistance)
-				return false;
-		}
-		return true;
 	}
 
 	private void InitTerritory()
@@ -360,7 +184,7 @@ public partial class MapGenerator : Node
 			SetupNoise();
 			GenererMap();
 			CallDeferred(nameof(InitTerritory));
-			
+
 			// Notifier le GameManager de la régénération
 			if (GameManager.Instance != null)
 			{
