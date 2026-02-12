@@ -100,6 +100,10 @@ public partial class CampSimple : Area2D
 	// Reseau : ce peer a-t-il l'autorite sur ce camp ?
 	public bool IsLocallyOwned()
 	{
+		// Solo : tout est local
+		if (NetworkSync.Instance == null || !NetworkSync.Instance.IsMultiplayer())
+			return true;
+
 		var gameState = GetNodeOrNull<GameState>("/root/GameState");
 		int localTeamId = gameState?.LocalTeamId ?? 1;
 

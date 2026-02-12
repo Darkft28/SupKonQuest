@@ -45,6 +45,9 @@ public partial class GameManager : Node
 
 	private void InitializeCamps()
 	{
+		// Reset de l'or entre les parties (GameManager est un autoload persistant)
+		_teamGold.Clear();
+
 		// Récupérer tous les camps de la scène
 		_allCamps.Clear();
 		var campNodes = GetTree().GetNodesInGroup("camps");
@@ -148,22 +151,35 @@ public partial class GameManager : Node
 		}
 	}
 
+	private bool IsMultiplayerActive()
+	{
+		return NetworkSync.Instance != null && NetworkSync.Instance.IsMultiplayer();
+	}
+
 	public override void _Process(double delta)
 	{
-		// Or passif chaque seconde (chaque peer gere l'or de sa propre equipe)
+		// Or passif chaque seconde
 		_passiveGoldTimer += (float)delta;
 		if (_passiveGoldTimer >= 1.0f)
 		{
 			_passiveGoldTimer = 0f;
-			var gameState = GetNodeOrNull<GameState>("/root/GameState");
-			int localTeamId = gameState?.LocalTeamId ?? 0;
 
-			foreach (var teamId in _teamGold.Keys)
+			if (IsMultiplayerActive())
 			{
-				// En multi, ne donner l'or passif qu'a notre equipe
-				if (localTeamId > 0 && teamId != localTeamId)
-					continue;
-				_teamGold[teamId] += PassiveGoldPerSecond;
+				// Multi : chaque peer gere uniquement l'or de sa propre equipe
+				var gameState = GetNodeOrNull<GameState>("/root/GameState");
+				int localTeamId = gameState?.LocalTeamId ?? 1;
+
+				if (_teamGold.ContainsKey(localTeamId))
+					_teamGold[localTeamId] += PassiveGoldPerSecond;
+			}
+			else
+			{
+				// Solo : toutes les equipes recoivent l'or passif
+				foreach (var teamId in _teamGold.Keys)
+				{
+					_teamGold[teamId] += PassiveGoldPerSecond;
+				}
 			}
 		}
 

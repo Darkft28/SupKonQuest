@@ -104,6 +104,7 @@ public partial class GameState : Node
 	public void ReturnToMainMenu()
 	{
 		_networkManager?.Disconnect();
+		LocalTeamId = 1;
 		GetTree().ChangeSceneToFile("res://Scenes/MainMenu.tscn");
 	}
 }
