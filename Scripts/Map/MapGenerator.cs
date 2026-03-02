@@ -152,13 +152,15 @@ public partial class MapGenerator : Node
 		_tileMapSol.Clear();
 		_tileMapObjets.Clear();
 
+		// Detruire et recreer le conteneur d'unites pour un reset complet
 		if (_unitsContainer != null)
 		{
-			foreach (Node child in _unitsContainer.GetChildren())
-			{
-				child.QueueFree();
-			}
+			RemoveChild(_unitsContainer);
+			_unitsContainer.QueueFree();
 		}
+		_unitsContainer = new Node2D();
+		_unitsContainer.Name = "Units";
+		AddChild(_unitsContainer);
 
 		// Générer le terrain
 		TerrainGenerator.Generate(_tileMapSol, _tileMapObjets, _noiseElevation, _noiseForet, _seededRandom,
@@ -191,17 +193,17 @@ public partial class MapGenerator : Node
 	{
 		if (@event.IsActionPressed("ui_accept"))
 		{
-			_territoryManager?.QueueFree();
-			_territoryManager = null;
+			// Supprimer le territoire existant
+			if (_territoryManager != null)
+			{
+				RemoveChild(_territoryManager);
+				_territoryManager.QueueFree();
+				_territoryManager = null;
+			}
+
 			SetupNoise();
 			GenererMap();
-			CallDeferred(nameof(InitTerritory));
-
-			// Notifier le GameManager de la régénération
-			if (GameManager.Instance != null)
-			{
-				GameManager.Instance.OnMapGenerationComplete();
-			}
+			InitTerritory();
 		}
 	}
 }
