@@ -35,9 +35,16 @@ godot --path . --run
 ## Architecture
 
 ### Directory Structure
-- `Scripts/Game/` - Core game logic (map generation, units, camera, managers, selection)
-- `Scripts/Network/` - Multiplayer networking and state sync
-- `Scripts/UI/` - User interface, HUD, menus, minimap
+- `Scripts/Units/` - Unit.cs + partials (Combat, Movement, Healing, Transport, Visuals), UnitStats, Projectile
+- `Scripts/Ships/` - Ship.cs + partials (Combat, Movement, Transport, Visuals), ShipStats, ShipProjectile
+- `Scripts/Camps/` - CampSimple.cs + partials (Production, Naval, Defense, Visuals)
+- `Scripts/Map/` - MapGenerator, TerrainGenerator (static), CampPlacer (static), TerritoryManager
+- `Scripts/Selection/` - SelectionManager
+- `Scripts/Camera/` - CameraController
+- `Scripts/Economy/` - GameManager, VictoryManager
+- `Scripts/Network/` - NetworkManager, GameState, NetworkSync, NetworkEntityRegistry
+- `Scripts/AI/` - AIController (Easy/Medium/Hard, controls team 2)
+- `Scripts/UI/` - GameHUD, LobbyUI, Minimap, MainMenu, GameModeMenu, LocalizationManager
 - `Scenes/` - Godot scene files (.tscn)
 - `Assets/` - Textures, sprites, unit characters
 
@@ -63,11 +70,14 @@ Three autoloaded managers defined in project.godot:
 | Heavy | 150g | 150 | 25 | 20 | 70 | 60 | 5s |
 | Tank | 200g | 200 | 30 | 25 | 50 | 100 | 6s |
 
-Damage formula: `max(0, damage - defense)`. Neutral camp units have 1.5x HP.
+Damage formula: `damage * 100f / (100f + totalDefense)` (scalable reduction, NOT subtractive). Neutral camp units have 1.5x HP.
+AntiArmor deals x2 damage vs Heavy. Mortar AoE splash 200px radius, 20 flat damage (ignores defense).
 
-**CampSimple** - Base camps with health (500 HP), capture mechanics, and production queue (max 7 units). Generates gold passively (50 gold/sec). Spawns units in circular pattern (350px radius). Capture requires killing all defending units first.
+**CampSimple** - Base camps with health (500 HP), capture mechanics, and production queue (max 7 units). Generates gold passively (50 gold/sec). Spawns units in circular pattern (525px radius). Capture requires killing all defending units first. Has a defensive turret (10 dmg/sec at 600px). Camps adjacent to water auto-spawn a port (naval production queue, max 5 ships).
 
-**SelectionManager** - Handles unit/camp selection via click or box selection. Selected units can be moved with right-click. Stuck detection after 2s of no movement.
+**Ships** - CharacterBody2D naval units with own state machine. 3 types: Transport (200HP, capacity 10 units, 150g), Fregate (180HP, 20atk, 200g), Destroyer (250HP, 35atk, 300g). Ship.tscn at `Scenes/Ship.tscn`. Assets in `Assets/Units/Ships/`. Destroyer textures = `Destroyers_*.png`.
+
+**SelectionManager** - Handles unit/camp/ship/port selection via click or box selection. Selection priority: port > camp > ship > unit. Selected units/ships moved with right-click. Right-click on allied Transport = auto-board. Stuck detection after 2s of no movement.
 
 **MapGenerator** - FastNoiseLite Perlin noise on 256x256 grid. Biomes by altitude: Water (<-0.2), Sand, Grass/Forest, Rock, Snow (>0.55). Deterministic seeded generation for multiplayer sync.
 
@@ -81,6 +91,15 @@ Damage formula: `max(0, damage - defense)`. Neutral camp units have 1.5x HP.
 - Deterministic systems via seeded random for network sync
 - All network state changes use RPCs with Authority mode
 - Production queue system with async unit spawning
+
+## Known Bugs (from audit 2026-03-05)
+
+- **OnDefenderDied() never called** (HIGH): Unit death does not signal the owning camp. Mutual-kill tracking (`_lastAttackerTeamId`) never triggered. Fix: call camp callback from `Unit.Combat.Die()`.
+- **Support aura stacking unlimited** (MEDIUM): 10 Support units = +100 defense bonus, can make units unkillable. Fix: cap bonus at +40-50 in `Unit.Healing.GetSupportDefenseBonus()`.
+- **HUD price mismatch** (HIGH): GameHUD.tscn displays wrong prices for AntiArmor (90 vs 120), Heavy (120 vs 150), Mortar (110 vs 130), Tank (150 vs 200). Fix: sync .tscn with UnitStats.cs values.
+- **No gold refund on camp capture mid-production** (MEDIUM): Gold spent on queued units is lost if camp is captured. Fix: refund queue cost in SetTeam().
+- **No multiplayer reconnection** (HIGH): Disconnect = end of game with no recovery path.
+- **Gold desync risk in multiplayer** (MEDIUM): No RPC gold sync; diverges over time if a peer misses passive income ticks.
 
 ## Code Conventions
 

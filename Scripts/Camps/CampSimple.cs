@@ -7,7 +7,7 @@ public partial class CampSimple : Area2D
 	[Export] public int TeamId = 1; // id équipe
 	[Export] public bool IsNeutralCamp = false; // camp neutre
 	[Export] public float MaxHealth = 500f; // pv max du camp
-	[Export] public int GoldPerSecond = 50; // or généré par seconde (50 pour tests)
+	[Export] public int GoldPerSecond = 500; // or généré par seconde (50 pour tests)
 
 	// Paramètres de la tourelle
 	[Export] public float TurretDamage = 10f; // dégâts par seconde

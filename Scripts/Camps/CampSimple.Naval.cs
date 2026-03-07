@@ -229,6 +229,52 @@ public partial class CampSimple
 		return _shipProductionQueue.ToArray();
 	}
 
+	public const int PortCost = 500;
+
+	public bool CanBuyPort()
+	{
+		if (HasPort) return false;
+		if (IsNeutralCamp) return false;
+		if (GameManager.Instance == null) return false;
+		return GameManager.Instance.CanAfford(TeamId, PortCost);
+	}
+
+	public bool BuyPort()
+	{
+		if (!CanBuyPort()) return false;
+		if (!GameManager.Instance.SpendGold(TeamId, PortCost)) return false;
+		GD.Print($"[PORT] Camp #{CampId} - Choisissez l'emplacement du port.");
+		return true;
+	}
+
+	public bool PlacePortAt(Vector2 worldPos)
+	{
+		if (_tileMapSol == null) return false;
+
+		Vector2I clickedTile = _tileMapSol.LocalToMap(_tileMapSol.ToLocal(worldPos));
+		bool hasWater = false;
+		for (int dx = -3; dx <= 3 && !hasWater; dx++)
+			for (int dy = -3; dy <= 3 && !hasWater; dy++)
+				if (_tileMapSol.GetCellSourceId(clickedTile + new Vector2I(dx, dy)) == 6)
+					hasWater = true;
+
+		if (!hasWater)
+		{
+			GD.Print("[PORT] Pas d'eau à proximité de cet emplacement.");
+			return false;
+		}
+
+		HasPort = true;
+		_portSprite = new Sprite2D();
+		_portSprite.Texture = GD.Load<Texture2D>("res://Assets/Objects/Port.png");
+		_portSprite.Scale = new Vector2(0.15f, 0.15f);
+		AddChild(_portSprite);
+		_portSprite.GlobalPosition = worldPos;
+
+		GD.Print($"[PORT] Camp #{CampId} - Port placé à {worldPos}");
+		return true;
+	}
+
 	public void TrySpawnPort(TileMapLayer tileMapSol)
 	{
 		_tileMapSol = tileMapSol;

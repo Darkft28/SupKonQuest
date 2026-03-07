@@ -10,6 +10,9 @@ public partial class GameHUD : Control
 	private Dictionary<string, TextureButton> _shipButtons = new Dictionary<string, TextureButton>();
 	private HBoxContainer _unitsContainer;
 	private HBoxContainer _shipsContainer;
+	private Button _territoryButton;
+	private HBoxContainer _brushSizeContainer;
+	private Button _portButton;
 
 	// Liste des types d'unités disponibles dans le HUD
 	private static readonly string[] UnitTypes = new[]
@@ -41,6 +44,8 @@ public partial class GameHUD : Control
 		ConnectUnitButtons();
 		ConnectShipButtons();
 		CreateQuitButton();
+		CreateTerritoryButton();
+		CreatePortButton();
 
 		GD.Print("[HUD] GameHUD initialisé");
 	}
@@ -60,10 +65,80 @@ public partial class GameHUD : Control
 		btn.OffsetBottom = 45f;
 		btn.Pressed += () =>
 		{
+			TerritoryManager.Instance?.SetBuyMode(false);
+			TerritoryManager.Instance?.CancelPortPlacement();
 			GetTree().Paused = false;
 			GetTree().ChangeSceneToFile("res://Scenes/MainMenu.tscn");
 		};
 		AddChild(btn);
+	}
+
+	private void CreateTerritoryButton()
+	{
+		_territoryButton = new Button();
+		_territoryButton.Text = $"🗺 Territoire ({TerritoryManager.TileCost}g/tuile)";
+		_territoryButton.AddThemeFontSizeOverride("font_size", 15);
+		_territoryButton.ToggleMode = true;
+		_territoryButton.AnchorLeft   = 1f;
+		_territoryButton.AnchorTop    = 0f;
+		_territoryButton.AnchorRight  = 1f;
+		_territoryButton.AnchorBottom = 0f;
+		_territoryButton.OffsetLeft   = -300f;
+		_territoryButton.OffsetTop    = 10f;
+		_territoryButton.OffsetRight  = -130f;
+		_territoryButton.OffsetBottom = 45f;
+		_territoryButton.Toggled += (pressed) =>
+		{
+			TerritoryManager.Instance?.SetBuyMode(pressed);
+			_brushSizeContainer.Visible = pressed;
+		};
+		AddChild(_territoryButton);
+
+		_brushSizeContainer = new HBoxContainer();
+		_brushSizeContainer.AnchorLeft   = 1f;
+		_brushSizeContainer.AnchorTop    = 0f;
+		_brushSizeContainer.AnchorRight  = 1f;
+		_brushSizeContainer.AnchorBottom = 0f;
+		_brushSizeContainer.OffsetLeft   = -300f;
+		_brushSizeContainer.OffsetTop    = 50f;
+		_brushSizeContainer.OffsetRight  = -130f;
+		_brushSizeContainer.OffsetBottom = 85f;
+		_brushSizeContainer.Visible = false;
+		AddChild(_brushSizeContainer);
+
+		foreach (var (label, size) in new[] { ("1×1", 1), ("3×3", 3), ("5×5", 5) })
+		{
+			int s = size; string l = label;
+			var sizeBtn = new Button();
+			sizeBtn.Text = l;
+			sizeBtn.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+			sizeBtn.Pressed += () => TerritoryManager.Instance?.SetBrushSize(s);
+			_brushSizeContainer.AddChild(sizeBtn);
+		}
+	}
+
+	private void CreatePortButton()
+	{
+		_portButton = new Button();
+		_portButton.Text = $"⚓ Port ({CampSimple.PortCost}g)";
+		_portButton.AddThemeFontSizeOverride("font_size", 16);
+		_portButton.AnchorLeft   = 0.5f;
+		_portButton.AnchorTop    = 1f;
+		_portButton.AnchorRight  = 0.5f;
+		_portButton.AnchorBottom = 1f;
+		_portButton.OffsetLeft   = -80f;
+		_portButton.OffsetTop    = -110f;
+		_portButton.OffsetRight  = 80f;
+		_portButton.OffsetBottom = -75f;
+		_portButton.Visible = false;
+		_portButton.Pressed += () =>
+		{
+			var camp = _selectionManager?.GetSelectedCamp();
+			if (camp == null || !IsInstanceValid(camp)) return;
+			if (camp.BuyPort())
+				TerritoryManager.Instance?.StartPortPlacement(camp);
+		};
+		AddChild(_portButton);
 	}
 
 	private void ConnectUnitButtons()
@@ -245,6 +320,18 @@ public partial class GameHUD : Control
 			// Rien selectionne -> masquer les deux
 			_unitsContainer.Visible = false;
 			_shipsContainer.Visible = false;
+		}
+
+		// Bouton port : visible si camp allie sans port selectionne
+		if (_portButton != null)
+		{
+			bool showPort = selectedCamp != null && IsInstanceValid(selectedCamp)
+				&& selectedCamp.GetTeamId() == GetLocalTeamId()
+				&& !selectedCamp.HasPort
+				&& !selectedCamp.IsNeutralCamp;
+			_portButton.Visible = showPort;
+			if (showPort)
+				_portButton.Disabled = !selectedCamp.CanBuyPort();
 		}
 	}
 

@@ -16,7 +16,7 @@ public partial class GameManager : Node
 	// Or de départ et bonus de capture
 	private const int StartingGold = 100;
 	private const int CaptureBonus = 50;
-	private const int PassiveGoldPerSecond = 5;
+	private const int PassiveGoldPerSecond = 500;
 	private const int RegionBonusGold = 30; // Bonus si on controle toute une region
 
 	private float _passiveGoldTimer = 0f;

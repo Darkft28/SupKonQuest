@@ -67,15 +67,11 @@ public static class CampPlacer
 										campSimple.IsNeutralCamp = true;
 										campSimple.TeamId = campCount;
 										campSimple.RegionId = GetRegionId(worldPos);
+										campSimple.SetTileMapSol(sol);
 									}
 
 									unitsContainer.AddChild(camp);
 									campPositions.Add(worldPos);
-
-									if (camp is CampSimple campPort)
-									{
-										campPort.TrySpawnPort(sol);
-									}
 								}
 							}
 						}
@@ -130,12 +126,9 @@ public static class CampPlacer
 		{
 			cs1.IsNeutralCamp = true;
 			cs1.TeamId = campCount;
+			cs1.SetTileMapSol(sol);
 		}
 		unitsContainer.AddChild(camp1);
-		if (camp1 is CampSimple csPort1)
-		{
-			csPort1.TrySpawnPort(sol);
-		}
 
 		var camp2 = campScene.Instantiate<Node2D>();
 		camp2.GlobalPosition = camp2Pos;
@@ -144,12 +137,9 @@ public static class CampPlacer
 		{
 			cs2.IsNeutralCamp = true;
 			cs2.TeamId = campCount;
+			cs2.SetTileMapSol(sol);
 		}
 		unitsContainer.AddChild(camp2);
-		if (camp2 is CampSimple csPort2)
-		{
-			csPort2.TrySpawnPort(sol);
-		}
 
 		GD.Print("MODE TEST: 2 camps spawnes au centre de la map");
 		return campCount;
