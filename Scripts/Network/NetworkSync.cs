@@ -15,6 +15,12 @@ public partial class NetworkSync : Node
 		GD.Print("[NET] NetworkSync pret");
 	}
 
+	public override void _ExitTree()
+	{
+		if (Instance == this)
+			Instance = null;
+	}
+
 	public override void _Process(double delta)
 	{
 		if (!IsMultiplayer()) return;
@@ -29,8 +35,10 @@ public partial class NetworkSync : Node
 
 	public bool IsMultiplayer()
 	{
-		var mp = Multiplayer;
-		return mp != null && mp.HasMultiplayerPeer() && mp.MultiplayerPeer.GetConnectionStatus() == MultiplayerPeer.ConnectionStatus.Connected;
+		// Utilise NetworkManager.IsConnected qui vérifie le peer ENet réel (_peer != null)
+		// L'OfflineMultiplayerPeer par défaut de Godot 4 trompe HasMultiplayerPeer()
+		var nm = GetNodeOrNull<NetworkManager>("/root/NetworkManager");
+		return nm?.IsConnected ?? false;
 	}
 
 	public bool IsServer()

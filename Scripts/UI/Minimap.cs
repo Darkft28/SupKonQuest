@@ -11,7 +11,7 @@ public partial class Minimap : SubViewportContainer
 	private SubViewport _viewport;
 	private Camera2D _minimapCamera;
 	private Camera2D _mainCamera;
-	private float _minimapZoom;
+	private Vector2 _minimapZoom; // zoom par axe pour remplir le viewport sans gris
 	private Vector2 _mapPixelSize;
 
 	public override void _Ready()
@@ -22,19 +22,32 @@ public partial class Minimap : SubViewportContainer
 		// On dit au Viewport d'utiliser le même monde 2D que la fenêtre principale
 		_viewport.World2D = GetTree().Root.GetViewport().World2D;
 
+		// Lire la taille de la map depuis GameState si disponible
+		var gameState = GetNodeOrNull<GameState>("/root/GameState");
+		if (gameState != null)
+		{
+			MapWidth = MapHeight = gameState.MapSize switch
+			{
+				GameState.MapSizePreset.Small => 128,
+				GameState.MapSizePreset.Large => 384,
+				_ => 256
+			};
+		}
+
 		// Calculer la taille totale de la map en pixels
 		_mapPixelSize = new Vector2(MapWidth * TileSize, MapHeight * TileSize);
 
 		// Taille du viewport de la minimap
 		Vector2 viewportSize = _viewport.Size;
 
-		// Calculer le zoom pour que toute la map rentre dans le viewport
-		float zoomX = viewportSize.X / _mapPixelSize.X;
-		float zoomY = viewportSize.Y / _mapPixelSize.Y;
-		_minimapZoom = Mathf.Min(zoomX, zoomY);
+		// Zoom par axe : la map remplit exactement le viewport (pas de gris hors-carte)
+		_minimapZoom = new Vector2(
+			viewportSize.X / _mapPixelSize.X,
+			viewportSize.Y / _mapPixelSize.Y
+		);
 
 		// Appliquer le zoom et centrer la caméra
-		_minimapCamera.Zoom = new Vector2(_minimapZoom, _minimapZoom);
+		_minimapCamera.Zoom = _minimapZoom;
 		_minimapCamera.Position = Vector2.Zero;
 
 		// Chercher la caméra principale
@@ -85,16 +98,20 @@ public partial class Minimap : SubViewportContainer
 		// Le centre de la map (0,0) correspond au centre de la minimap
 		Vector2 minimapCenter = minimapSize / 2;
 
-		// Facteur de conversion : pixels monde -> pixels minimap
-		float scale = _minimapZoom;
+		// Conversion monde -> minimap avec zoom par axe
+		Vector2 rectCenterInMinimap = minimapCenter + new Vector2(
+			cameraPos.X * _minimapZoom.X,
+			cameraPos.Y * _minimapZoom.Y
+		);
+		Vector2 rectSizeInMinimap = new Vector2(
+			visibleWorldSize.X * _minimapZoom.X,
+			visibleWorldSize.Y * _minimapZoom.Y
+		);
 
-		// Position du rectangle dans la minimap
-		Vector2 rectCenterInMinimap = minimapCenter + cameraPos * scale;
-		Vector2 rectSizeInMinimap = visibleWorldSize * scale;
-
-		// Calculer le rectangle
+		// Calculer le rectangle et le borner aux limites de la minimap
 		Vector2 rectTopLeft = rectCenterInMinimap - rectSizeInMinimap / 2;
 		Rect2 viewRect = new Rect2(rectTopLeft, rectSizeInMinimap);
+		viewRect = viewRect.Intersection(new Rect2(Vector2.Zero, minimapSize));
 
 		// Dessiner le contour du rectangle
 		DrawRect(viewRect, ViewRectColor, false, ViewRectBorderWidth);
@@ -135,8 +152,11 @@ public partial class Minimap : SubViewportContainer
 		// Position relative au centre de la minimap
 		Vector2 relativePos = clickPos - minimapCenter;
 
-		// Convertir en coordonnées monde
-		Vector2 worldPos = relativePos / _minimapZoom;
+		// Convertir en coordonnées monde avec zoom par axe
+		Vector2 worldPos = new Vector2(
+			relativePos.X / _minimapZoom.X,
+			relativePos.Y / _minimapZoom.Y
+		);
 
 		// Déplacer la caméra principale
 		_mainCamera.Position = worldPos;

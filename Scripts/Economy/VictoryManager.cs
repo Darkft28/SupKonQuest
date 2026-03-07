@@ -6,6 +6,7 @@ public class VictoryManager
 	private readonly GameManager _gameManager;
 	private float _victoryCheckTimer = 0f;
 	private const float VictoryCheckInterval = 1f;
+	private bool _victoryDeclared = false;
 
 	public VictoryManager(GameManager gameManager)
 	{
@@ -24,6 +25,8 @@ public class VictoryManager
 
 	private void CheckVictoryCondition()
 	{
+		if (_victoryDeclared) return;
+
 		var allCamps = _gameManager.GetAllCamps();
 		if (allCamps.Count == 0)
 			return;
@@ -65,6 +68,8 @@ public class VictoryManager
 
 	private void DeclareVictory(int winningTeamId)
 	{
+		_victoryDeclared = true;
+
 		GD.Print($"========================================");
 		GD.Print($"   VICTOIRE! Joueur {winningTeamId} a gagne!");
 		GD.Print($"========================================");
@@ -75,25 +80,45 @@ public class VictoryManager
 
 	private void DisplayVictoryMessage(int winningTeamId)
 	{
-		// Créer un label pour afficher la victoire
-		Label victoryLabel = new Label();
-		victoryLabel.Text = $"VICTOIRE!\nLe Joueur {winningTeamId} a conquis tous les camps!";
+		var canvasLayer = new CanvasLayer();
+		canvasLayer.Layer = 100;
+
+		// Conteneur centré
+		var vbox = new VBoxContainer();
+		vbox.SetAnchorsPreset(Control.LayoutPreset.Center);
+		vbox.GrowHorizontal = Control.GrowDirection.Both;
+		vbox.GrowVertical = Control.GrowDirection.Both;
+		vbox.AddThemeConstantOverride("separation", 20);
+
+		// Label victoire
+		var victoryLabel = new Label();
+		string victoryText = LocalizationManager.Instance != null
+			? LocalizationManager.Instance.GetText("victory")
+			: "VICTOIRE!";
+		victoryLabel.Text = $"{victoryText}\n{winningTeamId}";
 		victoryLabel.HorizontalAlignment = HorizontalAlignment.Center;
-		victoryLabel.VerticalAlignment = VerticalAlignment.Center;
 		victoryLabel.AddThemeFontSizeOverride("font_size", 48);
-		victoryLabel.AddThemeColorOverride("font_color", new Color(1, 0.84f, 0, 1)); // Or
+		victoryLabel.AddThemeColorOverride("font_color", new Color(1, 0.84f, 0, 1));
 		victoryLabel.AddThemeColorOverride("font_outline_color", new Color(0, 0, 0, 1));
 		victoryLabel.AddThemeConstantOverride("outline_size", 5);
 
-		// Positionner au centre de l'écran
-		victoryLabel.SetAnchorsPreset(Control.LayoutPreset.Center);
-		victoryLabel.GrowHorizontal = Control.GrowDirection.Both;
-		victoryLabel.GrowVertical = Control.GrowDirection.Both;
+		// Bouton retour menu
+		var menuButton = new Button();
+		menuButton.Text = LocalizationManager.Instance != null
+			? LocalizationManager.Instance.GetText("main_menu")
+			: "Menu principal";
+		menuButton.AddThemeFontSizeOverride("font_size", 28);
+		menuButton.ProcessMode = Node.ProcessModeEnum.Always;
+		menuButton.Pressed += () =>
+		{
+			canvasLayer.QueueFree();
+			_gameManager.GetTree().Paused = false;
+			_gameManager.GetTree().ChangeSceneToFile("res://Scenes/MainMenu.tscn");
+		};
 
-		// Ajouter à la scène
-		var canvasLayer = new CanvasLayer();
-		canvasLayer.Layer = 100;
-		canvasLayer.AddChild(victoryLabel);
+		vbox.AddChild(victoryLabel);
+		vbox.AddChild(menuButton);
+		canvasLayer.AddChild(vbox);
 		_gameManager.GetTree().Root.AddChild(canvasLayer);
 
 		// Mettre le jeu en pause

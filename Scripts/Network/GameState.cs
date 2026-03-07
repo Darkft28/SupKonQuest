@@ -4,11 +4,22 @@ using System.Collections.Generic;
 
 public partial class GameState : Node
 {
+	public enum MapSizePreset { Small, Medium, Large }
+
 	// Seed de la map pour génération identique
 	public int MapSeed { get; private set; }
 
 	// Equipe locale : Server=1, Client=2
 	public int LocalTeamId { get; set; } = 1;
+
+	// Mode IA : le joueur affronte un adversaire controle par l'ordinateur
+	public bool IsAIMode { get; set; } = false;
+	public AIController.Difficulty AILevel { get; set; } = AIController.Difficulty.Medium;
+
+	// Paramètres de partie solo
+	public MapSizePreset MapSize { get; set; } = MapSizePreset.Medium;
+	public int MaxCamps { get; set; } = 6;
+	public bool IsFreeForAll { get; set; } = false;
 
 	// Signaux
 	[Signal] public delegate void GameStartingEventHandler(int seed);
@@ -105,6 +116,8 @@ public partial class GameState : Node
 	{
 		_networkManager?.Disconnect();
 		LocalTeamId = 1;
+		MapSeed = 0;
+		IsFreeForAll = false;
 		GetTree().ChangeSceneToFile("res://Scenes/MainMenu.tscn");
 	}
 }

@@ -66,7 +66,7 @@ public partial class Unit
 			}
 		}
 
-		return bonus;
+		return Mathf.Min(bonus, 40f); // cap : 4 supports max actifs
 	}
 
 	private Unit FindWoundedAllyInRange()

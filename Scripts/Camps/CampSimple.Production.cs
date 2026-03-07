@@ -91,6 +91,7 @@ public partial class CampSimple
 		unit.UnitType = unitType;
 		unit.TeamId = TeamId;
 		unit.IsNeutralCampUnit = false;
+		unit.OwnerCamp = this;
 
 		// Reseau : assigner un NetworkId et broadcaster le spawn
 		string networkId = NetworkEntityRegistry.GenerateId();
@@ -130,6 +131,7 @@ public partial class CampSimple
 			unit.UnitType = UnitTypes[i];
 			unit.TeamId = TeamId;
 			unit.IsNeutralCampUnit = IsNeutralCamp; //plus fortes
+			unit.OwnerCamp = this;
 
 			// Reseau : ID deterministe pour les defenseurs initiaux
 			unit.NetworkId = $"camp_{CampId}_unit_{i}";
@@ -141,6 +143,12 @@ public partial class CampSimple
 		}
 	}
 
+	public int GetLiveUnitCount()
+	{
+		CleanDeadUnits();
+		return _spawnedUnits.Count;
+	}
+
 	public bool CanBuyUnit(string unitType)
 	{
 		if (GameManager.Instance == null)
@@ -148,6 +156,10 @@ public partial class CampSimple
 			GD.Print($"Camp #{CampId}: GameManager.Instance est null!");
 			return false;
 		}
+
+		// Vérifier le cap d'unités vivantes anti-crash
+		if (GetLiveUnitCount() >= MaxLiveUnitsPerCamp)
+			return false;
 
 		// Vérifier si la queue n'est pas pleine
 		int totalInQueue = _productionQueue.Count + (_currentProduction != null ? 1 : 0);

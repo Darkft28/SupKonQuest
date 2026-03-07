@@ -2,6 +2,69 @@ using Godot;
 
 public partial class CampSimple
 {
+	private float _alertTimer = 0f;
+	private float _alertCooldownTimer = 0f;
+	private const float AlertCheckInterval = 1.5f;
+	private const float AlertCooldown = 6f;
+	private const float TerritoryRadius = 1024f; // 8 tuiles * 128px
+
+	private void ProcessTerritoryAlert(double delta)
+	{
+		if (IsNeutralCamp) return;
+		if (!IsLocallyOwned()) return;
+
+		_alertCooldownTimer -= (float)delta;
+		_alertTimer += (float)delta;
+
+		if (_alertTimer < AlertCheckInterval) return;
+		_alertTimer = 0f;
+
+		if (_alertCooldownTimer > 0f) return;
+
+		Vector2? intruderPos = FindIntruderInTerritory();
+		if (intruderPos.HasValue)
+		{
+			AlertDefenders(intruderPos.Value);
+			_alertCooldownTimer = AlertCooldown;
+		}
+	}
+
+	private Vector2? FindIntruderInTerritory()
+	{
+		var allUnits = GetTree().GetNodesInGroup("units");
+		foreach (var node in allUnits)
+		{
+			if (node is Unit unit && unit.GetTeamId() != TeamId
+				&& unit.GetCurrentHealth() > 0
+				&& GlobalPosition.DistanceTo(unit.GlobalPosition) <= TerritoryRadius)
+			{
+				return unit.GlobalPosition;
+			}
+		}
+		return null;
+	}
+
+	private void AlertDefenders(Vector2 intruderPos)
+	{
+		GD.Print($"[ALERTE] Camp #{CampId} (T{TeamId}) - intrus a {intruderPos}!");
+
+		var allUnits = GetTree().GetNodesInGroup("units");
+		int alerted = 0;
+		foreach (var node in allUnits)
+		{
+			if (node is Unit unit && unit.GetTeamId() == TeamId
+				&& unit.IsIdleState() && unit.GetCurrentHealth() > 0
+				&& GlobalPosition.DistanceTo(unit.GlobalPosition) <= TerritoryRadius)
+			{
+				unit.MoveTo(intruderPos);
+				alerted++;
+			}
+		}
+
+		if (alerted > 0)
+			GD.Print($"[ALERTE] {alerted} unite(s) alertee(s) vers {intruderPos}");
+	}
+
 	private void ProcessTurret(double delta)
 	{
 		_turretTimer += (float)delta;
@@ -17,6 +80,10 @@ public partial class CampSimple
 	{
 		// Les camps neutres n'attaquent pas
 		if (IsNeutralCamp)
+			return;
+
+		// La tourelle ne tire que quand tous les défenseurs sont morts (dernier recours)
+		if (!AreAllUnitsDefeated())
 			return;
 
 		// Reseau : seul le peer qui possede ce camp fait tirer la tourelle
@@ -177,6 +244,7 @@ public partial class CampSimple
 			string networkId = NetworkEntityRegistry.GenerateId();
 			unit.NetworkId = networkId;
 			unit.IsLocalAuthority = true;
+			unit.OwnerCamp = this;
 
 			GetParent().AddChild(unit);
 			_spawnedUnits.Add(unit);

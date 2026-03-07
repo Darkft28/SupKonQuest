@@ -67,6 +67,9 @@ public partial class Unit : CharacterBody2D
 	// Tracking pour la mort mutuelle
 	private int _lastAttackerTeamId = 0;
 
+	// Camp propriétaire (pour notifier à la mort)
+	public CampSimple OwnerCamp = null;
+
 	// Aura de defense (Support)
 	private const float SupportAuraRadius = 200f;
 	private const float SupportDefenseBonus = 10f;
@@ -100,6 +103,17 @@ public partial class Unit : CharacterBody2D
 		{
 			_currentHealth = _maxHealth;
 		}
+	}
+
+	// Recalcule _maxHealth selon IsNeutralCampUnit et remet les HP à fond
+	// Utilisé quand un camp neutre est assigné à une équipe (FFA)
+	public void RecalculateMaxHealth()
+	{
+		_maxHealth = UnitStats.GetStats(UnitType).MaxHealth;
+		if (IsNeutralCampUnit)
+			_maxHealth *= 1.5f;
+		_currentHealth = _maxHealth;
+		QueueRedraw();
 	}
 
 	public float GetMaxHealth()
@@ -145,6 +159,11 @@ public partial class Unit : CharacterBody2D
 	public bool GetIsMoving()
 	{
 		return _targetPosition.HasValue;
+	}
+
+	public bool IsIdleState()
+	{
+		return _currentState == UnitState.Idle;
 	}
 
 	public override void _Ready()
@@ -257,8 +276,9 @@ public partial class Unit : CharacterBody2D
 
 	public override void _PhysicsProcess(double delta)
 	{
-		// Puppet : interpoler vers la position reseau, pas d'IA
-		if (!IsLocalAuthority)
+		// Puppet : interpoler vers la position reseau, pas d'IA (multi seulement)
+		bool isMulti = NetworkSync.Instance?.IsMultiplayer() == true;
+		if (isMulti && !IsLocalAuthority)
 		{
 			if (_networkTargetPosition.HasValue)
 			{

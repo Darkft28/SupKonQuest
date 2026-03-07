@@ -16,15 +16,17 @@ public static class CampPlacer
 	public static int PlaceCamps(TileMapLayer sol, TileMapLayer objets,
 		FastNoiseLite noiseElevation, FastNoiseLite noiseForet, Random seededRandom,
 		Node2D unitsContainer, PackedScene campScene, PackedScene campUpScene,
-		int halfWidth, int halfHeight, int tileSize, bool testMode)
+		int halfWidth, int halfHeight, int tileSize, bool testMode, int maxCamps = 0)
 	{
 		int campCount = 0;
 		var campPositions = new List<Vector2>();
 
 		for (int x = -halfWidth; x < halfWidth; x++)
 		{
+			if (maxCamps > 0 && campPositions.Count >= maxCamps) break;
 			for (int y = -halfHeight; y < halfHeight; y++)
 			{
+				if (maxCamps > 0 && campPositions.Count >= maxCamps) break;
 				float altitude = noiseElevation.GetNoise2D(x, y);
 				float densiteArbre = noiseForet.GetNoise2D(x, y);
 
@@ -64,6 +66,7 @@ public static class CampPlacer
 									{
 										campSimple.IsNeutralCamp = true;
 										campSimple.TeamId = campCount;
+										campSimple.RegionId = GetRegionId(worldPos);
 									}
 
 									unitsContainer.AddChild(camp);
@@ -93,6 +96,16 @@ public static class CampPlacer
 		}
 
 		return campCount;
+	}
+
+	private static int GetRegionId(Vector2 worldPos)
+	{
+		bool isNorth = worldPos.Y < 0;
+		bool isWest = worldPos.X < 0;
+		if (isNorth && isWest) return 1;  // Nord-Ouest
+		if (isNorth && !isWest) return 2; // Nord-Est
+		if (!isNorth && isWest) return 3; // Sud-Ouest
+		return 4;                          // Sud-Est
 	}
 
 	private static bool IsFarEnoughFromCamps(Vector2 position, List<Vector2> existingCamps)

@@ -36,6 +36,10 @@ public partial class CampSimple : Area2D
 	private string _currentProduction = null;
 	private float _productionTimer = 0f;
 	private const int MaxQueueSize = 7;
+	public const int MaxLiveUnitsPerCamp = 12; // cap anti-crash
+
+	// Region economique (1=NW, 2=NE, 3=SW, 4=SE)
+	public int RegionId { get; set; } = 0;
 
 	// Port
 	public bool HasPort { get; private set; }
@@ -206,8 +210,12 @@ public partial class CampSimple : Area2D
 			if (unit != null && IsInstanceValid(unit))
 			{
 				int oldUnitTeam = unit.GetTeamId();
+				bool wasNeutral = unit.IsNeutralCampUnit;
 				unit.SetTeamId(TeamId);
 				unit.IsNeutralCampUnit = IsNeutralCamp;
+				// Si l'unité perd le statut neutre, recalculer ses HP (retire le x1.5)
+				if (wasNeutral && !IsNeutralCamp)
+					unit.RecalculateMaxHealth();
 				GD.Print($"[DEBUG] Unite {unit.GetUnitType()} mise a jour: Team {oldUnitTeam} -> {TeamId}");
 			}
 		}
@@ -248,6 +256,7 @@ public partial class CampSimple : Area2D
 		ProcessProductionQueue(delta);
 		ProcessTurret(delta);
 		ProcessShipProductionQueue(delta);
+		ProcessTerritoryAlert(delta);
 	}
 
 	private void GeneratePassiveGold(double delta)

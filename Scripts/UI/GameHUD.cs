@@ -40,8 +40,30 @@ public partial class GameHUD : Control
 		// Connecter les boutons d'unités et de bateaux
 		ConnectUnitButtons();
 		ConnectShipButtons();
+		CreateQuitButton();
 
 		GD.Print("[HUD] GameHUD initialisé");
+	}
+
+	private void CreateQuitButton()
+	{
+		var btn = new Button();
+		btn.Text = "✕ Menu";
+		btn.AddThemeFontSizeOverride("font_size", 18);
+		btn.AnchorLeft   = 1f;
+		btn.AnchorTop    = 0f;
+		btn.AnchorRight  = 1f;
+		btn.AnchorBottom = 0f;
+		btn.OffsetLeft   = -120f;
+		btn.OffsetTop    = 10f;
+		btn.OffsetRight  = -10f;
+		btn.OffsetBottom = 45f;
+		btn.Pressed += () =>
+		{
+			GetTree().Paused = false;
+			GetTree().ChangeSceneToFile("res://Scenes/MainMenu.tscn");
+		};
+		AddChild(btn);
 	}
 
 	private void ConnectUnitButtons()

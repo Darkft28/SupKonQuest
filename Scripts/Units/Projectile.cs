@@ -121,8 +121,9 @@ public partial class Projectile : Node2D
 		if (_targetUnit != null && IsInstanceValid(_targetUnit) && _targetUnit.IsInsideTree()
 			&& _targetUnit.GetCurrentHealth() > 0)
 		{
-			// Reseau : si la cible est un puppet, envoyer via RPC
-			if (!_targetUnit.IsLocalAuthority && !string.IsNullOrEmpty(_targetUnit.NetworkId))
+			// Reseau : si la cible est un puppet, envoyer via RPC (multi seulement)
+			bool isMulti = NetworkSync.Instance?.IsMultiplayer() == true;
+			if (isMulti && !_targetUnit.IsLocalAuthority && !string.IsNullOrEmpty(_targetUnit.NetworkId))
 			{
 				NetworkSync.Instance?.SendUnitDamage(_targetUnit.NetworkId, _damage, _attackerTeamId);
 			}
@@ -131,6 +132,35 @@ public partial class Projectile : Node2D
 				_targetUnit.TakeDamageFrom(_damage, _attackerTeamId);
 			}
 		}
+
+		// Mortier : degats de zone sur les ennemis proches
+		if (_type == ProjectileType.Cannonball)
+			ApplyMortarSplash();
+
 		QueueFree();
+	}
+
+	private void ApplyMortarSplash()
+	{
+		const float SplashRadius = 200f;
+		const float SplashDamage = 20f;
+
+		var allUnits = GetTree().GetNodesInGroup("units");
+		foreach (var node in allUnits)
+		{
+			if (node is not Unit unit) continue;
+			if (unit == _targetUnit) continue;
+			if (unit.GetTeamId() == _attackerTeamId) continue;
+			if (unit.GetCurrentHealth() <= 0) continue;
+
+			float dist = _targetPos.DistanceTo(unit.GlobalPosition);
+			if (dist > SplashRadius) continue;
+
+				bool isMultiSplash = NetworkSync.Instance?.IsMultiplayer() == true;
+			if (isMultiSplash && !unit.IsLocalAuthority && !string.IsNullOrEmpty(unit.NetworkId))
+				NetworkSync.Instance?.SendUnitDamage(unit.NetworkId, SplashDamage, _attackerTeamId);
+			else
+				unit.TakeDamageFrom(SplashDamage, _attackerTeamId);
+		}
 	}
 }

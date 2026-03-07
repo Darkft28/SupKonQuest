@@ -17,6 +17,7 @@ public partial class GameManager : Node
 	private const int StartingGold = 100;
 	private const int CaptureBonus = 50;
 	private const int PassiveGoldPerSecond = 5;
+	private const int RegionBonusGold = 30; // Bonus si on controle toute une region
 
 	private float _passiveGoldTimer = 0f;
 
@@ -74,48 +75,73 @@ public partial class GameManager : Node
 			return;
 		}
 
-		// Utiliser une seed deterministe pour le shuffle (meme resultat sur les 2 peers)
 		var gameState = GetNodeOrNull<GameState>("/root/GameState");
 		int seed = gameState?.MapSeed ?? (int)GD.Randi();
 
 		List<CampSimple> shuffledCamps = new List<CampSimple>(_allCamps);
 		ShuffleList(shuffledCamps, seed);
 
-		int campsPerPlayer = shuffledCamps.Count / NumberOfPlayers;
-		int campIndex = 0;
-
-		for (int playerId = 1; playerId <= NumberOfPlayers; playerId++)
+		if (gameState?.IsFreeForAll == true)
 		{
-			for (int i = 0; i < campsPerPlayer; i++)
+			// Joueur = camp 0 (team 1), chaque autre camp = sa propre team bot
+			shuffledCamps[0].SetTeam(1, false);
+			InitializeTeam(1);
+			GD.Print($"Camp #{shuffledCamps[0].GetCampId()} attribue au Joueur (Team 1)");
+
+			for (int i = 1; i < shuffledCamps.Count; i++)
 			{
-				if (campIndex < shuffledCamps.Count)
+				int teamId = i + 1;
+				shuffledCamps[i].SetTeam(teamId, false);
+				InitializeTeam(teamId);
+				GD.Print($"Camp #{shuffledCamps[i].GetCampId()} attribue au Bot Team {teamId}");
+			}
+		}
+		else
+		{
+			// Mode original : 2 teams + camps neutres
+			int campsPerPlayer = shuffledCamps.Count / NumberOfPlayers;
+			int campIndex = 0;
+
+			for (int playerId = 1; playerId <= NumberOfPlayers; playerId++)
+			{
+				for (int i = 0; i < campsPerPlayer; i++)
 				{
-					CampSimple camp = shuffledCamps[campIndex];
-					camp.SetTeam(playerId, false);
-					GD.Print($"Camp #{camp.GetCampId()} attribue au Joueur {playerId}");
-					campIndex++;
+					if (campIndex < shuffledCamps.Count)
+					{
+						CampSimple camp = shuffledCamps[campIndex];
+						camp.SetTeam(playerId, false);
+						GD.Print($"Camp #{camp.GetCampId()} attribue au Joueur {playerId}");
+						campIndex++;
+					}
 				}
+				InitializeTeam(playerId);
 			}
 
-			InitializeTeam(playerId);
+			while (campIndex < shuffledCamps.Count)
+			{
+				CampSimple camp = shuffledCamps[campIndex];
+				camp.SetTeam(0, true);
+				GD.Print($"Camp #{camp.GetCampId()} est Neutre");
+				campIndex++;
+			}
 		}
 
-		while (campIndex < shuffledCamps.Count)
-		{
-			CampSimple camp = shuffledCamps[campIndex];
-			camp.SetTeam(0, true);
-			GD.Print($"Camp #{camp.GetCampId()} est Neutre");
-			campIndex++;
-		}
+		foreach (var camp in _allCamps)
+			camp.UpdateDefendersAuthority();
 
-		// Mettre a jour l'autorite des defenseurs
+		BroadcastCampAssignments();
+	}
+
+	public List<int> GetBotTeamIds()
+	{
+		var botTeams = new List<int>();
 		foreach (var camp in _allCamps)
 		{
-			camp.UpdateDefendersAuthority();
+			int teamId = camp.GetTeamId();
+			if (teamId > 1 && !botTeams.Contains(teamId))
+				botTeams.Add(teamId);
 		}
-
-		// En multijoueur, le serveur broadcast les assignations
-		BroadcastCampAssignments();
+		return botTeams;
 	}
 
 	private void BroadcastCampAssignments()
@@ -153,7 +179,9 @@ public partial class GameManager : Node
 
 	private bool IsMultiplayerActive()
 	{
-		return NetworkSync.Instance != null && NetworkSync.Instance.IsMultiplayer();
+		return NetworkSync.Instance != null
+			&& GodotObject.IsInstanceValid(NetworkSync.Instance)
+			&& NetworkSync.Instance.IsMultiplayer();
 	}
 
 	public override void _Process(double delta)
@@ -172,19 +200,69 @@ public partial class GameManager : Node
 
 				if (_teamGold.ContainsKey(localTeamId))
 					_teamGold[localTeamId] += PassiveGoldPerSecond;
+
+				CheckRegionBonuses(localTeamId);
 			}
 			else
 			{
-				// Solo : toutes les equipes recoivent l'or passif
-				foreach (var teamId in _teamGold.Keys)
+				// Solo / IA : toutes les equipes recoivent l'or passif
+				foreach (var teamId in new List<int>(_teamGold.Keys))
 				{
 					_teamGold[teamId] += PassiveGoldPerSecond;
 				}
+				CheckRegionBonuses(-1); // -1 = toutes les equipes
 			}
 		}
 
 		// Vérification périodique de victoire
 		_victoryManager.Update(delta);
+	}
+
+	// Verifie si une equipe controle toute une region et lui donne un bonus d'or
+	// localTeamId = -1 pour verifier toutes les equipes (mode solo/IA)
+	private void CheckRegionBonuses(int localTeamId)
+	{
+		if (_allCamps.Count == 0) return;
+
+		// Grouper les camps par regionId
+		var campsByRegion = new Dictionary<int, List<CampSimple>>();
+		foreach (var camp in _allCamps)
+		{
+			int regionId = camp.RegionId;
+			if (regionId <= 0) continue;
+			if (!campsByRegion.ContainsKey(regionId))
+				campsByRegion[regionId] = new List<CampSimple>();
+			campsByRegion[regionId].Add(camp);
+		}
+
+		foreach (var (regionId, camps) in campsByRegion)
+		{
+			if (camps.Count < 2) continue; // une region d'un seul camp ne compte pas
+
+			// Verifier si tous les camps de la region appartiennent a la meme equipe
+			int firstTeam = camps[0].GetTeamId();
+			if (firstTeam <= 0) continue; // neutre
+
+			bool allSameTeam = true;
+			foreach (var camp in camps)
+			{
+				if (camp.GetTeamId() != firstTeam || camp.IsNeutralCamp)
+				{
+					allSameTeam = false;
+					break;
+				}
+			}
+
+			if (!allSameTeam) continue;
+
+			// Donner le bonus si ce peer gere cette equipe
+			bool shouldGive = localTeamId == -1 || firstTeam == localTeamId;
+			if (shouldGive && _teamGold.ContainsKey(firstTeam))
+			{
+				_teamGold[firstTeam] += RegionBonusGold;
+				GD.Print($"[REGION] Equipe {firstTeam} controle la region {regionId} -> +{RegionBonusGold} or");
+			}
+		}
 	}
 
 	public List<CampSimple> GetAllCamps()

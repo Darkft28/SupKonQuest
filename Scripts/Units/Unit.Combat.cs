@@ -68,8 +68,8 @@ public partial class Unit
 			return;
 		}
 
-		// Priorite aux ennemis proches
-		Unit nearbyEnemy = FindEnemyInDetectionRange();
+		// Priorite uniquement aux defenseurs du camp cible (pas aux ennemis de passage)
+		Unit nearbyEnemy = FindDefenderOfCamp(_campTarget);
 		if (nearbyEnemy != null)
 		{
 			_campTarget = null;
@@ -116,24 +116,31 @@ public partial class Unit
 			return;
 		}
 
+		// AntiArmor : degats x2 contre les unites Heavy
+		float attackDamage = _stats.Attack;
+		if (UnitType == "AntiArmor" && target.GetUnitType() == "Heavy")
+			attackDamage *= 2f;
+
 		float hpBefore = target.GetCurrentHealth();
 
-		// Reseau : si la cible est un puppet (remote), envoyer via RPC
-		if (!target.IsLocalAuthority && !string.IsNullOrEmpty(target.NetworkId))
+		// Reseau : si la cible est un puppet (remote), envoyer via RPC (multi seulement)
+		bool isMulti = NetworkSync.Instance?.IsMultiplayer() == true;
+		if (isMulti && !target.IsLocalAuthority && !string.IsNullOrEmpty(target.NetworkId))
 		{
-			NetworkSync.Instance?.SendUnitDamage(target.NetworkId, _stats.Attack, TeamId);
+			NetworkSync.Instance?.SendUnitDamage(target.NetworkId, attackDamage, TeamId);
 			return;
 		}
 
-		// Autres unites : degats directs
-		target.TakeDamageFrom(_stats.Attack, TeamId);
+		// Degats directs (solo ou cible locale)
+		target.TakeDamageFrom(attackDamage, TeamId);
 
 		float hpAfter = target.GetCurrentHealth();
 		float auraBonus = target.GetSupportDefenseBonus();
 		float totalDef = target._stats.Defense + auraBonus;
-		float actualDamage = _stats.Attack * 100f / (100f + totalDef);
+		float actualDamage = attackDamage * 100f / (100f + totalDef);
 		string auraStr = auraBonus > 0 ? $" +{auraBonus:F0} aura" : "";
-		GD.Print($"[ATK] {UnitType} T{TeamId} -> {target.GetUnitType()} T{target.GetTeamId()} | {_stats.Attack} brut -> {actualDamage:F1} reel (def {target._stats.Defense}{auraStr}) | HP {hpBefore:F0} -> {hpAfter:F0}/{target.GetMaxHealth():F0}");
+		string bonusStr = attackDamage > _stats.Attack ? " [BONUS AntiArmor x2]" : "";
+		GD.Print($"[ATK] {UnitType} T{TeamId} -> {target.GetUnitType()} T{target.GetTeamId()} | {attackDamage} brut -> {actualDamage:F1} reel (def {target._stats.Defense}{auraStr}){bonusStr} | HP {hpBefore:F0} -> {hpAfter:F0}/{target.GetMaxHealth():F0}");
 	}
 
 	private void SpawnProjectile(Unit target)
@@ -179,6 +186,15 @@ public partial class Unit
 	private void Die()
 	{
 		GD.Print($"[MORT] {UnitType} T{TeamId} elimine (tue par T{_lastAttackerTeamId})");
+
+		// Notifier le camp propriétaire (mort mutuelle ou mort normale)
+		if (OwnerCamp != null && IsInstanceValid(OwnerCamp))
+		{
+			bool mutualKill = _currentTarget != null
+				&& IsInstanceValid(_currentTarget)
+				&& _currentTarget.GetCurrentHealth() <= 0;
+			OwnerCamp.OnDefenderDied(_lastAttackerTeamId, mutualKill);
+		}
 
 		// Reseau : notifier l'autre peer de la mort
 		if (IsLocalAuthority && !string.IsNullOrEmpty(NetworkId))
@@ -248,6 +264,26 @@ public partial class Unit
 			return false;
 
 		return true;
+	}
+
+	// Cherche un défenseur appartenant spécifiquement au camp cible (pas n'importe quel ennemi)
+	private Unit FindDefenderOfCamp(CampSimple camp)
+	{
+		if (camp == null) return null;
+		int campTeam = camp.GetTeamId();
+		var allUnits = GetTree().GetNodesInGroup("units");
+
+		foreach (var node in allUnits)
+		{
+			if (node is Unit unit && unit.GetTeamId() == campTeam
+				&& unit.GetCurrentHealth() > 0)
+			{
+				float dist = GlobalPosition.DistanceTo(unit.GlobalPosition);
+				if (dist <= DetectionRange)
+					return unit;
+			}
+		}
+		return null;
 	}
 
 	private Unit FindEnemyInDetectionRange()

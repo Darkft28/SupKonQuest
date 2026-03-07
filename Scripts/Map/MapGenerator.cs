@@ -11,14 +11,13 @@ public partial class MapGenerator : Node
 	private Node2D _unitsContainer;
 	private SelectionManager _selectionManager;
 	private TerritoryManager _territoryManager;
+	private System.Collections.Generic.List<AIController> _aiControllers = new System.Collections.Generic.List<AIController>();
 
 	private PackedScene _campScene;
 	private PackedScene _campUpScene;
 
-	private const int MapWidth = 256;
-	private const int MapHeight = 256;
-	private const int HalfWidth = MapWidth / 2;
-	private const int HalfHeight = MapHeight / 2;
+	private int _mapWidth = 256;
+	private int _mapHeight = 256;
 	private const int TileSize = 128;
 
 	// Mode test : spawn seulement 2 camps proches pour tester la victoire
@@ -81,8 +80,11 @@ public partial class MapGenerator : Node
 				AddChild(networkSync);
 			}
 
+			ReadMapSettings();
 			SetupNoise();
 			GenererMap();
+			InitAIControllers();
+
 			CallDeferred(nameof(InitTerritory));
 			GD.Print("Map générée. Appuyez sur ESPACE pour régénérer.");
 		}
@@ -162,13 +164,18 @@ public partial class MapGenerator : Node
 		_unitsContainer.Name = "Units";
 		AddChild(_unitsContainer);
 
+		int halfWidth = _mapWidth / 2;
+		int halfHeight = _mapHeight / 2;
+
 		// Générer le terrain
 		TerrainGenerator.Generate(_tileMapSol, _tileMapObjets, _noiseElevation, _noiseForet, _seededRandom,
-			HalfWidth, HalfHeight, TileSize, TestMode);
+			halfWidth, halfHeight, TileSize, TestMode);
 
 		// Placer les camps
+		var gsMap = GetNodeOrNull<GameState>("/root/GameState");
+		int maxCamps = (gsMap?.IsFreeForAll == true) ? gsMap.MaxCamps : 0;
 		int campCount = CampPlacer.PlaceCamps(_tileMapSol, _tileMapObjets, _noiseElevation, _noiseForet, _seededRandom,
-			_unitsContainer, _campScene, _campUpScene, HalfWidth, HalfHeight, TileSize, TestMode);
+			_unitsContainer, _campScene, _campUpScene, halfWidth, halfHeight, TileSize, TestMode, maxCamps);
 
 		GD.Print($"{campCount} camps générés");
 
@@ -189,11 +196,67 @@ public partial class MapGenerator : Node
 		_territoryManager.Initialize();
 	}
 
+	private void ReadMapSettings()
+	{
+		var gameState = GetNodeOrNull<GameState>("/root/GameState");
+		switch (gameState?.MapSize)
+		{
+			case GameState.MapSizePreset.Small:  _mapWidth = _mapHeight = 128; break;
+			case GameState.MapSizePreset.Large:  _mapWidth = _mapHeight = 384; break;
+			default:                             _mapWidth = _mapHeight = 256; break;
+		}
+		GD.Print($"[MAP] Taille: {_mapWidth}x{_mapHeight} tuiles");
+	}
+
+	private void InitAIControllers()
+	{
+		// Supprimer les anciens contrôleurs
+		foreach (var ai in _aiControllers)
+		{
+			if (ai != null && IsInstanceValid(ai))
+			{
+				RemoveChild(ai);
+				ai.QueueFree();
+			}
+		}
+		_aiControllers.Clear();
+
+		var gameState = GetNodeOrNull<GameState>("/root/GameState");
+		if (gameState == null || !gameState.IsAIMode) return;
+
+		if (gameState.IsFreeForAll)
+		{
+			// Un AIController par team bot
+			var botTeams = GameManager.Instance?.GetBotTeamIds()
+				?? new System.Collections.Generic.List<int>();
+			foreach (int teamId in botTeams)
+			{
+				var ai = new AIController();
+				ai.Name = $"AIController_Team{teamId}";
+				ai.AITeamId = teamId;
+				ai.Level = gameState.AILevel;
+				AddChild(ai);
+				_aiControllers.Add(ai);
+			}
+			GD.Print($"[IA] {_aiControllers.Count} AIControllers créés (FFA - niveau {gameState.AILevel})");
+		}
+		else
+		{
+			var ai = new AIController();
+			ai.Name = "AIController";
+			ai.AITeamId = 2;
+			ai.Level = gameState.AILevel;
+			AddChild(ai);
+			_aiControllers.Add(ai);
+			GD.Print($"[IA] AIController initialisé - niveau {gameState.AILevel}");
+		}
+	}
+
 	public override void _Input(InputEvent @event)
 	{
 		if (@event.IsActionPressed("ui_accept"))
 		{
-			// Supprimer le territoire existant
+			// Supprimer le territoire et l'IA existants
 			if (_territoryManager != null)
 			{
 				RemoveChild(_territoryManager);
@@ -201,8 +264,10 @@ public partial class MapGenerator : Node
 				_territoryManager = null;
 			}
 
+			ReadMapSettings();
 			SetupNoise();
 			GenererMap();
+			InitAIControllers();
 			InitTerritory();
 		}
 	}
