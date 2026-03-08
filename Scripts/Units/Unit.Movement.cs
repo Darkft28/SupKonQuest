@@ -28,6 +28,14 @@ public partial class Unit
 			return;
 		}
 
+		// Si on avait un camp cible encore valide, y retourner directement
+		if (_campTarget != null && IsInstanceValid(_campTarget) && _campTarget.IsInsideTree()
+			&& _campTarget.GetTeamId() != TeamId)
+		{
+			ChangeState(UnitState.AttackingCamp);
+			return;
+		}
+
 		// Unites de combat : chercher un ennemi dans la zone de detection
 		if (_currentTarget == null)
 		{
@@ -80,10 +88,8 @@ public partial class Unit
 			return;
 		}
 
-		// Sinon, se déplacer vers la cible
-		Vector2 direction = (_currentTarget.GlobalPosition - GlobalPosition).Normalized();
-		Velocity = direction * _stats.Speed;
-		MoveAndSlide();
+		// Se déplacer vers la cible en contournant les obstacles
+		MoveWithNav(_currentTarget.GlobalPosition);
 
 		// Détection de blocage
 		ProcessStuckDetection();
@@ -146,7 +152,6 @@ public partial class Unit
 			}
 		}
 
-		Vector2 direction = (_targetPosition.Value - GlobalPosition).Normalized();
 		float distance = GlobalPosition.DistanceTo(_targetPosition.Value);
 
 		// Arrivé à destination
@@ -158,8 +163,8 @@ public partial class Unit
 			return;
 		}
 
-		Velocity = direction * _stats.Speed;
-		MoveAndSlide();
+		// Se déplacer vers la destination en contournant les obstacles
+		MoveWithNav(_targetPosition.Value);
 
 		// Détection de blocage
 		ProcessStuckDetection();
@@ -234,6 +239,18 @@ public partial class Unit
 		ChangeState(UnitState.Idle);
 	}
 
+	public void AttackCamp(CampSimple camp)
+	{
+		if (UnitType == "Heal") return;
+		_campTarget = camp;
+		_savedTargetPosition = null;
+		_stuckFrames = 0;
+		_moveStartDelay = MoveStartDelayFrames;
+		_lastPosition = GlobalPosition;
+		_attackTimer = 0f;
+		ChangeState(UnitState.AttackingCamp);
+	}
+
 	private void ReturnToSavedPositionOrIdle()
 	{
 		if (_savedTargetPosition.HasValue)
@@ -250,5 +267,34 @@ public partial class Unit
 		{
 			ChangeState(UnitState.Idle);
 		}
+	}
+
+	// Déplacement avec pathfinding (contourne les obstacles).
+	// Fallback direct uniquement si le NavAgent n'est pas encore dans l'arbre (init).
+	private void MoveWithNav(Vector2 targetPos)
+	{
+		if (_navAgent == null || !_navAgent.IsInsideTree())
+		{
+			// Avant que l'agent soit prêt : mouvement direct (1 seul frame au démarrage)
+			Vector2 dir = (targetPos - GlobalPosition).Normalized();
+			Velocity = dir * _stats.Speed;
+			MoveAndSlide();
+			return;
+		}
+
+		_navAgent.TargetPosition = targetPos;
+
+		if (_navAgent.IsNavigationFinished())
+		{
+			// Chemin terminé ou cible inatteignable → on s'arrête proprement.
+			// (la détection d'arrivée dans l'état appelant gère la suite)
+			Velocity = Vector2.Zero;
+			return;
+		}
+
+		Vector2 nextPos = _navAgent.GetNextPathPosition();
+		Vector2 direction = (nextPos - GlobalPosition).Normalized();
+		Velocity = direction * _stats.Speed;
+		MoveAndSlide();
 	}
 }

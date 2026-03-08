@@ -64,6 +64,9 @@ public partial class Unit : CharacterBody2D
 	private CampSimple _campTarget = null;
 	private const float CampAttackDetectionRange = 600f;
 
+	// Navigation
+	private NavigationAgent2D _navAgent = null;
+
 	// Tracking pour la mort mutuelle
 	private int _lastAttackerTeamId = 0;
 
@@ -202,6 +205,15 @@ public partial class Unit : CharacterBody2D
 		{
 			NetworkEntityRegistry.Register(NetworkId, this);
 		}
+
+		// Créer le NavigationAgent2D pour le pathfinding (couche 1 = terrestre)
+		_navAgent = new NavigationAgent2D();
+		_navAgent.PathDesiredDistance = 10f;
+		_navAgent.TargetDesiredDistance = ArrivalDistance;
+		_navAgent.AvoidanceEnabled = false;
+		_navAgent.NavigationLayers = 1u;
+		_navAgent.Radius = 40f; // marge autour des obstacles (= rayon collision unité)
+		AddChild(_navAgent);
 
 		// État initial
 		_currentState = UnitState.Idle;

@@ -278,16 +278,40 @@ public partial class SelectionManager : Node2D
 				{
 					if (ship.GlobalPosition.DistanceTo(target) < 150)
 					{
-						// Verifier que le Transport est allie
 						int unitTeam = _selectedUnits[0].GetTeamId();
 						if (ship.GetTeamId() == unitTeam)
 						{
-							// Envoyer les unites marcher vers le Transport
 							SendUnitsToTransport(ship);
 							return;
 						}
 					}
 				}
+			}
+
+			// Verifier si on clique sur un camp ennemi (rayon 400px)
+			int localTeamId = _selectedUnits[0].GetTeamId();
+			CampSimple targetCamp = null;
+			float closestCampDist = 400f;
+			var allCamps = GetTree().GetNodesInGroup("camps");
+			foreach (var node in allCamps)
+			{
+				if (node is CampSimple camp && camp.GetTeamId() != localTeamId)
+				{
+					float dist = target.DistanceTo(camp.GlobalPosition);
+					if (dist < closestCampDist)
+					{
+						closestCampDist = dist;
+						targetCamp = camp;
+					}
+				}
+			}
+
+			if (targetCamp != null)
+			{
+				foreach (var unit in _selectedUnits)
+					if (IsInstanceValid(unit))
+						unit.AttackCamp(targetCamp);
+				return;
 			}
 
 			// Sinon, deplacer les unites normalement

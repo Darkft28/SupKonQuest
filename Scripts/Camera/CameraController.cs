@@ -21,6 +21,7 @@ namespace SupKonQuest
 		private Vector2 _mapCenter;
 		private Vector2 _minBounds;
 		private Vector2 _maxBounds;
+		private bool _introPlaying = false;
 
 		public override void _Ready()
 		{
@@ -69,6 +70,8 @@ namespace SupKonQuest
 
 		public override void _Process(double delta)
 		{
+			if (_introPlaying) return;
+
 			Vector2 dir = Input.GetVector("ui_left", "ui_right", "ui_up", "ui_down");
 			Position += dir * (PanSpeed / Zoom.X) * (float)delta;
 
@@ -84,8 +87,48 @@ namespace SupKonQuest
 			ClampPosition();
 		}
 
+		public void SetupForMap(int mapTilesWidth, int mapTilesHeight)
+		{
+			MapWidth  = mapTilesWidth;
+			MapHeight = mapTilesHeight;
+			SetupCameraLimits();
+		}
+
+		public void StartIntroZoom(Vector2 basePos, int mapTilesWidth)
+		{
+			// Zoom de départ : adapter à la taille de la map pour voir toute la map
+			Vector2 viewportSize = GetViewportRect().Size;
+			float mapPixels = mapTilesWidth * TileSize;
+			float startZoom = Mathf.Max(MinZoom, Mathf.Min(viewportSize.X / mapPixels, viewportSize.Y / mapPixels));
+
+			float endZoom  = mapTilesWidth <= 128 ? 0.5f  : mapTilesWidth <= 256 ? 0.35f : 0.22f;
+			float duration = mapTilesWidth <= 128 ? 3.0f  : mapTilesWidth <= 256 ? 4.0f  : 5.0f;
+
+			// Départ : centre de la map, dézoomé au max
+			Position = _mapCenter;
+			Zoom = new Vector2(startZoom, startZoom);
+			_targetZoom = new Vector2(endZoom, endZoom);
+			_introPlaying = true;
+
+			// Animer position ET zoom en parallèle vers la base
+			var tween = CreateTween().SetParallel(true);
+			tween.TweenProperty(this, "position", basePos, duration)
+				.SetEase(Tween.EaseType.InOut)
+				.SetTrans(Tween.TransitionType.Cubic);
+			tween.TweenProperty(this, "zoom", new Vector2(endZoom, endZoom), duration)
+				.SetEase(Tween.EaseType.InOut)
+				.SetTrans(Tween.TransitionType.Cubic);
+			tween.Chain().TweenCallback(Callable.From(() =>
+			{
+				_targetZoom = Zoom;
+				_introPlaying = false;
+			}));
+		}
+
 		public override void _UnhandledInput(InputEvent @event)
 		{
+			if (_introPlaying) return;
+
 			if (@event is InputEventMouseMotion mm && Input.IsMouseButtonPressed(MouseButton.Right))
 			{
 				Position -= mm.Relative / Zoom;
@@ -112,19 +155,16 @@ namespace SupKonQuest
 
 		private void ClampPosition()
 		{
-			// Calculer la taille visible de la caméra
 			Vector2 viewportSize = GetViewportRect().Size / Zoom;
 			Vector2 halfViewport = viewportSize / 2;
 
-			// Clamper la position pour que la caméra reste dans les limites
-			float clampedX = Mathf.Clamp(Position.X, _minBounds.X + halfViewport.X, _maxBounds.X - halfViewport.X);
-			float clampedY = Mathf.Clamp(Position.Y, _minBounds.Y + halfViewport.Y, _maxBounds.Y - halfViewport.Y);
-
-			// Si la map est plus petite que le viewport, centrer
-			if (_maxBounds.X - _minBounds.X < viewportSize.X)
-				clampedX = _mapCenter.X;
-			if (_maxBounds.Y - _minBounds.Y < viewportSize.Y)
-				clampedY = _mapCenter.Y;
+			// Si viewport > map sur un axe : centrer, sinon clamper normalement
+			float clampedX = (_maxBounds.X - _minBounds.X >= viewportSize.X)
+				? Mathf.Clamp(Position.X, _minBounds.X + halfViewport.X, _maxBounds.X - halfViewport.X)
+				: _mapCenter.X;
+			float clampedY = (_maxBounds.Y - _minBounds.Y >= viewportSize.Y)
+				? Mathf.Clamp(Position.Y, _minBounds.Y + halfViewport.Y, _maxBounds.Y - halfViewport.Y)
+				: _mapCenter.Y;
 
 			Position = new Vector2(clampedX, clampedY);
 		}

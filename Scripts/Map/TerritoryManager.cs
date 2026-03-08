@@ -141,7 +141,7 @@ public partial class TerritoryManager : Node2D
 		QueueRedraw();
 	}
 
-	public override void _Input(InputEvent @event)
+	public override void _UnhandledInput(InputEvent @event)
 	{
 		Vector2 worldPos = GetGlobalMousePosition();
 
@@ -152,7 +152,16 @@ public partial class TerritoryManager : Node2D
 			{
 				if (mb.ButtonIndex == MouseButton.Left)
 				{
-					if (!_pendingPortCamp.PlacePortAt(worldPos))
+					var gameState = GetNodeOrNull<GameState>("/root/GameState");
+					int localTeamId = gameState?.LocalTeamId ?? 1;
+					int tx = Mathf.RoundToInt(worldPos.X / TileSize) + HalfWidth;
+					int ty = Mathf.RoundToInt(worldPos.Y / TileSize) + HalfHeight;
+					bool tileOwned = tx >= 0 && tx < MapWidth && ty >= 0 && ty < MapHeight
+						&& _territoryMap[tx, ty] == localTeamId;
+
+					if (!tileOwned)
+						GD.Print("[PORT] Cette tuile ne vous appartient pas.");
+					else if (!_pendingPortCamp.PlacePortAt(worldPos))
 						GD.Print("[PORT] Aucune eau ici — choisissez un emplacement près de l'eau.");
 					else
 						_pendingPortCamp = null;

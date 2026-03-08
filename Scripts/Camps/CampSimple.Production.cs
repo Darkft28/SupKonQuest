@@ -177,6 +177,12 @@ public partial class CampSimple
 		_spawnedUnits.RemoveAll(unit => unit == null || !IsInstanceValid(unit) || unit.GetCurrentHealth() <= 0);
 	}
 
+	public System.Collections.Generic.List<Unit> GetLiveDefenders()
+	{
+		CleanDeadUnits();
+		return new System.Collections.Generic.List<Unit>(_spawnedUnits);
+	}
+
 	public bool AreAllUnitsDefeated()
 	{
 		CleanDeadUnits();

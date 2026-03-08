@@ -162,22 +162,10 @@ public partial class CampSimple
 		return true;
 	}
 
-	// Appelée quand la dernière unité défendant le camp meurt
+	// Appelée quand une unité défendant le camp meurt
 	public void OnDefenderDied(int killerTeamId, bool mutualKill)
 	{
-		// Si mort mutuelle (attaquant et défenseur meurent en même temps)
-		if (mutualKill)
-		{
-			// Le camp devient neutre
-			SetTeam(0, true);
-			SetCurrentHealth(MaxHealth);
-			GD.Print($"Camp #{CampId} devient neutre suite a une mort mutuelle!");
-		}
-		else
-		{
-			// Sinon, le camp peut être capturé par l'équipe du tueur
-			_lastAttackerTeamId = killerTeamId;
-		}
+		_lastAttackerTeamId = killerTeamId;
 	}
 
 	private void CaptureCamp(int newTeamId)

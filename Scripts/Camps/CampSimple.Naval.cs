@@ -252,26 +252,63 @@ public partial class CampSimple
 		if (_tileMapSol == null) return false;
 
 		Vector2I clickedTile = _tileMapSol.LocalToMap(_tileMapSol.ToLocal(worldPos));
-		bool hasWater = false;
-		for (int dx = -3; dx <= 3 && !hasWater; dx++)
-			for (int dy = -3; dy <= 3 && !hasWater; dy++)
-				if (_tileMapSol.GetCellSourceId(clickedTile + new Vector2I(dx, dy)) == 6)
-					hasWater = true;
 
-		if (!hasWater)
+		// Compter les tuiles d'eau dans chaque direction cardinale
+		Vector2I[] directions = { new Vector2I(0, -1), new Vector2I(0, 1), new Vector2I(1, 0), new Vector2I(-1, 0) };
+		string[] dirNames   = { "Nord", "Sud", "Est", "Ouest" };
+		float[]  rotations  = { -Mathf.Pi / 2f, Mathf.Pi / 2f, 0f, 0f };
+		bool[]   flips      = { false, false, false, true };
+
+		int bestWaterCount = 0;
+		int bestDir = -1;
+
+		for (int d = 0; d < directions.Length; d++)
 		{
-			GD.Print("[PORT] Pas d'eau à proximité de cet emplacement.");
+			int waterCount = 0;
+			Vector2I dir = directions[d];
+
+			for (int dist = 1; dist <= 8; dist++)
+				for (int offset = -2; offset <= 2; offset++)
+				{
+					Vector2I tilePos = dir.X == 0
+						? clickedTile + new Vector2I(offset, dir.Y * dist)
+						: clickedTile + new Vector2I(dir.X * dist, offset);
+
+					if (_tileMapSol.GetCellSourceId(tilePos) == 6)
+						waterCount++;
+				}
+
+			if (waterCount > bestWaterCount)
+			{
+				bestWaterCount = waterCount;
+				bestDir = d;
+			}
+		}
+
+		if (bestWaterCount < 1 || bestDir < 0)
+		{
+			GD.Print("[PORT] Aucune eau à proximité de cet emplacement.");
 			return false;
 		}
 
+		// Le clic est le bout terrestre du port : décaler le centre du sprite vers l'eau
+		// halfLen en world space = longueur_texture * scale_sprite * scale_camp / 2
+		const float PortLongAxis = 1256f;
+		const float PortScale    = 0.07f;
+		float halfLen = PortLongAxis * PortScale * Scale.X / 2f;
+		Vector2 waterDir2D = new Vector2(directions[bestDir].X, directions[bestDir].Y);
+		Vector2 spriteCenter = worldPos + waterDir2D * halfLen;
+
 		HasPort = true;
 		_portSprite = new Sprite2D();
-		_portSprite.Texture = GD.Load<Texture2D>("res://Assets/Objects/Port.png");
-		_portSprite.Scale = new Vector2(0.15f, 0.15f);
+		_portSprite.Texture  = GD.Load<Texture2D>("res://Assets/Objects/Port.png");
+		_portSprite.Scale = new Vector2(PortScale, PortScale);
+		_portSprite.Rotation = rotations[bestDir];
+		_portSprite.FlipH    = flips[bestDir];
 		AddChild(_portSprite);
-		_portSprite.GlobalPosition = worldPos;
+		_portSprite.GlobalPosition = spriteCenter;
 
-		GD.Print($"[PORT] Camp #{CampId} - Port placé à {worldPos}");
+		GD.Print($"[PORT] Camp #{CampId} - Port placé vers {dirNames[bestDir]} ({bestWaterCount} tuiles d'eau)");
 		return true;
 	}
 

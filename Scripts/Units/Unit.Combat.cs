@@ -36,7 +36,7 @@ public partial class Unit
 
 	private void ProcessAttackingCampState(double delta)
 	{
-		// Verifier si le camp est encore valide
+		// Validation du camp cible
 		if (_campTarget == null || !IsInstanceValid(_campTarget) || !_campTarget.IsInsideTree())
 		{
 			_campTarget = null;
@@ -44,7 +44,7 @@ public partial class Unit
 			return;
 		}
 
-		// Si le camp est devenu allie (capture par notre equipe)
+		// Camp capturé par notre équipe → succès
 		if (_campTarget.GetTeamId() == TeamId)
 		{
 			_campTarget = null;
@@ -52,51 +52,55 @@ public partial class Unit
 			return;
 		}
 
-		// Si des defenseurs sont reapparus, les combattre d'abord
-		if (!_campTarget.AreAllUnitsDefeated())
-		{
-			Unit enemy = FindEnemyInDetectionRange();
-			if (enemy != null)
-			{
-				_campTarget = null;
-				SetNewTarget(enemy);
-				return;
-			}
-			// Pas d'ennemi direct, attendre
-			_campTarget = null;
-			ReturnToSavedPositionOrIdle();
-			return;
-		}
-
-		// Priorite uniquement aux defenseurs du camp cible (pas aux ennemis de passage)
-		Unit nearbyEnemy = FindDefenderOfCamp(_campTarget);
-		if (nearbyEnemy != null)
-		{
-			_campTarget = null;
-			SetNewTarget(nearbyEnemy);
-			return;
-		}
-
 		float distanceToCamp = GlobalPosition.DistanceTo(_campTarget.GlobalPosition);
 
-		// Se rapprocher si trop loin
-		if (distanceToCamp > _stats.Range)
+		// Phase 1 : des défenseurs sont encore en vie → les combattre sans quitter l'état
+		if (!_campTarget.AreAllUnitsDefeated())
 		{
-			Vector2 direction = (_campTarget.GlobalPosition - GlobalPosition).Normalized();
-			Velocity = direction * _stats.Speed;
-			MoveAndSlide();
+			Unit defender = FindNearestDefenderOfCamp(_campTarget);
+			if (defender != null)
+			{
+				float distToDefender = GlobalPosition.DistanceTo(defender.GlobalPosition);
+				if (distToDefender <= _stats.Range)
+				{
+					Velocity = Vector2.Zero;
+					_attackTimer += (float)delta;
+					if (_attackTimer >= AttackInterval)
+					{
+						_attackTimer = 0f;
+						AttackTarget(defender);
+					}
+				}
+				else
+				{
+					MoveWithNav(defender.GlobalPosition);
+				}
+			}
+			else
+			{
+				// Pas de défenseur visible : avancer vers le camp
+				if (distanceToCamp > _stats.Range)
+					MoveWithNav(_campTarget.GlobalPosition);
+				else
+					Velocity = Vector2.Zero;
+			}
 			return;
 		}
 
-		// A portee : attaquer le camp
+		// Phase 2 : plus de défenseurs → attaquer le bâtiment du camp
+		if (distanceToCamp > _stats.Range)
+		{
+			MoveWithNav(_campTarget.GlobalPosition);
+			return;
+		}
+
 		Velocity = Vector2.Zero;
 		_attackTimer += (float)delta;
-
 		if (_attackTimer >= AttackInterval)
 		{
 			_attackTimer = 0f;
 			_campTarget.TakeDamage(_stats.Attack, TeamId);
-			GD.Print($"[ATK CAMP] {UnitType} T{TeamId} -> Camp #{_campTarget.GetCampId()} | {_stats.Attack} degats | HP {_campTarget.GetCurrentHealth():F0}/{_campTarget.MaxHealth}");
+			GD.Print($"[ATK CAMP] {UnitType} T{TeamId} -> Camp #{_campTarget.GetCampId()} | HP {_campTarget.GetCurrentHealth():F0}/{_campTarget.MaxHealth}");
 		}
 	}
 
@@ -266,24 +270,27 @@ public partial class Unit
 		return true;
 	}
 
-	// Cherche un défenseur appartenant spécifiquement au camp cible (pas n'importe quel ennemi)
-	private Unit FindDefenderOfCamp(CampSimple camp)
+	private Unit FindNearestDefenderOfCamp(CampSimple camp)
 	{
-		if (camp == null) return null;
-		int campTeam = camp.GetTeamId();
-		var allUnits = GetTree().GetNodesInGroup("units");
+		var defenders = camp.GetLiveDefenders();
+		Unit nearest = null;
+		float nearestDist = float.MaxValue;
 
-		foreach (var node in allUnits)
+		foreach (var unit in defenders)
 		{
-			if (node is Unit unit && unit.GetTeamId() == campTeam
-				&& unit.GetCurrentHealth() > 0)
+			if (unit == null || !IsInstanceValid(unit) || unit.GetCurrentHealth() <= 0)
+				continue;
+			if (unit.GetTeamId() == TeamId)
+				continue;
+
+			float dist = GlobalPosition.DistanceTo(unit.GlobalPosition);
+			if (dist < nearestDist)
 			{
-				float dist = GlobalPosition.DistanceTo(unit.GlobalPosition);
-				if (dist <= DetectionRange)
-					return unit;
+				nearestDist = dist;
+				nearest = unit;
 			}
 		}
-		return null;
+		return nearest;
 	}
 
 	private Unit FindEnemyInDetectionRange()

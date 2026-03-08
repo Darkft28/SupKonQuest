@@ -44,6 +44,9 @@ public partial class Ship : CharacterBody2D
 
 	private int _lastAttackerTeamId = 0;
 
+	// Navigation maritime
+	private NavigationAgent2D _navAgent = null;
+
 	// Transport : debarquement en attente (le bateau navigue d'abord, puis debarque)
 	private Vector2? _pendingUnloadPosition = null;
 
@@ -102,6 +105,15 @@ public partial class Ship : CharacterBody2D
 		{
 			NetworkEntityRegistry.Register(NetworkId, this);
 		}
+
+		// Créer le NavigationAgent2D pour le pathfinding maritime (couche 2 = eau)
+		_navAgent = new NavigationAgent2D();
+		_navAgent.PathDesiredDistance = 15f;
+		_navAgent.TargetDesiredDistance = ArrivalDistance;
+		_navAgent.AvoidanceEnabled = false;
+		_navAgent.NavigationLayers = 2u;
+		_navAgent.Radius = 60f; // marge autour des côtes
+		AddChild(_navAgent);
 
 		_currentState = ShipState.Idle;
 
