@@ -13,18 +13,22 @@ public static class CampPlacer
 	// Distance min entre camps (en pixels)
 	private const float MinCampDistance = 3500f;
 
+	// Marge en tuiles depuis les bords de la map
+	private const int EdgeMargin = 15;
+
 	public static int PlaceCamps(TileMapLayer sol, TileMapLayer objets,
 		FastNoiseLite noiseElevation, FastNoiseLite noiseForet, Random seededRandom,
 		Node2D unitsContainer, PackedScene campScene, PackedScene campUpScene,
-		int halfWidth, int halfHeight, int tileSize, bool testMode, int maxCamps = 0)
+		int halfWidth, int halfHeight, int tileSize, bool testMode, int maxCamps = 0,
+		float[] armAngles = null)
 	{
 		int campCount = 0;
 		var campPositions = new List<Vector2>();
 
-		for (int x = -halfWidth; x < halfWidth; x++)
+		for (int x = -halfWidth + EdgeMargin; x < halfWidth - EdgeMargin; x++)
 		{
 			if (maxCamps > 0 && campPositions.Count >= maxCamps) break;
-			for (int y = -halfHeight; y < halfHeight; y++)
+			for (int y = -halfHeight + EdgeMargin; y < halfHeight - EdgeMargin; y++)
 			{
 				if (maxCamps > 0 && campPositions.Count >= maxCamps) break;
 				float altitude = noiseElevation.GetNoise2D(x, y);
@@ -35,6 +39,7 @@ public static class CampPlacer
 				{
 					if (!testMode && seededRandom.NextDouble() < 0.001)
 					{
+						if (IsNearTilemapWater(x, y, sol)) continue;
 						Vector2 candidatePos = new Vector2(x * tileSize + tileSize / 2, y * tileSize + tileSize / 2);
 						if (IsFarEnoughFromCamps(candidatePos, campPositions))
 						{
@@ -66,7 +71,7 @@ public static class CampPlacer
 									{
 										campSimple.IsNeutralCamp = true;
 										campSimple.TeamId = campCount;
-										campSimple.RegionId = GetRegionId(worldPos);
+										campSimple.RegionId = GetRegionId(worldPos, armAngles, tileSize);
 										campSimple.SetTileMapSol(sol);
 									}
 
@@ -94,14 +99,15 @@ public static class CampPlacer
 		return campCount;
 	}
 
-	private static int GetRegionId(Vector2 worldPos)
+	// Vérifie si une tuile ou ses voisins proches sont de l'eau (naturelle ou pizza)
+	private static bool IsNearTilemapWater(int x, int y, TileMapLayer sol, int radius = 4)
 	{
-		bool isNorth = worldPos.Y < 0;
-		bool isWest = worldPos.X < 0;
-		if (isNorth && isWest) return 1;  // Nord-Ouest
-		if (isNorth && !isWest) return 2; // Nord-Est
-		if (!isNorth && isWest) return 3; // Sud-Ouest
-		return 4;                          // Sud-Est
+		for (int dx = -radius; dx <= radius; dx++)
+			for (int dy = -radius; dy <= radius; dy++)
+				if (dx * dx + dy * dy <= radius * radius)
+					if (sol.GetCellSourceId(new Vector2I(x + dx, y + dy)) == IdEau)
+						return true;
+		return false;
 	}
 
 	private static bool IsFarEnoughFromCamps(Vector2 position, List<Vector2> existingCamps)
@@ -126,6 +132,7 @@ public static class CampPlacer
 		{
 			cs1.IsNeutralCamp = true;
 			cs1.TeamId = campCount;
+			cs1.RegionId = 1; // zone Ouest
 			cs1.SetTileMapSol(sol);
 		}
 		unitsContainer.AddChild(camp1);
@@ -137,11 +144,38 @@ public static class CampPlacer
 		{
 			cs2.IsNeutralCamp = true;
 			cs2.TeamId = campCount;
+			cs2.RegionId = 3; // zone Est
 			cs2.SetTileMapSol(sol);
 		}
 		unitsContainer.AddChild(camp2);
 
 		GD.Print("MODE TEST: 2 camps spawnes au centre de la map");
 		return campCount;
+	}
+
+	// Assigne une région (1, 2 ou 3) selon le secteur angulaire du camp par rapport au centre
+	private static int GetRegionId(Vector2 worldPos, float[] armAngles, int tileSize)
+	{
+		if (armAngles == null) return 1;
+
+		float tx = worldPos.X / tileSize;
+		float ty = worldPos.Y / tileSize;
+
+		float angle = (float)Math.Atan2(ty, tx);
+		if (angle < 0) angle += (float)(Math.PI * 2.0); // normaliser vers [0, 2π)
+
+		// Trier les angles des bras dans [0, 2π)
+		float[] a = new float[3];
+		for (int i = 0; i < 3; i++)
+		{
+			a[i] = armAngles[i] % (float)(Math.PI * 2.0);
+			if (a[i] < 0) a[i] += (float)(Math.PI * 2.0);
+		}
+		System.Array.Sort(a);
+
+		// Secteur 1 : entre a[0] et a[1], secteur 2 : entre a[1] et a[2], secteur 3 : le reste
+		if (angle >= a[0] && angle < a[1]) return 1;
+		if (angle >= a[1] && angle < a[2]) return 2;
+		return 3;
 	}
 }

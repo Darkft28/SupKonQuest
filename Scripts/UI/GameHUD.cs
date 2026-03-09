@@ -14,6 +14,10 @@ public partial class GameHUD : Control
 	private HBoxContainer _brushSizeContainer;
 	private Button _portButton;
 
+	// Overlay de déconnexion
+	private Panel _disconnectPanel;
+	private Label _disconnectLabel;
+
 	// Liste des types d'unités disponibles dans le HUD
 	private static readonly string[] UnitTypes = new[]
 	{
@@ -40,6 +44,9 @@ public partial class GameHUD : Control
 		_unitsContainer = GetNode<HBoxContainer>("NinePatchRect/UnitsContainer");
 		_shipsContainer = GetNode<HBoxContainer>("NinePatchRect/ShipsContainer");
 
+		// Mettre à jour les prix depuis les stats réelles (évite les décalages hardcodés dans le .tscn)
+		UpdatePriceLabels();
+
 		// Connecter les boutons d'unités et de bateaux
 		ConnectUnitButtons();
 		ConnectShipButtons();
@@ -47,7 +54,52 @@ public partial class GameHUD : Control
 		CreateTerritoryButton();
 		CreatePortButton();
 
+		// Créer l'overlay de déconnexion (caché par défaut)
+		CreateDisconnectOverlay();
+
+		// Se connecter aux signaux de déconnexion du NetworkManager
+		var networkManager = GetNodeOrNull<NetworkManager>("/root/NetworkManager");
+		if (networkManager != null)
+		{
+			networkManager.PlayerDisconnected += OnPlayerDisconnected;
+			networkManager.ServerDisconnected += OnServerDisconnectedHUD;
+			GD.Print("[HUD] Connecté aux signaux NetworkManager");
+		}
+
 		GD.Print("[HUD] GameHUD initialisé");
+	}
+
+	private void UpdatePriceLabels()
+	{
+		// Mise à jour des prix des unités terrestres
+		foreach (string unitType in UnitTypes)
+		{
+			var priceLabel = _unitsContainer.GetNodeOrNull<Label>($"{unitType}/PriceContainer/Price");
+			if (priceLabel != null)
+			{
+				priceLabel.Text = UnitStats.GetStats(unitType).Price.ToString();
+			}
+			else
+			{
+				GD.PrintErr($"[HUD] Label de prix introuvable pour l'unité: {unitType}");
+			}
+		}
+
+		// Mise à jour des prix des bateaux
+		foreach (string shipType in ShipTypes)
+		{
+			var priceLabel = _shipsContainer.GetNodeOrNull<Label>($"{shipType}/PriceContainer/Price");
+			if (priceLabel != null)
+			{
+				priceLabel.Text = ShipStats.GetStats(shipType).Price.ToString();
+			}
+			else
+			{
+				GD.PrintErr($"[HUD] Label de prix introuvable pour le bateau: {shipType}");
+			}
+		}
+
+		GD.Print("[HUD] Prix des unités et bateaux synchronisés depuis les stats");
 	}
 
 	private void CreateQuitButton()
@@ -140,6 +192,66 @@ public partial class GameHUD : Control
 		};
 		AddChild(_portButton);
 	}
+
+	private void CreateDisconnectOverlay()
+	{
+		// Panel plein écran semi-transparent
+		_disconnectPanel = new Panel();
+		_disconnectPanel.SetAnchorsPreset(LayoutPreset.FullRect);
+		_disconnectPanel.MouseFilter = MouseFilterEnum.Ignore;
+
+		// Style semi-transparent
+		var style = new StyleBoxFlat();
+		style.BgColor = new Color(0f, 0f, 0f, 0.6f);
+		_disconnectPanel.AddThemeStyleboxOverride("panel", style);
+
+		// Label centré
+		_disconnectLabel = new Label();
+		_disconnectLabel.SetAnchorsPreset(LayoutPreset.Center);
+		_disconnectLabel.GrowHorizontal = GrowDirection.Both;
+		_disconnectLabel.GrowVertical = GrowDirection.Both;
+		_disconnectLabel.HorizontalAlignment = HorizontalAlignment.Center;
+		_disconnectLabel.VerticalAlignment = VerticalAlignment.Center;
+		_disconnectLabel.AddThemeFontSizeOverride("font_size", 28);
+		_disconnectLabel.Modulate = new Color(1f, 0.3f, 0.3f, 1f);
+		_disconnectLabel.Text = "Adversaire déconnecté\nRetour au menu dans 5s...";
+
+		_disconnectPanel.AddChild(_disconnectLabel);
+
+		// Ajouter au HUD par-dessus tout le reste (z-index maximal)
+		AddChild(_disconnectPanel);
+		_disconnectPanel.Visible = false;
+	}
+
+	private void OnPlayerDisconnected(long id)
+	{
+		GD.Print($"[HUD] Joueur {id} déconnecté - affichage du message");
+		ShowDisconnectMessage("Adversaire déconnecté\nRetour au menu dans 5s...");
+	}
+
+	private void OnServerDisconnectedHUD()
+	{
+		GD.Print("[HUD] Serveur déconnecté - affichage du message");
+		ShowDisconnectMessage("Connexion au serveur perdue\nRetour au menu dans 5s...");
+	}
+
+	private void ShowDisconnectMessage(string message)
+	{
+		if (_disconnectPanel == null || _disconnectLabel == null) return;
+		_disconnectLabel.Text = message;
+		_disconnectPanel.Visible = true;
+	}
+
+	public override void _ExitTree()
+	{
+		var networkManager = GetNodeOrNull<NetworkManager>("/root/NetworkManager");
+		if (networkManager != null)
+		{
+			networkManager.PlayerDisconnected -= OnPlayerDisconnected;
+			networkManager.ServerDisconnected -= OnServerDisconnectedHUD;
+		}
+	}
+
 
 	private void ConnectUnitButtons()
 	{
@@ -279,6 +391,74 @@ public partial class GameHUD : Control
 
 		UpdateGoldDisplay();
 		UpdateContainerVisibility();
+		UpdateUnitButtons();
+		UpdateShipButtons();
+	}
+
+	private void UpdateUnitButtons()
+	{
+		if (_selectionManager == null) return;
+
+		var selectedCamp = _selectionManager.GetSelectedCamp();
+
+		// Pas de camp sélectionné ou camp ennemi : laisser les boutons tels quels
+		if (selectedCamp == null || !IsInstanceValid(selectedCamp)) return;
+		if (selectedCamp.GetTeamId() != GetLocalTeamId()) return;
+
+		bool queueFull = selectedCamp.GetQueueCount() >= selectedCamp.GetMaxQueueSize();
+
+		foreach (string unitType in UnitTypes)
+		{
+			if (!_unitButtons.TryGetValue(unitType, out var btn)) continue;
+
+			bool canBuy = !queueFull && selectedCamp.CanBuyUnit(unitType);
+
+			btn.Disabled = !canBuy;
+			// Feedback couleur : rouge-grisé si impossible, blanc si disponible
+			btn.Modulate = canBuy ? new Color(1f, 1f, 1f, 1f) : new Color(0.5f, 0.5f, 0.5f, 0.8f);
+
+			// Tooltip d'erreur selon la cause
+			if (queueFull)
+				btn.TooltipText = "File de production pleine !";
+			else if (!selectedCamp.CanBuyUnit(unitType))
+				btn.TooltipText = $"Or insuffisant ({UnitStats.GetStats(unitType).Price}g requis)";
+			else
+				btn.TooltipText = "";
+		}
+	}
+
+	private void UpdateShipButtons()
+	{
+		if (_selectionManager == null) return;
+
+		var selectedPort = _selectionManager.GetSelectedPort();
+
+		if (selectedPort == null || !IsInstanceValid(selectedPort)) return;
+		if (selectedPort.GetTeamId() != GetLocalTeamId()) return;
+
+		foreach (string shipType in ShipTypes)
+		{
+			if (!_shipButtons.TryGetValue(shipType, out var btn)) continue;
+
+			bool canBuy = selectedPort.CanBuyShip(shipType);
+
+			btn.Disabled = !canBuy;
+			btn.Modulate = canBuy ? new Color(1f, 1f, 1f, 1f) : new Color(0.5f, 0.5f, 0.5f, 0.8f);
+
+			if (!canBuy)
+			{
+				int queueCount = selectedPort.GetShipQueueCount();
+				int maxQueue = selectedPort.GetMaxShipQueueSize();
+				if (queueCount >= maxQueue)
+					btn.TooltipText = "File navale pleine !";
+				else
+					btn.TooltipText = $"Or insuffisant ({ShipStats.GetStats(shipType).Price}g requis)";
+			}
+			else
+			{
+				btn.TooltipText = "";
+			}
+		}
 	}
 
 	private void FindSelectionManager()

@@ -9,6 +9,9 @@ public partial class NetworkSync : Node
 	private float _syncTimer = 0f;
 	private const float SyncInterval = 1f / 20f; // 20 Hz
 
+	private float _goldSyncTimer = 0f;
+	private const float GoldSyncInterval = 10f;
+
 	public override void _Ready()
 	{
 		Instance = this;
@@ -30,6 +33,18 @@ public partial class NetworkSync : Node
 		{
 			_syncTimer = 0f;
 			SendEntityStatesBatch();
+		}
+
+		if (Multiplayer.IsServer())
+		{
+			_goldSyncTimer += (float)delta;
+			if (_goldSyncTimer >= GoldSyncInterval)
+			{
+				_goldSyncTimer = 0f;
+				int team1Gold = GameManager.Instance?.GetGold(1) ?? 0;
+				int team2Gold = GameManager.Instance?.GetGold(2) ?? 0;
+				Rpc(nameof(RpcSyncGold), team1Gold, team2Gold);
+			}
 		}
 	}
 
@@ -356,5 +371,17 @@ public partial class NetworkSync : Node
 				ship.ApplyNetworkState(new Vector2(posXs[i], posYs[i]), healths[i]);
 			}
 		}
+	}
+
+	// =============================================
+	// SYNC OR (Reliable, toutes les 10s, serveur -> clients)
+	// =============================================
+
+	[Rpc(MultiplayerApi.RpcMode.Authority, CallLocal = false, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
+	private void RpcSyncGold(int team1Gold, int team2Gold)
+	{
+		// Correction légère : seulement si écart > 5 or pour éviter les micro-corrections
+		GameManager.Instance?.SyncGold(1, team1Gold);
+		GameManager.Instance?.SyncGold(2, team2Gold);
 	}
 }

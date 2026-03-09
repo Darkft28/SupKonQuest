@@ -167,9 +167,10 @@ public partial class MapGenerator : Node
 		int halfWidth = _mapWidth / 2;
 		int halfHeight = _mapHeight / 2;
 
-		// Générer le terrain
+		// Générer le terrain (3 régions en parts de pizza depuis le centre)
 		TerrainGenerator.Generate(_tileMapSol, _tileMapObjets, _noiseElevation, _noiseForet, _seededRandom,
-			halfWidth, halfHeight, TileSize, TestMode);
+			halfWidth, halfHeight, TileSize, TestMode,
+			out float[] armAngles, out _, out _);
 
 		// Construire les meshes de navigation (terrestre pour unités, maritime pour bateaux)
 		BuildNavigationMesh();
@@ -179,7 +180,8 @@ public partial class MapGenerator : Node
 		var gsMap = GetNodeOrNull<GameState>("/root/GameState");
 		int maxCamps = (gsMap?.IsFreeForAll == true) ? gsMap.MaxCamps : 0;
 		int campCount = CampPlacer.PlaceCamps(_tileMapSol, _tileMapObjets, _noiseElevation, _noiseForet, _seededRandom,
-			_unitsContainer, _campScene, _campUpScene, halfWidth, halfHeight, TileSize, TestMode, maxCamps);
+			_unitsContainer, _campScene, _campUpScene, halfWidth, halfHeight, TileSize, TestMode, maxCamps,
+			armAngles);
 
 		GD.Print($"{campCount} camps générés");
 
@@ -370,6 +372,10 @@ public partial class MapGenerator : Node
 				int solId = _tileMapSol.GetCellSourceId(tileCoord);
 				if (solId == 6 || solId == -1)
 					continue; // eau ou vide → pas de terrain valide ici
+
+				// Forêt = obstacle (même sans objet arbre placé dessus)
+				if (solId == 3)
+					return false;
 
 				// Si une tuile objet (arbre=100 ou montagne=101) est présente → obstacle physique
 				int objetId = _tileMapObjets.GetCellSourceId(tileCoord);

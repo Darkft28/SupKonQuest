@@ -21,6 +21,10 @@ public partial class GameManager : Node
 
 	private float _passiveGoldTimer = 0f;
 
+	// Bonus de vitesse par région contrôlée
+	private Dictionary<int, float> _speedMultipliers = new Dictionary<int, float>();
+	private const float RegionSpeedBonusPerRegion = 0.20f;
+
 	// Liste des camps de la scène
 	private List<CampSimple> _allCamps = new List<CampSimple>();
 
@@ -212,6 +216,8 @@ public partial class GameManager : Node
 				}
 				CheckRegionBonuses(-1); // -1 = toutes les equipes
 			}
+
+			CheckRegionBonuses();
 		}
 
 		// Vérification périodique de victoire
@@ -315,5 +321,72 @@ public partial class GameManager : Node
 	{
 		AddGold(teamId, CaptureBonus);
 		GD.Print($"Equipe {teamId} recoit {CaptureBonus} or pour la capture!");
+	}
+
+	public float GetSpeedMultiplier(int teamId)
+	{
+		return _speedMultipliers.TryGetValue(teamId, out float mult) ? mult : 1f;
+	}
+
+	private void CheckRegionBonuses()
+	{
+		_speedMultipliers.Clear();
+
+		// Grouper les camps par région (1=Ouest, 2=Centre, 3=Est)
+		var regionCamps = new Dictionary<int, List<CampSimple>>();
+		for (int r = 1; r <= 3; r++)
+			regionCamps[r] = new List<CampSimple>();
+
+		foreach (var camp in _allCamps)
+		{
+			if (camp == null || !IsInstanceValid(camp)) continue;
+			int r = camp.RegionId;
+			if (r >= 1 && r <= 3)
+				regionCamps[r].Add(camp);
+		}
+
+		// Vérifier si une équipe contrôle entièrement chaque région
+		for (int r = 1; r <= 3; r++)
+		{
+			var camps = regionCamps[r];
+			if (camps.Count == 0) continue;
+
+			int firstTeam = camps[0].TeamId;
+			if (firstTeam <= 0) continue; // région neutre
+
+			bool allSameTeam = true;
+			foreach (var camp in camps)
+			{
+				if (camp.IsNeutralCamp || camp.TeamId != firstTeam)
+				{
+					allSameTeam = false;
+					break;
+				}
+			}
+
+			if (allSameTeam)
+			{
+				int winningTeam = firstTeam;
+				// Bonus or +30/sec par région contrôlée
+				AddGold(winningTeam, 30);
+				if (!_speedMultipliers.ContainsKey(winningTeam))
+					_speedMultipliers[winningTeam] = 1f;
+				_speedMultipliers[winningTeam] += RegionSpeedBonusPerRegion;
+			}
+		}
+	}
+
+	// Correction légère de l'or en multijoueur (évite micro-corrections sous 5 or d'écart)
+	public void SyncGold(int teamId, int authorativeGold)
+	{
+		if (!_teamGold.ContainsKey(teamId)) return;
+
+		int diff = Mathf.Abs(_teamGold[teamId] - authorativeGold);
+		if (diff > 5)
+		{
+			GD.Print($"[NET] Correction or equipe {teamId}: {_teamGold[teamId]} -> {authorativeGold} (ecart={diff})");
+			_teamGold[teamId] = authorativeGold;
+
+		}
 	}
 }

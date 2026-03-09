@@ -35,6 +35,11 @@ public partial class Unit
 		shape.Radius = 40f;
 		collision.Shape = shape;
 		AddChild(collision);
+
+		// Les unités restent visibles sur la layer 1 (pour les Area2D de détection),
+		// mais ne se bloquent plus physiquement entre elles ni avec les camps
+		CollisionLayer = 1u;
+		CollisionMask = 0u;
 	}
 
 	private void CreateDetectionZone()

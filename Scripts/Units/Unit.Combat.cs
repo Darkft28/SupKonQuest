@@ -62,31 +62,51 @@ public partial class Unit
 			_campDefeatCached = _campTarget.AreAllUnitsDefeated();
 		}
 
-		// Phase 1 : des défenseurs sont encore en vie → les combattre sans quitter l'état
+		// Recherche throttlée d'ennemis croisés en chemin (combat opportuniste)
+		_aiSearchTimer += (float)delta;
+		if (_aiSearchTimer >= EnemySearchInterval)
+		{
+			_aiSearchTimer = 0f;
+			_opportunisticTarget = FindEnemyInDetectionRange();
+		}
+		// Invalider si mort ou sorti de portée
+		if (_opportunisticTarget != null &&
+			(!IsInstanceValid(_opportunisticTarget)
+			|| _opportunisticTarget.GetCurrentHealth() <= 0
+			|| GlobalPosition.DistanceTo(_opportunisticTarget.GlobalPosition) > DetectionRange))
+		{
+			_opportunisticTarget = null;
+		}
+
+		float effectiveRange = _stats.Range + 80f;
+
+		// Phase 1 : des défenseurs sont encore en vie → les combattre en priorité
 		if (!_campDefeatCached)
 		{
 			Unit defender = FindNearestDefenderOfCamp(_campTarget);
-			if (defender != null)
+			Unit combatTarget = defender ?? _opportunisticTarget;
+
+			if (combatTarget != null)
 			{
-				float distToDefender = GlobalPosition.DistanceTo(defender.GlobalPosition);
-				if (distToDefender <= _stats.Range)
+				float distToTarget = GlobalPosition.DistanceTo(combatTarget.GlobalPosition);
+				if (distToTarget <= effectiveRange)
 				{
 					Velocity = Vector2.Zero;
 					_attackTimer += (float)delta;
 					if (_attackTimer >= AttackInterval)
 					{
 						_attackTimer = 0f;
-						AttackTarget(defender);
+						AttackTarget(combatTarget);
 					}
 				}
 				else
 				{
-					MoveWithNav(defender.GlobalPosition);
+					MoveWithNav(combatTarget.GlobalPosition);
 				}
 			}
 			else
 			{
-				// Pas de défenseur visible : avancer vers le camp
+				// Aucun ennemi visible : avancer vers le camp
 				if (distanceToCamp > _stats.Range)
 					MoveWithNav(_campTarget.GlobalPosition);
 				else
@@ -95,8 +115,26 @@ public partial class Unit
 			return;
 		}
 
-		// Phase 2 : plus de défenseurs → attaquer le bâtiment du camp
-		if (distanceToCamp > _stats.Range)
+		// Phase 2 : plus de défenseurs → attaquer le bâtiment, mais engager les ennemis de passage
+		if (_opportunisticTarget != null)
+		{
+			float distToOpp = GlobalPosition.DistanceTo(_opportunisticTarget.GlobalPosition);
+			if (distToOpp <= effectiveRange)
+			{
+				Velocity = Vector2.Zero;
+				_attackTimer += (float)delta;
+				if (_attackTimer >= AttackInterval)
+				{
+					_attackTimer = 0f;
+					AttackTarget(_opportunisticTarget);
+				}
+				return;
+			}
+		}
+
+		// Marge de 80px pour les unités bloquées par la collision du bâtiment ou des alliés
+		float effectiveCampRange = _stats.Range + 80f;
+		if (distanceToCamp > effectiveCampRange)
 		{
 			MoveWithNav(_campTarget.GlobalPosition);
 			return;
@@ -223,17 +261,19 @@ public partial class Unit
 		if (UnitType == "Heal")
 			return;
 
-		// Si on est en Idle et qu'un ennemi entre dans la zone, on le cible
-		if (body is Unit otherUnit)
+		if (body is not Unit otherUnit) return;
+		if (otherUnit.GetTeamId() == TeamId || otherUnit.GetCurrentHealth() <= 0) return;
+		if (_currentTarget != null) return;
+
+		if (_currentState == UnitState.Idle)
 		{
-			if (otherUnit.GetTeamId() != TeamId && otherUnit.GetCurrentHealth() > 0)
-			{
-				// Si on n'a pas de cible, on en prend une
-				if (_currentTarget == null && _currentState == UnitState.Idle)
-				{
-					SetNewTarget(otherUnit);
-				}
-			}
+			SetNewTarget(otherUnit);
+		}
+		else if (_currentState == UnitState.MovingToPoint)
+		{
+			// Sauvegarder la destination et engager l'ennemi croisé
+			_savedTargetPosition ??= _targetPosition;
+			SetNewTarget(otherUnit);
 		}
 	}
 

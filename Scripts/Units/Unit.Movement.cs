@@ -193,10 +193,12 @@ public partial class Unit
 		}
 
 		// Détection de blocage - seuil dynamique basé sur la vitesse
-		float expectedMovement = _stats.Speed / 60f;
+		float speedMult = GameManager.Instance?.GetSpeedMultiplier(TeamId) ?? 1f;
+		// Plancher de 0.5px pour éviter les faux positifs sur les unités lentes (ex: Tank Speed=50 → ~0.83px/frame)
+		float expectedMovement = Mathf.Max((_stats.Speed * speedMult) / 60f * 0.1f, 0.5f);
 		float actualMovement = GlobalPosition.DistanceTo(_lastPosition);
 
-		if (actualMovement < expectedMovement * 0.1f)
+		if (actualMovement < expectedMovement)
 		{
 			_stuckFrames++;
 			if (_stuckFrames > MaxStuckFrames)
@@ -311,7 +313,8 @@ public partial class Unit
 
 		Vector2 nextPos = _navAgent.GetNextPathPosition();
 		Vector2 direction = (nextPos - GlobalPosition).Normalized();
-		Velocity = direction * _stats.Speed;
+		float speedMult = GameManager.Instance?.GetSpeedMultiplier(TeamId) ?? 1f;
+		Velocity = direction * _stats.Speed * speedMult;
 		MoveAndSlide();
 	}
 }

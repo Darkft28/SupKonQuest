@@ -79,6 +79,9 @@ public partial class Unit : CharacterBody2D
 	private bool _campDefeatCached = false;
 	private const float CampDefeatCheckInterval = 0.3f;
 
+	// Ennemi croisé en chemin vers un camp (combat opportuniste)
+	private Unit _opportunisticTarget = null;
+
 	// Tracking pour la mort mutuelle
 	private int _lastAttackerTeamId = 0;
 
@@ -225,7 +228,7 @@ public partial class Unit : CharacterBody2D
 		_navAgent = new NavigationAgent2D();
 		_navAgent.PathDesiredDistance = 10f;
 		_navAgent.TargetDesiredDistance = ArrivalDistance;
-		_navAgent.AvoidanceEnabled = false;
+		_navAgent.AvoidanceEnabled = true;
 		_navAgent.NavigationLayers = 1u;
 		_navAgent.Radius = 40f; // marge autour des obstacles (= rayon collision unité)
 		AddChild(_navAgent);
@@ -298,7 +301,9 @@ public partial class Unit : CharacterBody2D
 			case UnitState.AttackingCamp:
 				_currentTarget = null;
 				_targetTransport = null;
+				_opportunisticTarget = null;
 				_attackTimer = 0f;
+				_aiSearchTimer = 0f;
 				_navTargetDirty = true;
 				_campDefeatCached = false;
 				_campDefeatCheckTimer = 0f;

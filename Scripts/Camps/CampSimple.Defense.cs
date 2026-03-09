@@ -171,6 +171,11 @@ public partial class CampSimple
 	private void CaptureCamp(int newTeamId)
 	{
 		int oldTeamId = TeamId;
+
+		// Rembourser les files de production avant de changer d'equipe
+		RefundProductionQueue(oldTeamId);
+		RefundShipProductionQueue(oldTeamId);
+
 		TeamId = newTeamId;
 		IsNeutralCamp = false;
 
@@ -227,6 +232,7 @@ public partial class CampSimple
 			unit.UnitType = bonusUnits[i];
 			unit.TeamId = TeamId;
 			unit.IsNeutralCampUnit = false;
+			unit.OwnerCamp = this;
 
 			// Reseau : assigner un NetworkId et broadcaster
 			string networkId = NetworkEntityRegistry.GenerateId();
@@ -236,6 +242,7 @@ public partial class CampSimple
 
 			GetParent().AddChild(unit);
 			_spawnedUnits.Add(unit);
+			_defenders.Add(unit); // les bonus units défendent le camp nouvellement capturé
 
 			NetworkSync.Instance?.SendSpawnUnit(networkId, bonusUnits[i], TeamId,
 				unit.GlobalPosition.X, unit.GlobalPosition.Y, unit.GetCurrentHealth(), false);

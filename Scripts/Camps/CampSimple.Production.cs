@@ -140,6 +140,7 @@ public partial class CampSimple
 			//ajoute l'unité au camp
 			GetParent().AddChild(unit);
 			_spawnedUnits.Add(unit);
+			_defenders.Add(unit); // defenseur initial du camp
 		}
 	}
 
@@ -175,18 +176,19 @@ public partial class CampSimple
 	private void CleanDeadUnits()
 	{
 		_spawnedUnits.RemoveAll(unit => unit == null || !IsInstanceValid(unit) || unit.GetCurrentHealth() <= 0);
+		_defenders.RemoveAll(unit => unit == null || !IsInstanceValid(unit) || unit.GetCurrentHealth() <= 0);
 	}
 
 	public System.Collections.Generic.List<Unit> GetLiveDefenders()
 	{
 		CleanDeadUnits();
-		return new System.Collections.Generic.List<Unit>(_spawnedUnits);
+		return new System.Collections.Generic.List<Unit>(_defenders);
 	}
 
 	public bool AreAllUnitsDefeated()
 	{
 		CleanDeadUnits();
-		return _spawnedUnits.Count == 0;
+		return _defenders.Count == 0;
 	}
 
 	// Méthodes pour l'UI de la file d'attente
@@ -217,5 +219,37 @@ public partial class CampSimple
 	public string[] GetQueuedUnits()
 	{
 		return _productionQueue.ToArray();
+	}
+
+	public void RefundProductionQueue(int refundTeamId)
+	{
+		// Pas de remboursement pour les camps neutres (or local, pas de GameManager)
+		if (refundTeamId <= 0) return;
+		if (GameManager.Instance == null) return;
+
+		int totalRefund = 0;
+
+		// Rembourser l'unité en cours de production
+		if (_currentProduction != null)
+		{
+			int price = UnitStats.GetStats(_currentProduction).Price;
+			totalRefund += price;
+			_currentProduction = null;
+			_productionTimer = 0f;
+		}
+
+		// Rembourser toutes les unités dans la file
+		while (_productionQueue.Count > 0)
+		{
+			string unitType = _productionQueue.Dequeue();
+			int price = UnitStats.GetStats(unitType).Price;
+			totalRefund += price;
+		}
+
+		if (totalRefund > 0)
+		{
+			GameManager.Instance.AddGold(refundTeamId, totalRefund);
+			GD.Print($"[Camp #{CampId}] Remboursement file de production: {totalRefund} or a l'equipe {refundTeamId}");
+		}
 	}
 }

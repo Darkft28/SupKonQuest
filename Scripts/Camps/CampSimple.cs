@@ -31,6 +31,9 @@ public partial class CampSimple : Area2D
 	// liste des unites spawned par ce camp (pour verifier si elles sont mortes)
 	private List<Unit> _spawnedUnits = new List<Unit>();
 
+	// liste des defenseurs du camp (initiaux + bonus capture) — distinct des unites produites
+	private List<Unit> _defenders = new List<Unit>();
+
 	// File d'attente de production
 	private Queue<string> _productionQueue = new Queue<string>();
 	private string _currentProduction = null;
@@ -125,9 +128,7 @@ public partial class CampSimple : Area2D
 		foreach (var unit in _spawnedUnits)
 		{
 			if (unit != null && IsInstanceValid(unit))
-			{
 				unit.IsLocalAuthority = isLocal;
-			}
 		}
 	}
 
@@ -173,6 +174,14 @@ public partial class CampSimple : Area2D
 	public void SetTeam(int newTeamId, bool isNeutral)
 	{
 		int oldTeamId = TeamId;
+
+		// Rembourser les files de production si l'equipe change (capture ou neutralisation)
+		if (oldTeamId != newTeamId)
+		{
+			RefundProductionQueue(oldTeamId);
+			RefundShipProductionQueue(oldTeamId);
+		}
+
 		TeamId = newTeamId;
 		IsNeutralCamp = isNeutral;
 

@@ -312,6 +312,38 @@ public partial class CampSimple
 		return true;
 	}
 
+	public void RefundShipProductionQueue(int refundTeamId)
+	{
+		if (!HasPort) return;
+		if (refundTeamId <= 0) return;
+		if (GameManager.Instance == null) return;
+
+		int totalRefund = 0;
+
+		// Rembourser le bateau en cours de production
+		if (_currentShipProduction != null)
+		{
+			int price = ShipStats.GetStats(_currentShipProduction).Price;
+			totalRefund += price;
+			_currentShipProduction = null;
+			_shipProductionTimer = 0f;
+		}
+
+		// Rembourser tous les bateaux dans la file
+		while (_shipProductionQueue.Count > 0)
+		{
+			string shipType = _shipProductionQueue.Dequeue();
+			int price = ShipStats.GetStats(shipType).Price;
+			totalRefund += price;
+		}
+
+		if (totalRefund > 0)
+		{
+			GameManager.Instance.AddGold(refundTeamId, totalRefund);
+			GD.Print($"[Camp #{CampId}] Remboursement file navale: {totalRefund} or a l'equipe {refundTeamId}");
+		}
+	}
+
 	public void TrySpawnPort(TileMapLayer tileMapSol)
 	{
 		_tileMapSol = tileMapSol;

@@ -301,9 +301,19 @@ public partial class NetworkManager : Node
 
 	private void OnPeerDisconnected(long id)
 	{
-		GD.Print($"Joueur {id} déconnecté");
+		GD.Print($"[NET] Joueur {id} déconnecté");
 		Players.Remove(id);
 		EmitSignal(SignalName.PlayerDisconnected, id);
+
+		// Si on est en jeu, planifier le retour au menu après 5s
+		if (GetTree().CurrentScene?.Name == "Game")
+		{
+			GetTree().CreateTimer(5.0).Timeout += () =>
+			{
+				if (IsInstanceValid(this))
+					GetTree().ChangeSceneToFile("res://Scenes/MainMenu.tscn");
+			};
+		}
 	}
 
 	private void OnConnectedToServer()
@@ -324,11 +334,23 @@ public partial class NetworkManager : Node
 
 	private void OnServerDisconnected()
 	{
-		GD.Print("Déconnecté du serveur");
+		GD.Print("[NET] Déconnecté du serveur");
 		_peer = null;
 		Multiplayer.MultiplayerPeer = null;
 		Players.Clear();
 		EmitSignal(SignalName.ServerDisconnected);
+
+		// Si on est en jeu, planifier le retour au menu après 5s
+		if (GetTree().CurrentScene?.Name == "Game")
+		{
+			// Réutiliser PlayerDisconnected avec id=-1 pour signaler une déco serveur
+			EmitSignal(SignalName.PlayerDisconnected, (long)-1);
+			GetTree().CreateTimer(5.0).Timeout += () =>
+			{
+				if (IsInstanceValid(this))
+					GetTree().ChangeSceneToFile("res://Scenes/MainMenu.tscn");
+			};
+		}
 	}
 
 	// --- RPCs ---
