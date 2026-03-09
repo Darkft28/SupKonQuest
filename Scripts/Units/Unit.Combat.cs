@@ -54,8 +54,16 @@ public partial class Unit
 
 		float distanceToCamp = GlobalPosition.DistanceTo(_campTarget.GlobalPosition);
 
+		// Cache AreAllUnitsDefeated : évite le LINQ RemoveAll chaque frame
+		_campDefeatCheckTimer += (float)delta;
+		if (_campDefeatCheckTimer >= CampDefeatCheckInterval)
+		{
+			_campDefeatCheckTimer = 0f;
+			_campDefeatCached = _campTarget.AreAllUnitsDefeated();
+		}
+
 		// Phase 1 : des défenseurs sont encore en vie → les combattre sans quitter l'état
-		if (!_campTarget.AreAllUnitsDefeated())
+		if (!_campDefeatCached)
 		{
 			Unit defender = FindNearestDefenderOfCamp(_campTarget);
 			if (defender != null)

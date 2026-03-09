@@ -46,6 +46,9 @@ public partial class Ship : CharacterBody2D
 
 	// Navigation maritime
 	private NavigationAgent2D _navAgent = null;
+	private Vector2 _lastNavTargetPos = Vector2.Zero;
+	private bool _navTargetDirty = true;
+	private const float NavUpdateDistance = 64f;
 
 	// Transport : debarquement en attente (le bateau navigue d'abord, puis debarque)
 	private Vector2? _pendingUnloadPosition = null;
@@ -153,6 +156,7 @@ public partial class Ship : CharacterBody2D
 				Velocity = Vector2.Zero;
 				break;
 			case ShipState.MovingToTarget:
+				_navTargetDirty = true;
 				break;
 			case ShipState.Attacking:
 				Velocity = Vector2.Zero;
@@ -160,6 +164,7 @@ public partial class Ship : CharacterBody2D
 				break;
 			case ShipState.MovingToPoint:
 				_currentTarget = null;
+				_navTargetDirty = true;
 				break;
 		}
 	}

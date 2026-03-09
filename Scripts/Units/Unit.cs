@@ -66,6 +66,18 @@ public partial class Unit : CharacterBody2D
 
 	// Navigation
 	private NavigationAgent2D _navAgent = null;
+	private Vector2 _lastNavTargetPos = Vector2.Zero;
+	private bool _navTargetDirty = true;
+	private const float NavUpdateDistance = 64f; // recalcule le chemin si la cible bouge > 64px
+
+	// Throttle recherche ennemis/camps (évite O(n²) chaque frame)
+	private float _aiSearchTimer = 0f;
+	private const float EnemySearchInterval = 0.5f;
+
+	// Throttle vérification défenseurs camp (évite LINQ chaque frame)
+	private float _campDefeatCheckTimer = 0f;
+	private bool _campDefeatCached = false;
+	private const float CampDefeatCheckInterval = 0.3f;
 
 	// Tracking pour la mort mutuelle
 	private int _lastAttackerTeamId = 0;
@@ -206,6 +218,9 @@ public partial class Unit : CharacterBody2D
 			NetworkEntityRegistry.Register(NetworkId, this);
 		}
 
+		// Stagger la recherche ennemis : chaque unité a un offset aléatoire
+		_aiSearchTimer = GD.Randf() * EnemySearchInterval;
+
 		// Créer le NavigationAgent2D pour le pathfinding (couche 1 = terrestre)
 		_navAgent = new NavigationAgent2D();
 		_navAgent.PathDesiredDistance = 10f;
@@ -259,7 +274,7 @@ public partial class Unit : CharacterBody2D
 				break;
 
 			case UnitState.MovingToTarget:
-				// On va se déplacer vers la cible dans _PhysicsProcess
+				_navTargetDirty = true; // Nouvelle cible → forcer recalcul chemin
 				break;
 
 			case UnitState.Attacking:
@@ -271,17 +286,22 @@ public partial class Unit : CharacterBody2D
 				_currentTarget = null; // On annule la cible de combat
 				_targetTransport = null;
 				_campTarget = null;
+				_navTargetDirty = true;
 				break;
 
 			case UnitState.MovingToTransport:
 				_currentTarget = null;
 				_campTarget = null;
+				_navTargetDirty = true;
 				break;
 
 			case UnitState.AttackingCamp:
 				_currentTarget = null;
 				_targetTransport = null;
 				_attackTimer = 0f;
+				_navTargetDirty = true;
+				_campDefeatCached = false;
+				_campDefeatCheckTimer = 0f;
 				break;
 		}
 	}

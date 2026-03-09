@@ -28,7 +28,7 @@ public partial class Unit
 			return;
 		}
 
-		// Si on avait un camp cible encore valide, y retourner directement
+		// Si on avait un camp cible encore valide, y retourner directement (vérif cheap)
 		if (_campTarget != null && IsInstanceValid(_campTarget) && _campTarget.IsInsideTree()
 			&& _campTarget.GetTeamId() != TeamId)
 		{
@@ -36,7 +36,24 @@ public partial class Unit
 			return;
 		}
 
-		// Unites de combat : chercher un ennemi dans la zone de detection
+		// Recherches ennemis/camps : throttlées pour éviter O(n²) chaque frame
+		_aiSearchTimer += (float)delta;
+		if (_aiSearchTimer < EnemySearchInterval)
+		{
+			// Reprendre la route sans attendre si plus de cible
+			if (_currentTarget == null && _savedTargetPosition.HasValue)
+			{
+				_targetPosition = _savedTargetPosition;
+				_savedTargetPosition = null;
+				_stuckFrames = 0;
+				_moveStartDelay = MoveStartDelayFrames;
+				_lastPosition = GlobalPosition;
+				_currentState = UnitState.MovingToPoint;
+			}
+			return;
+		}
+		_aiSearchTimer = 0f;
+
 		if (_currentTarget == null)
 		{
 			Unit enemy = FindEnemyInDetectionRange();
@@ -46,7 +63,6 @@ public partial class Unit
 				return;
 			}
 
-			// Chercher un camp attaquable (defenseurs morts, ennemi/neutre)
 			CampSimple camp = FindAttackableCampInRange();
 			if (camp != null)
 			{
@@ -55,7 +71,6 @@ public partial class Unit
 				return;
 			}
 
-			// Plus d'ennemis : reprendre la route sauvegardee si elle existe
 			if (_savedTargetPosition.HasValue)
 			{
 				GD.Print($"[MOVE] {UnitType} T{TeamId} reprend sa route apres combat");
@@ -120,35 +135,32 @@ public partial class Unit
 		}
 		else
 		{
-			// Unites de combat : chercher des ennemis a proximite pendant le deplacement
-			Unit enemy = FindEnemyInDetectionRange();
-			if (enemy != null)
+			// Unites de combat : chercher des ennemis throttlé (évite O(n²))
+			_aiSearchTimer += (float)delta;
+			if (_aiSearchTimer >= EnemySearchInterval)
 			{
-				GD.Print($"[ENGAGE] {UnitType} T{TeamId} detecte {enemy.GetUnitType()} T{enemy.GetTeamId()} en route, combat!");
-				_savedTargetPosition = _targetPosition;
-				_currentTarget = enemy;
+				_aiSearchTimer = 0f;
 
-				float distanceToEnemy = GlobalPosition.DistanceTo(enemy.GlobalPosition);
-				if (distanceToEnemy <= _stats.Range)
+				Unit enemy = FindEnemyInDetectionRange();
+				if (enemy != null)
 				{
-					ChangeState(UnitState.Attacking);
+					GD.Print($"[ENGAGE] {UnitType} T{TeamId} detecte {enemy.GetUnitType()} T{enemy.GetTeamId()} en route, combat!");
+					_savedTargetPosition = _targetPosition;
+					_currentTarget = enemy;
+					float distanceToEnemy = GlobalPosition.DistanceTo(enemy.GlobalPosition);
+					ChangeState(distanceToEnemy <= _stats.Range ? UnitState.Attacking : UnitState.MovingToTarget);
+					return;
 				}
-				else
-				{
-					ChangeState(UnitState.MovingToTarget);
-				}
-				return;
-			}
 
-			// Chercher un camp attaquable en route
-			CampSimple camp = FindAttackableCampInRange();
-			if (camp != null)
-			{
-				GD.Print($"[ENGAGE] {UnitType} T{TeamId} detecte Camp #{camp.GetCampId()} sans defenseurs, attaque!");
-				_savedTargetPosition = _targetPosition;
-				_campTarget = camp;
-				ChangeState(UnitState.AttackingCamp);
-				return;
+				CampSimple camp = FindAttackableCampInRange();
+				if (camp != null)
+				{
+					GD.Print($"[ENGAGE] {UnitType} T{TeamId} detecte Camp #{camp.GetCampId()} sans defenseurs, attaque!");
+					_savedTargetPosition = _targetPosition;
+					_campTarget = camp;
+					ChangeState(UnitState.AttackingCamp);
+					return;
+				}
 			}
 		}
 
@@ -270,7 +282,8 @@ public partial class Unit
 	}
 
 	// Déplacement avec pathfinding (contourne les obstacles).
-	// Fallback direct uniquement si le NavAgent n'est pas encore dans l'arbre (init).
+	// Le chemin n'est recalculé que si la cible a bougé de plus de NavUpdateDistance
+	// ou si un nouvel ordre vient d'être donné (_navTargetDirty).
 	private void MoveWithNav(Vector2 targetPos)
 	{
 		if (_navAgent == null || !_navAgent.IsInsideTree())
@@ -282,12 +295,16 @@ public partial class Unit
 			return;
 		}
 
-		_navAgent.TargetPosition = targetPos;
+		// Throttle : ne pas recalculer le chemin si la cible n'a pas bougé
+		if (_navTargetDirty || targetPos.DistanceTo(_lastNavTargetPos) > NavUpdateDistance)
+		{
+			_navAgent.TargetPosition = targetPos;
+			_lastNavTargetPos = targetPos;
+			_navTargetDirty = false;
+		}
 
 		if (_navAgent.IsNavigationFinished())
 		{
-			// Chemin terminé ou cible inatteignable → on s'arrête proprement.
-			// (la détection d'arrivée dans l'état appelant gère la suite)
 			Velocity = Vector2.Zero;
 			return;
 		}

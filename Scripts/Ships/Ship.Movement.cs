@@ -139,7 +139,13 @@ public partial class Ship
 			return;
 		}
 
-		_navAgent.TargetPosition = targetPos;
+		// Throttle : recalculer le chemin seulement si la cible a bougé ou nouvel ordre
+		if (_navTargetDirty || targetPos.DistanceTo(_lastNavTargetPos) > NavUpdateDistance)
+		{
+			_navAgent.TargetPosition = targetPos;
+			_lastNavTargetPos = targetPos;
+			_navTargetDirty = false;
+		}
 
 		if (_navAgent.IsNavigationFinished())
 		{
