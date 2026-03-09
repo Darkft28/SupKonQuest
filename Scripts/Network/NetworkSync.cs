@@ -15,7 +15,6 @@ public partial class NetworkSync : Node
 	public override void _Ready()
 	{
 		Instance = this;
-		GD.Print("[NET] NetworkSync pret");
 	}
 
 	public override void _ExitTree()
@@ -74,7 +73,6 @@ public partial class NetworkSync : Node
 	[Rpc(MultiplayerApi.RpcMode.AnyPeer, CallLocal = false, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
 	private void RpcSpawnUnit(string networkId, string unitType, int teamId, float posX, float posY, float health, bool isNeutral)
 	{
-		// Si l'entite existe deja, ignorer
 		if (NetworkEntityRegistry.Get(networkId) != null) return;
 
 		var unitScene = GD.Load<PackedScene>("res://Scenes/Unit.tscn");
@@ -90,8 +88,6 @@ public partial class NetworkSync : Node
 
 		GetTree().CurrentScene.AddChild(unit);
 		unit.SetCurrentHealth(health);
-
-		GD.Print($"[NET] Spawn remote unit {unitType} T{teamId} id={networkId}");
 	}
 
 	public void SendSpawnShip(string networkId, string shipType, int teamId, float posX, float posY, float health)
@@ -116,8 +112,6 @@ public partial class NetworkSync : Node
 		ship.IsLocalAuthority = false;
 
 		GetTree().CurrentScene.AddChild(ship);
-
-		GD.Print($"[NET] Spawn remote ship {shipType} T{teamId} id={networkId}");
 	}
 
 	// =============================================
@@ -135,10 +129,7 @@ public partial class NetworkSync : Node
 	{
 		var node = NetworkEntityRegistry.Get(networkId);
 		if (node != null && GodotObject.IsInstanceValid(node))
-		{
-			GD.Print($"[NET] Entite morte: {networkId}");
 			node.QueueFree();
-		}
 	}
 
 	// =============================================
@@ -186,17 +177,13 @@ public partial class NetworkSync : Node
 	[Rpc(MultiplayerApi.RpcMode.AnyPeer, CallLocal = false, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
 	private void RpcApplyCampDamage(int campId, float damage, int attackerTeamId)
 	{
-		// Trouver le camp par son ID
 		var camps = GetTree().GetNodesInGroup("camps");
 		foreach (var node in camps)
 		{
 			if (node is CampSimple camp && camp.GetCampId() == campId)
 			{
-				// Le camp applique les degats localement s'il en a l'autorite
 				if (camp.IsLocallyOwned())
-				{
 					camp.TakeDamage(damage, attackerTeamId);
-				}
 				break;
 			}
 		}
@@ -229,7 +216,7 @@ public partial class NetworkSync : Node
 	public void SendSyncCampAssignments(int[] campIds, int[] teamIds, bool[] isNeutral)
 	{
 		if (!IsMultiplayer()) return;
-		// Convertir bool[] en int[] car Godot RPC ne supporte pas bool[]
+		// Godot RPC ne supporte pas bool[] comme Variant, on convertit en int[]
 		int[] isNeutralInt = new int[isNeutral.Length];
 		for (int i = 0; i < isNeutral.Length; i++)
 			isNeutralInt[i] = isNeutral[i] ? 1 : 0;
@@ -239,7 +226,6 @@ public partial class NetworkSync : Node
 	[Rpc(MultiplayerApi.RpcMode.Authority, CallLocal = false, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
 	private void RpcSyncCampAssignments(int[] campIds, int[] teamIds, int[] isNeutralInt)
 	{
-		GD.Print($"[NET] Reception des assignations de camps: {campIds.Length} camps");
 		var camps = GetTree().GetNodesInGroup("camps");
 
 		for (int i = 0; i < campIds.Length; i++)
@@ -270,13 +256,9 @@ public partial class NetworkSync : Node
 	[Rpc(MultiplayerApi.RpcMode.AnyPeer, CallLocal = false, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
 	private void RpcUnitBoarded(string unitNetworkId, string shipNetworkId)
 	{
-		// Sur le remote, l'unite puppet est detruite (elle est dans le bateau)
 		var unit = NetworkEntityRegistry.Get<Unit>(unitNetworkId);
 		if (unit != null && GodotObject.IsInstanceValid(unit))
-		{
-			GD.Print($"[NET] Unite {unitNetworkId} embarquee sur {shipNetworkId}");
 			unit.QueueFree();
-		}
 	}
 
 	public void SendTransportUnloaded(string shipNetworkId, string[] unitNetworkIds, string[] unitTypes, int teamId, float[] posXs, float[] posYs, float[] healths)
@@ -307,19 +289,13 @@ public partial class NetworkSync : Node
 			unit.SetCurrentHealth(healths[i]);
 		}
 
-		GD.Print($"[NET] Transport {shipNetworkId} a debarque {unitNetworkIds.Length} unites");
 	}
-
-	// =============================================
-	// SYNC CONTINUE (Unreliable, 20Hz batché)
-	// =============================================
 
 	private void SendEntityStatesBatch()
 	{
 		var gameState = GetNodeOrNull<GameState>("/root/GameState");
 		int localTeamId = gameState?.LocalTeamId ?? 1;
 
-		// Collecter les entites locales
 		List<string> ids = new();
 		List<float> xs = new();
 		List<float> ys = new();

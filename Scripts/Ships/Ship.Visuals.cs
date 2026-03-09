@@ -112,7 +112,6 @@ public partial class Ship
 
 	public override void _Draw()
 	{
-		// Indicateur du nombre d'unites embarquees pour Transport
 		if (ShipType == "Transport" && _loadedUnits.Count > 0)
 		{
 			var font = ThemeDB.FallbackFont;
@@ -120,7 +119,6 @@ public partial class Ship
 				HorizontalAlignment.Center, -1, 16, Colors.White);
 		}
 
-		// Barre de vie
 		float healthPercent = _maxHealth > 0 ? _currentHealth / _maxHealth : 0f;
 		if (healthPercent >= 1f) return;
 

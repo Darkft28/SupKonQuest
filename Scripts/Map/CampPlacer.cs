@@ -90,7 +90,6 @@ public static class CampPlacer
 			}
 		}
 
-		// Mode test : spawn 2 camps proches au centre de la map
 		if (testMode && !Engine.IsEditorHint() && unitsContainer != null && campScene != null)
 		{
 			campCount = SpawnTestModeCamps(sol, unitsContainer, campScene, campCount);
@@ -149,7 +148,6 @@ public static class CampPlacer
 		}
 		unitsContainer.AddChild(camp2);
 
-		GD.Print("MODE TEST: 2 camps spawnes au centre de la map");
 		return campCount;
 	}
 

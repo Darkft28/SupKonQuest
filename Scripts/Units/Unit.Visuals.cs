@@ -6,7 +6,6 @@ public partial class Unit
 	{
 		_sprite = new Sprite2D();
 
-		// Mapper le type d'unité au chemin de texture (gestion des cas particuliers)
 		string texturePath = UnitType switch
 		{
 			"Heal" => "res://Assets/Units/Characters/Healer/healer_Front.png",
@@ -47,7 +46,6 @@ public partial class Unit
 		_detectionZone = new Area2D();
 		_detectionZone.Name = "DetectionZone";
 
-		// Créer la forme de collision circulaire
 		var collisionShape = new CollisionShape2D();
 		var circleShape = new CircleShape2D();
 		circleShape.Radius = DetectionRange;
@@ -56,36 +54,30 @@ public partial class Unit
 		_detectionZone.AddChild(collisionShape);
 		AddChild(_detectionZone);
 
-		// Connecter les signaux pour détecter les entrées/sorties
 		_detectionZone.BodyEntered += OnBodyEnteredDetectionZone;
 		_detectionZone.BodyExited += OnBodyExitedDetectionZone;
 	}
 
 	public override void _Draw()
 	{
-		// Cercle d'aura du Support
 		if (UnitType == "Support")
 		{
 			DrawCircle(Vector2.Zero, SupportAuraRadius, AuraColor);
 			DrawArc(Vector2.Zero, SupportAuraRadius, 0, Mathf.Tau, 64, AuraBorderColor, 2f);
 		}
 
-		// Rayon de soin vert du Healer
 		if (UnitType == "Heal" && _currentState == UnitState.Healing
 			&& _healTarget != null && IsInstanceValid(_healTarget) && _healTarget.IsInsideTree())
 		{
 			Vector2 targetLocal = _healTarget.GlobalPosition - GlobalPosition;
 			Color healRayColor = new Color(0.2f, 0.9f, 0.3f, 0.6f);
 			Color healRayGlow = new Color(0.2f, 0.9f, 0.3f, 0.15f);
-			// Glow large
 			DrawLine(Vector2.Zero, targetLocal, healRayGlow, 8f);
-			// Rayon principal
 			DrawLine(Vector2.Zero, targetLocal, healRayColor, 3f);
-			// Petit cercle au point d'impact
 			DrawCircle(targetLocal, 6f, healRayColor);
 		}
 
-		// Barre de vie (seulement si blesse)
+		// Barre de vie (seulement si blessé)
 		float healthPercent = _maxHealth > 0 ? _currentHealth / _maxHealth : 0f;
 		if (healthPercent >= 1f)
 			return;

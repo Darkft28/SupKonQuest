@@ -46,10 +46,7 @@ public partial class CampSimple
 
 	private void AlertDefenders(Vector2 intruderPos)
 	{
-		GD.Print($"[ALERTE] Camp #{CampId} (T{TeamId}) - intrus a {intruderPos}!");
-
 		var allUnits = GetTree().GetNodesInGroup("units");
-		int alerted = 0;
 		foreach (var node in allUnits)
 		{
 			if (node is Unit unit && unit.GetTeamId() == TeamId
@@ -57,12 +54,8 @@ public partial class CampSimple
 				&& GlobalPosition.DistanceTo(unit.GlobalPosition) <= TerritoryRadius)
 			{
 				unit.MoveTo(intruderPos);
-				alerted++;
 			}
 		}
-
-		if (alerted > 0)
-			GD.Print($"[ALERTE] {alerted} unite(s) alertee(s) vers {intruderPos}");
 	}
 
 	private void ProcessTurret(double delta)
@@ -71,57 +64,47 @@ public partial class CampSimple
 
 		if (_turretTimer >= TurretAttackInterval)
 		{
-			_turretTimer = 0f;  // Reset à 0, pas 60 !
+			_turretTimer = 0f;
 			AttackEnemiesInRange();
 		}
 	}
 
 	private void AttackEnemiesInRange()
 	{
-		// Les camps neutres n'attaquent pas
 		if (IsNeutralCamp)
 			return;
 
-		// La tourelle ne tire que quand tous les défenseurs sont morts (dernier recours)
+		// La tourelle ne tire que quand tous les défenseurs sont morts
 		if (!AreAllUnitsDefeated())
 			return;
 
-		// Reseau : seul le peer qui possede ce camp fait tirer la tourelle
 		if (!IsLocallyOwned())
 			return;
 
-		// Récupérer toutes les unités
 		var allUnits = GetTree().GetNodesInGroup("units");
 
 		foreach (var node in allUnits)
 		{
 			if (node is Unit unit)
 			{
-				// Vérifier si l'unité est valide et initialisée
 				if (!IsInstanceValid(unit))
 					continue;
 
-				// Vérifier si l'unité est dans l'arbre de scène (initialisée)
 				if (!unit.IsInsideTree())
 					continue;
 
-				// Récupérer le TeamId de l'unité
 				int unitTeamId = unit.GetTeamId();
 
-				// Vérifier si c'est un allié (même TeamId)
 				if (unitTeamId == TeamId)
-					continue; // Allié, on ignore
+					continue;
 
-				// Vérifier si l'unité est vivante
 				if (unit.GetCurrentHealth() <= 0)
 					continue;
 
-				// Vérifier la distance
 				float distance = GlobalPosition.DistanceTo(unit.GlobalPosition);
 
 				if (distance <= TurretRange)
 				{
-					// Infliger des degats (localement ou via RPC)
 					if (unit.IsLocalAuthority)
 					{
 						unit.TakeDamage(TurretDamage);
@@ -130,7 +113,6 @@ public partial class CampSimple
 					{
 						NetworkSync.Instance?.SendUnitDamage(unit.NetworkId, TurretDamage, TeamId);
 					}
-					GD.Print($"Camp #{CampId} (Team {TeamId}) attaque {unit.GetUnitType()} (Team {unitTeamId}) - Degats: {TurretDamage}");
 				}
 			}
 		}
@@ -138,18 +120,16 @@ public partial class CampSimple
 
 	public bool TakeDamage(float damage, int attackerTeamId)
 	{
-		//attaquable seulement si les unitées sont mortes
+		// Attaquable seulement si toutes les unités défendantes sont mortes
 		if (!AreAllUnitsDefeated())
 			return false;
 
-		// Reseau : si on n'a pas l'autorite sur ce camp, envoyer via RPC
 		if (!IsLocallyOwned())
 		{
 			NetworkSync.Instance?.SendCampDamage(CampId, damage, attackerTeamId);
 			return true;
 		}
 
-		// Tracker le dernier attaquant
 		_lastAttackerTeamId = attackerTeamId;
 
 		SetCurrentHealth(GetCurrentHealth() - damage);
@@ -198,17 +178,13 @@ public partial class CampSimple
 			if (_localGold > 0)
 			{
 				GameManager.Instance.AddGold(newTeamId, _localGold);
-				GD.Print($"Camp #{CampId} transfere {_localGold} or accumule a l'equipe {newTeamId}");
 				_localGold = 0;
 			}
 		}
 
 		SpawnBonusUnits();
 
-		GD.Print($"Camp capture! Equipe {oldTeamId} -> Equipe {newTeamId}");
 		EmitSignal(SignalName.CampCaptured, newTeamId);
-
-		// Reseau : notifier l'autre peer
 		NetworkSync.Instance?.SendCampCaptured(CampId, newTeamId);
 	}
 

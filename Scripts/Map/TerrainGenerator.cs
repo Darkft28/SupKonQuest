@@ -38,7 +38,6 @@ public static class TerrainGenerator
 				int solId = -1;
 				int objetId = -1;
 
-				// Biome selon l'altitude
 				if (altitude < -0.2f)
 				{
 					solId = IdEau;

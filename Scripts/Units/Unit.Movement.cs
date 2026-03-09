@@ -4,7 +4,7 @@ public partial class Unit
 {
 	private void ProcessIdleState(double delta)
 	{
-		// Healer : chercher des allies blesses, jamais d'ennemis
+		// Healer : chercher des alliés blessés, jamais d'ennemis
 		if (UnitType == "Heal")
 		{
 			Unit woundedAlly = FindWoundedAllyInRange();
@@ -12,12 +12,10 @@ public partial class Unit
 			{
 				_healTarget = woundedAlly;
 				_healTimer = 0f;
-				GD.Print($"[HEAL] Healer T{TeamId} commence a soigner {woundedAlly.GetUnitType()} T{woundedAlly.GetTeamId()} ({woundedAlly.GetCurrentHealth():F0}/{woundedAlly.GetMaxHealth():F0} HP)");
 				ChangeState(UnitState.Healing);
 			}
 			else if (_savedTargetPosition.HasValue)
 			{
-				GD.Print($"[MOVE] {UnitType} T{TeamId} reprend sa route");
 				_targetPosition = _savedTargetPosition;
 				_savedTargetPosition = null;
 				_stuckFrames = 0;
@@ -28,7 +26,7 @@ public partial class Unit
 			return;
 		}
 
-		// Si on avait un camp cible encore valide, y retourner directement (vérif cheap)
+		// Camp cible encore valide → reprendre l'attaque directement (vérif cheap)
 		if (_campTarget != null && IsInstanceValid(_campTarget) && _campTarget.IsInsideTree()
 			&& _campTarget.GetTeamId() != TeamId)
 		{
@@ -36,11 +34,11 @@ public partial class Unit
 			return;
 		}
 
-		// Recherches ennemis/camps : throttlées pour éviter O(n²) chaque frame
+		// Recherches throttlées pour éviter O(n²) chaque frame
 		_aiSearchTimer += (float)delta;
 		if (_aiSearchTimer < EnemySearchInterval)
 		{
-			// Reprendre la route sans attendre si plus de cible
+			// Reprendre la route immédiatement si plus de cible
 			if (_currentTarget == null && _savedTargetPosition.HasValue)
 			{
 				_targetPosition = _savedTargetPosition;
@@ -73,7 +71,6 @@ public partial class Unit
 
 			if (_savedTargetPosition.HasValue)
 			{
-				GD.Print($"[MOVE] {UnitType} T{TeamId} reprend sa route apres combat");
 				_targetPosition = _savedTargetPosition;
 				_savedTargetPosition = null;
 				_stuckFrames = 0;
@@ -86,7 +83,6 @@ public partial class Unit
 
 	private void ProcessMovingToTargetState(double delta)
 	{
-		// Vérifier si la cible est encore valide
 		if (!IsTargetValid())
 		{
 			ChangeState(UnitState.Idle);
@@ -95,31 +91,25 @@ public partial class Unit
 
 		float distanceToTarget = GlobalPosition.DistanceTo(_currentTarget.GlobalPosition);
 
-		// Si à portée d'attaque, passer en mode attaque
 		if (distanceToTarget <= _stats.Range)
 		{
-			GD.Print($"[COMBAT] {UnitType} (Team {TeamId}) passe en mode ATTACKING (distance={distanceToTarget:F1} <= range={_stats.Range})");
 			ChangeState(UnitState.Attacking);
 			return;
 		}
 
-		// Se déplacer vers la cible en contournant les obstacles
 		MoveWithNav(_currentTarget.GlobalPosition);
-
-		// Détection de blocage
 		ProcessStuckDetection();
 	}
 
 	private void ProcessMovingToPointState(double delta)
 	{
-		// Déplacement vers un point ordonné par le joueur
 		if (!_targetPosition.HasValue)
 		{
 			ChangeState(UnitState.Idle);
 			return;
 		}
 
-		// Healer en deplacement : chercher des allies blesses, pas des ennemis
+		// Healer en déplacement : chercher des alliés blessés, jamais d'ennemis
 		if (UnitType == "Heal")
 		{
 			Unit woundedAlly = FindWoundedAllyInRange();
@@ -128,14 +118,13 @@ public partial class Unit
 				_savedTargetPosition = _targetPosition;
 				_healTarget = woundedAlly;
 				_healTimer = 0f;
-				GD.Print($"[HEAL] Healer T{TeamId} s'arrete pour soigner {woundedAlly.GetUnitType()} T{woundedAlly.GetTeamId()} ({woundedAlly.GetCurrentHealth():F0}/{woundedAlly.GetMaxHealth():F0} HP)");
 				ChangeState(UnitState.Healing);
 				return;
 			}
 		}
 		else
 		{
-			// Unites de combat : chercher des ennemis throttlé (évite O(n²))
+			// Unités de combat : recherche throttlée (évite O(n²))
 			_aiSearchTimer += (float)delta;
 			if (_aiSearchTimer >= EnemySearchInterval)
 			{
@@ -144,7 +133,6 @@ public partial class Unit
 				Unit enemy = FindEnemyInDetectionRange();
 				if (enemy != null)
 				{
-					GD.Print($"[ENGAGE] {UnitType} T{TeamId} detecte {enemy.GetUnitType()} T{enemy.GetTeamId()} en route, combat!");
 					_savedTargetPosition = _targetPosition;
 					_currentTarget = enemy;
 					float distanceToEnemy = GlobalPosition.DistanceTo(enemy.GlobalPosition);
@@ -155,7 +143,6 @@ public partial class Unit
 				CampSimple camp = FindAttackableCampInRange();
 				if (camp != null)
 				{
-					GD.Print($"[ENGAGE] {UnitType} T{TeamId} detecte Camp #{camp.GetCampId()} sans defenseurs, attaque!");
 					_savedTargetPosition = _targetPosition;
 					_campTarget = camp;
 					ChangeState(UnitState.AttackingCamp);
@@ -166,7 +153,6 @@ public partial class Unit
 
 		float distance = GlobalPosition.DistanceTo(_targetPosition.Value);
 
-		// Arrivé à destination
 		if (distance < ArrivalDistance)
 		{
 			_targetPosition = null;
@@ -175,16 +161,12 @@ public partial class Unit
 			return;
 		}
 
-		// Se déplacer vers la destination en contournant les obstacles
 		MoveWithNav(_targetPosition.Value);
-
-		// Détection de blocage
 		ProcessStuckDetection();
 	}
 
 	private void ProcessStuckDetection()
 	{
-		// Attendre le délai initial avant de vérifier le blocage
 		if (_moveStartDelay > 0)
 		{
 			_moveStartDelay--;
@@ -192,9 +174,8 @@ public partial class Unit
 			return;
 		}
 
-		// Détection de blocage - seuil dynamique basé sur la vitesse
 		float speedMult = GameManager.Instance?.GetSpeedMultiplier(TeamId) ?? 1f;
-		// Plancher de 0.5px pour éviter les faux positifs sur les unités lentes (ex: Tank Speed=50 → ~0.83px/frame)
+		// Plancher 0.5px pour éviter les faux positifs sur les unités lentes (ex: Tank Speed=50 → ~0.83px/frame)
 		float expectedMovement = Mathf.Max((_stats.Speed * speedMult) / 60f * 0.1f, 0.5f);
 		float actualMovement = GlobalPosition.DistanceTo(_lastPosition);
 
@@ -203,22 +184,18 @@ public partial class Unit
 			_stuckFrames++;
 			if (_stuckFrames > MaxStuckFrames)
 			{
-				// Bloqué - vérifier si on a une cible proche pour attaquer
+				// Bloqué près de la cible (collision physique) → passer en Attacking (marge 120px)
 				if (_currentTarget != null && IsTargetValid())
 				{
 					float distanceToTarget = GlobalPosition.DistanceTo(_currentTarget.GlobalPosition);
-					// Si bloqué mais proche de la cible (collision physique), passer en Attacking
-					// On utilise une marge de 120 pixels (collision ~80 + marge)
 					if (distanceToTarget <= 120f)
 					{
-						GD.Print($"[COMBAT] {UnitType} (Team {TeamId}) bloque pres de la cible, passage en ATTACKING");
 						ChangeState(UnitState.Attacking);
 						_stuckFrames = 0;
 						return;
 					}
 				}
 
-				// Sinon, on arrête et on passe en Idle
 				_targetPosition = null;
 				ChangeState(UnitState.Idle);
 			}
@@ -233,13 +210,11 @@ public partial class Unit
 	public void MoveTo(Vector2 target)
 	{
 		_targetPosition = target;
-		_savedTargetPosition = null; // Nouvel ordre annule la destination sauvegardee
+		_savedTargetPosition = null;
 		_campTarget = null;
 		_stuckFrames = 0;
 		_moveStartDelay = MoveStartDelayFrames;
 		_lastPosition = GlobalPosition;
-
-		// Passer en mode déplacement vers un point (ordre du joueur)
 		ChangeState(UnitState.MovingToPoint);
 	}
 
@@ -269,7 +244,6 @@ public partial class Unit
 	{
 		if (_savedTargetPosition.HasValue)
 		{
-			GD.Print($"[MOVE] {UnitType} T{TeamId} reprend sa route apres attaque de camp");
 			_targetPosition = _savedTargetPosition;
 			_savedTargetPosition = null;
 			_stuckFrames = 0;
@@ -283,21 +257,20 @@ public partial class Unit
 		}
 	}
 
-	// Déplacement avec pathfinding (contourne les obstacles).
+	// Déplacement avec pathfinding.
 	// Le chemin n'est recalculé que si la cible a bougé de plus de NavUpdateDistance
 	// ou si un nouvel ordre vient d'être donné (_navTargetDirty).
 	private void MoveWithNav(Vector2 targetPos)
 	{
 		if (_navAgent == null || !_navAgent.IsInsideTree())
 		{
-			// Avant que l'agent soit prêt : mouvement direct (1 seul frame au démarrage)
+			// Agent pas encore prêt : mouvement direct pour ce frame
 			Vector2 dir = (targetPos - GlobalPosition).Normalized();
 			Velocity = dir * _stats.Speed;
 			MoveAndSlide();
 			return;
 		}
 
-		// Throttle : ne pas recalculer le chemin si la cible n'a pas bougé
 		if (_navTargetDirty || targetPos.DistanceTo(_lastNavTargetPos) > NavUpdateDistance)
 		{
 			_navAgent.TargetPosition = targetPos;

@@ -1,6 +1,5 @@
 using Godot;
 using System;
-using System.Collections.Generic;
 
 [Tool]
 public partial class MapGenerator : Node
@@ -66,13 +65,11 @@ public partial class MapGenerator : Node
 			if (gameState != null && gameState.MapSeed != 0)
 			{
 				_networkSeed = gameState.MapSeed;
-				GD.Print($"Seed réseau détectée: {_networkSeed}");
 			}
 		}
 
 		if (!Engine.IsEditorHint())
 		{
-			// Ajouter NetworkSync si pas deja present
 			if (GetNodeOrNull<NetworkSync>("NetworkSync") == null)
 			{
 				var networkSync = new NetworkSync();
@@ -86,20 +83,17 @@ public partial class MapGenerator : Node
 			InitAIControllers();
 
 			CallDeferred(nameof(InitTerritory));
-			GD.Print("Map générée. Appuyez sur ESPACE pour régénérer.");
 		}
 		else if (_tileMapSol.GetUsedCells().Count == 0)
 		{
 			SetupNoise();
 			GenererMap();
 		}
-
 	}
 
 	public void SetSeed(int seed)
 	{
 		_networkSeed = seed;
-		GD.Print($"Seed définie: {seed}");
 	}
 
 	[Export]
@@ -122,8 +116,6 @@ public partial class MapGenerator : Node
 
 		SetupNoise();
 		GenererMap();
-
-		GD.Print("Map générée dans l'éditeur.");
 	}
 
 	private void SetupNoise()
@@ -139,15 +131,11 @@ public partial class MapGenerator : Node
 		_noiseForet.Frequency = 0.05f;
 
 		_seededRandom = new Random(baseSeed + 2000);
-
-		GD.Print($"Noise initialisé avec seed: {baseSeed}");
 	}
 
 	private void GenererMap()
 	{
-		GD.Print("Génération en cours...");
-
-		// Reset les IDs deterministes pour le multi
+		// Reset les IDs déterministes pour le multijoueur
 		CampSimple.ResetCampIdCounter();
 		NetworkEntityRegistry.Clear();
 
@@ -183,9 +171,6 @@ public partial class MapGenerator : Node
 			_unitsContainer, _campScene, _campUpScene, halfWidth, halfHeight, TileSize, TestMode, maxCamps,
 			armAngles);
 
-		GD.Print($"{campCount} camps générés");
-
-		// Notifier le GameManager que les camps sont prêts
 		if (GameManager.Instance != null)
 		{
 			GameManager.Instance.OnMapGenerationComplete();
@@ -227,7 +212,6 @@ public partial class MapGenerator : Node
 			return;
 		}
 
-		GD.Print($"[INTRO] Zoom vers camp team {localTeamId} à {playerCamp.GlobalPosition}");
 		camera.StartIntroZoom(playerCamp.GlobalPosition, _mapWidth);
 	}
 
@@ -250,7 +234,6 @@ public partial class MapGenerator : Node
 			case GameState.MapSizePreset.Large:  _mapWidth = _mapHeight = 384; break;
 			default:                             _mapWidth = _mapHeight = 256; break;
 		}
-		GD.Print($"[MAP] Taille: {_mapWidth}x{_mapHeight} tuiles");
 	}
 
 	// Helper commun : construit un NavigationPolygon à partir d'un prédicat de marchabilité
@@ -321,7 +304,6 @@ public partial class MapGenerator : Node
 		navRegion.NavigationPolygon = navPoly;
 		AddChild(navRegion);
 
-		GD.Print($"[NAV] Mesh terrestre : {navPoly.Vertices.Length} sommets, {polyCount} polygones (groupSize={groupSize})");
 	}
 
 	private void BuildWaterNavigationMesh()
@@ -340,7 +322,6 @@ public partial class MapGenerator : Node
 		navRegion.NavigationPolygon = navPoly;
 		AddChild(navRegion);
 
-		GD.Print($"[NAV] Mesh maritime : {navPoly.Vertices.Length} sommets, {polyCount} polygones (groupSize={groupSize})");
 	}
 
 	private bool IsCellAllWater(int cx, int cy, int groupSize, int halfWidth, int halfHeight)
@@ -406,7 +387,6 @@ public partial class MapGenerator : Node
 
 		if (gameState.IsFreeForAll)
 		{
-			// Un AIController par team bot
 			var botTeams = GameManager.Instance?.GetBotTeamIds()
 				?? new System.Collections.Generic.List<int>();
 			foreach (int teamId in botTeams)
@@ -418,7 +398,6 @@ public partial class MapGenerator : Node
 				AddChild(ai);
 				_aiControllers.Add(ai);
 			}
-			GD.Print($"[IA] {_aiControllers.Count} AIControllers créés (FFA - niveau {gameState.AILevel})");
 		}
 		else
 		{
@@ -428,7 +407,6 @@ public partial class MapGenerator : Node
 			ai.Level = gameState.AILevel;
 			AddChild(ai);
 			_aiControllers.Add(ai);
-			GD.Print($"[IA] AIController initialisé - niveau {gameState.AILevel}");
 		}
 	}
 
@@ -436,7 +414,6 @@ public partial class MapGenerator : Node
 	{
 		if (@event.IsActionPressed("ui_accept"))
 		{
-			// Supprimer le territoire et l'IA existants
 			if (_territoryManager != null)
 			{
 				RemoveChild(_territoryManager);

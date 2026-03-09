@@ -10,15 +10,12 @@ public partial class CampSimple
 	private void ProcessShipProductionQueue(double delta)
 	{
 		if (!HasPort) return;
-
-		// Reseau : seul le peer qui possede ce camp traite la production navale
 		if (!IsLocallyOwned()) return;
 
 		if (_currentShipProduction == null && _shipProductionQueue.Count > 0)
 		{
 			_currentShipProduction = _shipProductionQueue.Dequeue();
 			_shipProductionTimer = ShipStats.GetStats(_currentShipProduction).ProductionTime;
-			GD.Print($"[Camp #{CampId}] Debut production navale: {_currentShipProduction} ({_shipProductionTimer}s)");
 		}
 
 		if (_currentShipProduction != null)
@@ -28,7 +25,6 @@ public partial class CampSimple
 			if (_shipProductionTimer <= 0)
 			{
 				SpawnShip(_currentShipProduction);
-				GD.Print($"[Camp #{CampId}] Production navale terminee: {_currentShipProduction}");
 				_currentShipProduction = null;
 			}
 		}
@@ -42,20 +38,12 @@ public partial class CampSimple
 		int price = stats.Price;
 		int currentGold = GetGold();
 
-		GD.Print($"[Camp #{CampId}] Tentative achat bateau {shipType} - Or: {currentGold}, Cout: {price}");
-
 		int totalInQueue = _shipProductionQueue.Count + (_currentShipProduction != null ? 1 : 0);
 		if (totalInQueue >= MaxShipQueueSize)
-		{
-			GD.Print($"File navale pleine ({MaxShipQueueSize} max)");
 			return false;
-		}
 
 		if (currentGold < price)
-		{
-			GD.Print($"Pas assez d'or pour acheter {shipType} (cout: {price}, or: {currentGold})");
 			return false;
-		}
 
 		if (IsNeutralCamp)
 		{
@@ -68,7 +56,6 @@ public partial class CampSimple
 		}
 
 		_shipProductionQueue.Enqueue(shipType);
-		GD.Print($"Bateau {shipType} ajoute a la file navale ({_shipProductionQueue.Count}/{MaxShipQueueSize}) - Cout: {price}");
 		return true;
 	}
 
@@ -126,9 +113,7 @@ public partial class CampSimple
 
 		GetParent().AddChild(ship);
 		_spawnedShips.Add(ship);
-		GD.Print($"[Camp #{CampId}] Bateau {shipType} spawne a {spawnPos}");
 
-		// Envoyer le spawn aux autres peers
 		NetworkSync.Instance?.SendSpawnShip(networkId, shipType, TeamId,
 			ship.GlobalPosition.X, ship.GlobalPosition.Y, ship.GetCurrentHealth());
 	}
@@ -243,7 +228,6 @@ public partial class CampSimple
 	{
 		if (!CanBuyPort()) return false;
 		if (!GameManager.Instance.SpendGold(TeamId, PortCost)) return false;
-		GD.Print($"[PORT] Camp #{CampId} - Choisissez l'emplacement du port.");
 		return true;
 	}
 
@@ -286,10 +270,7 @@ public partial class CampSimple
 		}
 
 		if (bestWaterCount < 1 || bestDir < 0)
-		{
-			GD.Print("[PORT] Aucune eau à proximité de cet emplacement.");
 			return false;
-		}
 
 		// Le clic est le bout terrestre du port : décaler le centre du sprite vers l'eau
 		// halfLen en world space = longueur_texture * scale_sprite * scale_camp / 2
@@ -307,8 +288,6 @@ public partial class CampSimple
 		_portSprite.FlipH    = flips[bestDir];
 		AddChild(_portSprite);
 		_portSprite.GlobalPosition = spriteCenter;
-
-		GD.Print($"[PORT] Camp #{CampId} - Port placé vers {dirNames[bestDir]} ({bestWaterCount} tuiles d'eau)");
 		return true;
 	}
 
@@ -338,10 +317,7 @@ public partial class CampSimple
 		}
 
 		if (totalRefund > 0)
-		{
 			GameManager.Instance.AddGold(refundTeamId, totalRefund);
-			GD.Print($"[Camp #{CampId}] Remboursement file navale: {totalRefund} or a l'equipe {refundTeamId}");
-		}
 	}
 
 	public void TrySpawnPort(TileMapLayer tileMapSol)
@@ -358,7 +334,6 @@ public partial class CampSimple
 
 		Vector2I campTile = tileMapSol.LocalToMap(GlobalPosition);
 
-		// Directions cardinales : N, S, E, W
 		Vector2I[] directions = new Vector2I[]
 		{
 			new Vector2I(0, -1), // Nord
@@ -469,7 +444,5 @@ public partial class CampSimple
 		_portSprite.Scale = new Vector2(PortScale, PortScale);
 		AddChild(_portSprite);
 
-		string[] dirNames = { "Nord", "Sud", "Est", "Ouest" };
-		GD.Print($"[PORT] Camp #{CampId} - Port direction {dirNames[bestDirectionIndex]} (eau a {waterDist} tuiles, {bestWaterCount} tuiles d'eau)");
 	}
 }

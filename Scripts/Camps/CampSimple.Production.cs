@@ -4,27 +4,21 @@ public partial class CampSimple
 {
 	private void ProcessProductionQueue(double delta)
 	{
-		// Reseau : seul le peer qui possede ce camp traite la production
 		if (!IsLocallyOwned()) return;
 
-		// Si rien en production, prendre le prochain dans la queue
 		if (_currentProduction == null && _productionQueue.Count > 0)
 		{
 			_currentProduction = _productionQueue.Dequeue();
 			_productionTimer = UnitStats.GetStats(_currentProduction).ProductionTime;
-			GD.Print($"[Camp #{CampId}] Debut production: {_currentProduction} ({_productionTimer}s)");
 		}
 
-		// Si une unité est en production, décrémenter le timer
 		if (_currentProduction != null)
 		{
 			_productionTimer -= (float)delta;
 
 			if (_productionTimer <= 0)
 			{
-				// Production terminée, spawn l'unité
 				SpawnPurchasedUnit(_currentProduction);
-				GD.Print($"[Camp #{CampId}] Production terminee: {_currentProduction}");
 				_currentProduction = null;
 			}
 		}
@@ -36,24 +30,13 @@ public partial class CampSimple
 		int price = stats.Price;
 		int currentGold = GetGold();
 
-		GD.Print($"[Camp #{CampId}] Tentative achat {unitType} - Or: {currentGold}, Cout: {price}, IsNeutral: {IsNeutralCamp}, TeamId: {TeamId}");
-
-		// Vérifier si la queue n'est pas pleine
 		int totalInQueue = _productionQueue.Count + (_currentProduction != null ? 1 : 0);
 		if (totalInQueue >= MaxQueueSize)
-		{
-			GD.Print($"File d'attente pleine ({MaxQueueSize} max)");
 			return false;
-		}
 
-		// Vérifier si on a assez d'or
 		if (currentGold < price)
-		{
-			GD.Print($"Pas assez d'or pour acheter {unitType} (cout: {price}, or: {currentGold})");
 			return false;
-		}
 
-		// Dépenser l'or selon le type de camp
 		if (IsNeutralCamp)
 		{
 			_localGold -= price;
@@ -63,15 +46,10 @@ public partial class CampSimple
 			if (GameManager.Instance == null)
 				return false;
 			if (!GameManager.Instance.SpendGold(TeamId, price))
-			{
-				GD.Print($"GameManager.SpendGold a échoué pour TeamId {TeamId}");
 				return false;
-			}
 		}
 
-		// Ajouter à la file d'attente
 		_productionQueue.Enqueue(unitType);
-		GD.Print($"Unite {unitType} ajoutee a la file ({_productionQueue.Count}/{MaxQueueSize}) - Cout: {price}, Reste: {GetGold()}");
 		return true;
 	}
 
@@ -83,7 +61,6 @@ public partial class CampSimple
 
 		var unit = unitScene.Instantiate<Unit>();
 
-		//random positionement
 		float angle = (float)GD.RandRange(0, Mathf.Tau);
 		Vector2 offset = new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * 525f;
 
@@ -101,7 +78,6 @@ public partial class CampSimple
 		GetParent().AddChild(unit);
 		_spawnedUnits.Add(unit);
 
-		// Envoyer le spawn aux autres peers
 		NetworkSync.Instance?.SendSpawnUnit(networkId, unitType, TeamId,
 			unit.GlobalPosition.X, unit.GlobalPosition.Y, unit.GetCurrentHealth(), false);
 	}
@@ -115,32 +91,27 @@ public partial class CampSimple
 			return;
 		}
 
-		//position du camp
 		Vector2 campPos = GlobalPosition;
 
-		//spawn en cercle
 		for (int i = 0; i < UnitTypes.Length; i++)
 		{
 			var unit = unitScene.Instantiate<Unit>();
 
-			//caclul de la position de spawn
 			float angle = (i * Mathf.Tau) / UnitTypes.Length;
 			Vector2 offset = new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * 525f;
 
 			unit.GlobalPosition = campPos + offset;
 			unit.UnitType = UnitTypes[i];
 			unit.TeamId = TeamId;
-			unit.IsNeutralCampUnit = IsNeutralCamp; //plus fortes
+			unit.IsNeutralCampUnit = IsNeutralCamp;
 			unit.OwnerCamp = this;
 
-			// Reseau : ID deterministe pour les defenseurs initiaux
+			// ID deterministe pour les defenseurs initiaux (sync reseau)
 			unit.NetworkId = $"camp_{CampId}_unit_{i}";
-			// L'autorite sera assignee apres AssignCampsToPlayers
 
-			//ajoute l'unité au camp
 			GetParent().AddChild(unit);
 			_spawnedUnits.Add(unit);
-			_defenders.Add(unit); // defenseur initial du camp
+			_defenders.Add(unit);
 		}
 	}
 
@@ -153,24 +124,17 @@ public partial class CampSimple
 	public bool CanBuyUnit(string unitType)
 	{
 		if (GameManager.Instance == null)
-		{
-			GD.Print($"Camp #{CampId}: GameManager.Instance est null!");
 			return false;
-		}
 
-		// Vérifier le cap d'unités vivantes anti-crash
 		if (GetLiveUnitCount() >= MaxLiveUnitsPerCamp)
 			return false;
 
-		// Vérifier si la queue n'est pas pleine
 		int totalInQueue = _productionQueue.Count + (_currentProduction != null ? 1 : 0);
 		if (totalInQueue >= MaxQueueSize)
 			return false;
 
 		var stats = UnitStats.GetStats(unitType);
-		bool canAfford = GameManager.Instance.CanAfford(TeamId, stats.Price);
-
-		return canAfford;
+		return GameManager.Instance.CanAfford(TeamId, stats.Price);
 	}
 
 	private void CleanDeadUnits()
@@ -191,7 +155,6 @@ public partial class CampSimple
 		return _defenders.Count == 0;
 	}
 
-	// Méthodes pour l'UI de la file d'attente
 	public int GetQueueCount()
 	{
 		return _productionQueue.Count + (_currentProduction != null ? 1 : 0);
@@ -247,9 +210,6 @@ public partial class CampSimple
 		}
 
 		if (totalRefund > 0)
-		{
 			GameManager.Instance.AddGold(refundTeamId, totalRefund);
-			GD.Print($"[Camp #{CampId}] Remboursement file de production: {totalRefund} or a l'equipe {refundTeamId}");
-		}
 	}
 }

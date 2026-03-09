@@ -2,7 +2,6 @@ using Godot;
 
 namespace SupKonQuest
 {
-	// Contrôleur de caméra avec zoom et déplacement
 	public partial class CameraController : Camera2D
 	{
 		[Export] public float ZoomSensitivity = 0.15f;
@@ -37,14 +36,11 @@ namespace SupKonQuest
 
 				_mapCenter = new Vector2(centerX, centerY);
 				Position = _mapCenter;
-				GD.Print($"Map bounds: {usedRect}, TileSize: {tileSize}");
-				GD.Print($"Caméra centrée sur: {Position}");
 			}
 			else
 			{
 				_mapCenter = Vector2.Zero;
 				Position = Vector2.Zero;
-				GD.Print("TileMapLayer 'Sol' non trouvé, position par défaut");
 			}
 
 			Zoom = new Vector2(InitialZoom, InitialZoom);
@@ -54,14 +50,14 @@ namespace SupKonQuest
 
 		private void SetupCameraLimits()
 		{
-			// La map va de -MapWidth/2 à +MapWidth/2 en tiles (centrée sur 0)
+			// La map est centrée sur (0,0), de -MapWidth/2 à +MapWidth/2 en tiles
 			int halfWidth = MapWidth / 2;
 			int halfHeight = MapHeight / 2;
 
 			_minBounds = new Vector2(-halfWidth * TileSize, -halfHeight * TileSize);
 			_maxBounds = new Vector2(halfWidth * TileSize, halfHeight * TileSize);
 
-			// Désactiver les limites built-in pour gérer manuellement
+			// Désactiver les limites built-in pour gérer le clamping manuellement
 			LimitLeft = -10000000;
 			LimitTop = -10000000;
 			LimitRight = 10000000;
@@ -156,13 +152,11 @@ namespace SupKonQuest
 					AdjustZoom(1.0f - ZoomSensitivity);
 			}
 
-			// Touche C ou Home pour recentrer la caméra
+			// Touche C ou Home pour recentrer
 			if (@event is InputEventKey key && key.Pressed && !key.Echo)
 			{
 				if (key.Keycode == Key.C || key.Keycode == Key.Home)
-				{
 					Position = _mapCenter;
-				}
 			}
 		}
 

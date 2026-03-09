@@ -32,9 +32,9 @@ public partial class AIController : Node
 	};
 
 	// Types d'unités autorisés selon la difficulté
-	private static readonly string[] EasyUnits    = { "Infantry", "Range" };
-	private static readonly string[] MediumUnits  = { "Infantry", "Range", "Support", "AntiArmor", "Heavy" };
-	private static readonly string[] HardUnits    = { "Infantry", "Range", "Support", "AntiArmor", "Heavy", "Mortar", "Tank" };
+	private static readonly string[] EasyUnits   = { "Infantry", "Range" };
+	private static readonly string[] MediumUnits = { "Infantry", "Range", "Support", "AntiArmor", "Heavy" };
+	private static readonly string[] HardUnits   = { "Infantry", "Range", "Support", "AntiArmor", "Heavy", "Mortar", "Tank" };
 
 	private string[] AllowedUnits => Level switch
 	{
@@ -63,8 +63,6 @@ public partial class AIController : Node
 		CommandIdleUnits();
 	}
 
-	// --- Production ---
-
 	private void BuyUnits()
 	{
 		var camps = GetTree().GetNodesInGroup("camps");
@@ -80,19 +78,15 @@ public partial class AIController : Node
 
 	private void TryBuyUnit(CampSimple camp)
 	{
-		// Acheter la meilleure unité abordable dans l'ordre de priorité
 		foreach (string unitType in AllowedUnits)
 		{
 			if (camp.CanBuyUnit(unitType))
 			{
 				camp.BuyUnit(unitType);
-				GD.Print($"[IA] Achat {unitType} sur camp #{camp.GetCampId()}");
 				return;
 			}
 		}
 	}
-
-	// --- Ordres de déplacement ---
 
 	private void CommandIdleUnits()
 	{
@@ -108,9 +102,6 @@ public partial class AIController : Node
 			unit.AttackCamp(target);
 			sent++;
 		}
-
-		if (sent > 0)
-			GD.Print($"[IA] {sent} unité(s) ordonnée(s) d'attaquer camp #{target.GetCampId()} (T{target.GetTeamId()})");
 	}
 
 	private List<Unit> FindIdleAIUnits()
@@ -130,6 +121,7 @@ public partial class AIController : Node
 	/// 1. Camp neutre dont les défenseurs sont morts (facile à capturer)
 	/// 2. Camp ennemi dont les défenseurs sont morts
 	/// 3. Camp le plus proche
+	/// Score-based : distance de base + pénalités/bonus selon défenseurs et type de camp
 	/// </summary>
 	private CampSimple FindBestAttackTarget()
 	{
@@ -143,25 +135,23 @@ public partial class AIController : Node
 		foreach (var node in camps)
 		{
 			if (node is not CampSimple camp) continue;
-			if (camp.GetTeamId() == AITeamId && !camp.IsNeutralCamp) continue; // déjà à nous
+			if (camp.GetTeamId() == AITeamId && !camp.IsNeutralCamp) continue;
 
-			// Easy : ignore les camps encore défendus (trop peur)
+			// Easy : ignore les camps encore défendus
 			if (Level == Difficulty.Easy && !camp.AreAllUnitsDefeated())
 				continue;
 
 			float dist = aiCenter.DistanceTo(camp.GlobalPosition);
-
-			// Score : distance de base + pénalités/bonus
 			float score = dist;
 
 			if (!camp.AreAllUnitsDefeated())
 				score += 4000f; // camp avec défenseurs = plus dur
 
 			if (camp.IsNeutralCamp)
-				score -= 2000f; // camps neutres sont prioritaires (plus faciles)
+				score -= 2000f; // camps neutres prioritaires (plus faciles)
 
 			if (Level == Difficulty.Hard && !camp.IsNeutralCamp)
-				score -= 1000f; // en hard, l'IA cible aussi les camps ennemis
+				score -= 1000f; // en Hard, l'IA cible aussi les camps ennemis
 
 			if (score < bestScore)
 			{

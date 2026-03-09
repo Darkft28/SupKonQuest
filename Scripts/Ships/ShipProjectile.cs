@@ -1,6 +1,5 @@
 using Godot;
 
-// Projectile specifique aux bateaux (cible un Ship au lieu d'un Unit)
 public partial class ShipProjectile : Node2D
 {
 	private Vector2 _startPos;
@@ -81,7 +80,6 @@ public partial class ShipProjectile : Node2D
 		if (_targetShip != null && IsInstanceValid(_targetShip) && _targetShip.IsInsideTree()
 			&& _targetShip.GetCurrentHealth() > 0)
 		{
-			// Reseau : si la cible est un puppet, envoyer via RPC (multi seulement)
 			bool isMulti = NetworkSync.Instance?.IsMultiplayer() == true;
 			if (isMulti && !_targetShip.IsLocalAuthority && !string.IsNullOrEmpty(_targetShip.NetworkId))
 			{

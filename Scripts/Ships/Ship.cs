@@ -1,5 +1,4 @@
 using Godot;
-using System;
 using System.Collections.Generic;
 
 public partial class Ship : CharacterBody2D
@@ -16,7 +15,6 @@ public partial class Ship : CharacterBody2D
 	[Export] public int TeamId = 1;
 	[Export] public float DetectionRange = 500f;
 
-	// Reseau
 	public string NetworkId = "";
 	public bool IsLocalAuthority = true;
 	private Vector2? _networkTargetPosition = null;
@@ -50,17 +48,13 @@ public partial class Ship : CharacterBody2D
 	private bool _navTargetDirty = true;
 	private const float NavUpdateDistance = 64f;
 
-	// Transport : debarquement en attente (le bateau navigue d'abord, puis debarque)
+	// debarquement en attente (le bateau navigue d'abord, puis debarque)
 	private Vector2? _pendingUnloadPosition = null;
-
-	// Transport : unites embarquees (type, equipe, sante)
 	private List<(string type, int teamId, float health)> _loadedUnits = new List<(string, int, float)>();
 
-	// Direction du sprite
 	private enum SpriteDirection { Front, Back, Left, Right }
 	private SpriteDirection _currentDirection = SpriteDirection.Front;
 
-	// Barre de vie
 	private const float HealthBarWidth = 100f;
 	private const float HealthBarHeight = 12f;
 	private const float HealthBarOffsetY = -200f;
@@ -103,7 +97,6 @@ public partial class Ship : CharacterBody2D
 		AddToGroup("ships");
 		AddToGroup($"team_{TeamId}");
 
-		// Reseau : enregistrer dans le registre
 		if (!string.IsNullOrEmpty(NetworkId))
 		{
 			NetworkEntityRegistry.Register(NetworkId, this);
@@ -120,7 +113,6 @@ public partial class Ship : CharacterBody2D
 
 		_currentState = ShipState.Idle;
 
-		// Chercher le TileMapSol dans la scene si pas deja set
 		if (_tileMapSol == null)
 		{
 			FindTileMapSol();
@@ -135,7 +127,6 @@ public partial class Ship : CharacterBody2D
 		}
 	}
 
-	// Reseau : appliquer l'etat recu du peer distant
 	public void ApplyNetworkState(Vector2 pos, float health)
 	{
 		_networkTargetPosition = pos;

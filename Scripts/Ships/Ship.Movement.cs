@@ -173,12 +173,8 @@ public partial class Ship
 
 	public void MoveTo(Vector2 target)
 	{
-		// Verifier que la destination est sur l'eau
 		if (!IsWaterTile(target))
-		{
-			GD.Print($"[SHIP] Destination refusee: pas sur l'eau");
 			return;
-		}
 
 		_pendingUnloadPosition = null; // Nouvel ordre annule le debarquement
 		_targetPosition = target;

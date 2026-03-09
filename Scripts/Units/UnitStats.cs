@@ -110,11 +110,8 @@ public static class UnitStats
 	public static UnitStatsData GetStats(string unitType)
 	{
 		if (Stats.TryGetValue(unitType, out var stats))
-		{
 			return stats;
-		}
 
-		// Retourner des stats par défaut si type inconnu
 		GD.PrintErr($"Type d'unite inconnu: {unitType}, utilisation des stats par defaut");
 		return new UnitStatsData
 		{

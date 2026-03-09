@@ -2,12 +2,9 @@ using Godot;
 
 public partial class Ship
 {
-	// Distance max de debarquement depuis la position actuelle du transport
 	private const float MaxUnloadDistance = 2000f;
-	// Nombre de tuiles max entre le point de debarquement et l'eau
 	private const int MaxCoastTileDistance = 3;
 
-	// Transport : embarquer une unite
 	public bool BoardUnit(Unit unit)
 	{
 		if (ShipType != "Transport") return false;
@@ -16,9 +13,7 @@ public partial class Ship
 
 		string unitNetId = unit.NetworkId;
 		_loadedUnits.Add((unit.GetUnitType(), unit.GetTeamId(), unit.GetCurrentHealth()));
-		GD.Print($"[TRANSPORT] {unit.GetUnitType()} T{unit.GetTeamId()} embarque ({_loadedUnits.Count}/{_stats.Capacity}) HP:{unit.GetCurrentHealth():F0}");
 
-		// Reseau : notifier l'autre peer que l'unite a embarque
 		if (!string.IsNullOrEmpty(unitNetId) && !string.IsNullOrEmpty(NetworkId))
 		{
 			NetworkSync.Instance?.SendUnitBoarded(unitNetId, NetworkId);
@@ -29,15 +24,12 @@ public partial class Ship
 		return true;
 	}
 
-	// Verifie si la position de debarquement est valide (cote + distance)
 	public bool IsValidUnloadPosition(Vector2 landPosition)
 	{
-		// Verifier la distance max depuis le transport
 		float distance = GlobalPosition.DistanceTo(landPosition);
 		if (distance > MaxUnloadDistance)
 			return false;
 
-		// Verifier que la position est pres de la cote (eau a moins de N tuiles)
 		if (_tileMapSol == null)
 			return false;
 
@@ -56,12 +48,10 @@ public partial class Ship
 		return false;
 	}
 
-	// Transport : naviguer vers la cote puis debarquer
 	public void MoveToUnload(Vector2 landPosition)
 	{
 		if (ShipType != "Transport" || _loadedUnits.Count == 0) return;
 
-		// Trouver la tuile d'eau la plus proche de la destination terrestre
 		Vector2 waterPos = FindNearestWaterTile(landPosition);
 
 		_pendingUnloadPosition = landPosition;
@@ -70,7 +60,6 @@ public partial class Ship
 		_moveStartDelay = MoveStartDelayFrames;
 		_lastPosition = GlobalPosition;
 		ChangeState(ShipState.MovingToPoint);
-		GD.Print($"[TRANSPORT] Se deplace vers la cote pour debarquer");
 	}
 
 	private Vector2 FindNearestWaterTile(Vector2 landPos)
@@ -99,7 +88,6 @@ public partial class Ship
 		return GlobalPosition;
 	}
 
-	// Transport : debarquer toutes les unites
 	public void UnloadUnits(Vector2 landPosition)
 	{
 		if (ShipType != "Transport" || _loadedUnits.Count == 0) return;
@@ -107,7 +95,6 @@ public partial class Ship
 		var unitScene = GD.Load<PackedScene>("res://Scenes/Unit.tscn");
 		if (unitScene == null) return;
 
-		// Preparer les donnees pour le RPC batch
 		var netIds = new System.Collections.Generic.List<string>();
 		var types = new System.Collections.Generic.List<string>();
 		var posXs = new System.Collections.Generic.List<float>();
@@ -128,7 +115,6 @@ public partial class Ship
 			unit.TeamId = teamId;
 			unit.IsNeutralCampUnit = false;
 
-			// Reseau : assigner un NetworkId
 			string networkId = NetworkEntityRegistry.GenerateId();
 			unit.NetworkId = networkId;
 			unit.IsLocalAuthority = true;
@@ -144,9 +130,6 @@ public partial class Ship
 			hps.Add(health);
 		}
 
-		GD.Print($"[TRANSPORT] {_loadedUnits.Count} unites debarquees a {landPosition}");
-
-		// Reseau : broadcaster le debarquement
 		if (netIds.Count > 0 && !string.IsNullOrEmpty(NetworkId))
 		{
 			NetworkSync.Instance?.SendTransportUnloaded(NetworkId,

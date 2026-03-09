@@ -14,12 +14,10 @@ public partial class GameHUD : Control
 	private HBoxContainer _brushSizeContainer;
 	private Button _portButton;
 
-	// Overlay de déconnexion
-	private Panel _disconnectPanel;
+		private Panel _disconnectPanel;
 	private Label _disconnectLabel;
 
-	// Liste des types d'unités disponibles dans le HUD
-	private static readonly string[] UnitTypes = new[]
+		private static readonly string[] UnitTypes = new[]
 	{
 		"Infantry", "Support", "Heal", "Range",
 		"AntiArmor", "Heavy", "Mortar", "Tank"
@@ -32,46 +30,36 @@ public partial class GameHUD : Control
 
 	public override void _Ready()
 	{
-		// Récupérer les éléments UI
 		_goldPanel = GetNode<Control>("GoldPanel");
 		_goldLabel = GetNode<Label>("GoldPanel/HBoxContainer/GoldLabel");
 
-		// Toujours visible
 		_goldPanel.Visible = true;
 		_goldLabel.Text = "0";
 
-		// Recuperer les conteneurs
 		_unitsContainer = GetNode<HBoxContainer>("NinePatchRect/UnitsContainer");
 		_shipsContainer = GetNode<HBoxContainer>("NinePatchRect/ShipsContainer");
 
-		// Mettre à jour les prix depuis les stats réelles (évite les décalages hardcodés dans le .tscn)
 		UpdatePriceLabels();
 
-		// Connecter les boutons d'unités et de bateaux
 		ConnectUnitButtons();
 		ConnectShipButtons();
 		CreateQuitButton();
 		CreateTerritoryButton();
 		CreatePortButton();
 
-		// Créer l'overlay de déconnexion (caché par défaut)
 		CreateDisconnectOverlay();
 
-		// Se connecter aux signaux de déconnexion du NetworkManager
 		var networkManager = GetNodeOrNull<NetworkManager>("/root/NetworkManager");
 		if (networkManager != null)
 		{
 			networkManager.PlayerDisconnected += OnPlayerDisconnected;
 			networkManager.ServerDisconnected += OnServerDisconnectedHUD;
-			GD.Print("[HUD] Connecté aux signaux NetworkManager");
 		}
 
-		GD.Print("[HUD] GameHUD initialisé");
 	}
 
 	private void UpdatePriceLabels()
 	{
-		// Mise à jour des prix des unités terrestres
 		foreach (string unitType in UnitTypes)
 		{
 			var priceLabel = _unitsContainer.GetNodeOrNull<Label>($"{unitType}/PriceContainer/Price");
@@ -85,7 +73,6 @@ public partial class GameHUD : Control
 			}
 		}
 
-		// Mise à jour des prix des bateaux
 		foreach (string shipType in ShipTypes)
 		{
 			var priceLabel = _shipsContainer.GetNodeOrNull<Label>($"{shipType}/PriceContainer/Price");
@@ -99,7 +86,6 @@ public partial class GameHUD : Control
 			}
 		}
 
-		GD.Print("[HUD] Prix des unités et bateaux synchronisés depuis les stats");
 	}
 
 	private void CreateQuitButton()
@@ -195,17 +181,14 @@ public partial class GameHUD : Control
 
 	private void CreateDisconnectOverlay()
 	{
-		// Panel plein écran semi-transparent
 		_disconnectPanel = new Panel();
 		_disconnectPanel.SetAnchorsPreset(LayoutPreset.FullRect);
 		_disconnectPanel.MouseFilter = MouseFilterEnum.Ignore;
 
-		// Style semi-transparent
 		var style = new StyleBoxFlat();
 		style.BgColor = new Color(0f, 0f, 0f, 0.6f);
 		_disconnectPanel.AddThemeStyleboxOverride("panel", style);
 
-		// Label centré
 		_disconnectLabel = new Label();
 		_disconnectLabel.SetAnchorsPreset(LayoutPreset.Center);
 		_disconnectLabel.GrowHorizontal = GrowDirection.Both;
@@ -218,20 +201,17 @@ public partial class GameHUD : Control
 
 		_disconnectPanel.AddChild(_disconnectLabel);
 
-		// Ajouter au HUD par-dessus tout le reste (z-index maximal)
 		AddChild(_disconnectPanel);
 		_disconnectPanel.Visible = false;
 	}
 
 	private void OnPlayerDisconnected(long id)
 	{
-		GD.Print($"[HUD] Joueur {id} déconnecté - affichage du message");
 		ShowDisconnectMessage("Adversaire déconnecté\nRetour au menu dans 5s...");
 	}
 
 	private void OnServerDisconnectedHUD()
 	{
-		GD.Print("[HUD] Serveur déconnecté - affichage du message");
 		ShowDisconnectMessage("Connexion au serveur perdue\nRetour au menu dans 5s...");
 	}
 
@@ -265,8 +245,7 @@ public partial class GameHUD : Control
 				_unitButtons[unitType] = button;
 				string capturedType = unitType;
 				button.Pressed += () => OnUnitButtonPressed(capturedType);
-				GD.Print($"[HUD] Bouton {unitType} connecté");
-			}
+				}
 			else
 			{
 				GD.PrintErr($"[HUD] Bouton {unitType} non trouvé!");
@@ -286,8 +265,7 @@ public partial class GameHUD : Control
 				_shipButtons[shipType] = button;
 				string capturedType = shipType;
 				button.Pressed += () => OnShipButtonPressed(capturedType);
-				GD.Print($"[HUD] Bouton bateau {shipType} connecté");
-			}
+				}
 			else
 			{
 				GD.PrintErr($"[HUD] Bouton bateau {shipType} non trouvé!");
@@ -303,87 +281,35 @@ public partial class GameHUD : Control
 
 	private void OnUnitButtonPressed(string unitType)
 	{
-		if (_selectionManager == null)
-		{
-			GD.Print("[HUD] Pas de SelectionManager!");
-			return;
-		}
+		if (_selectionManager == null) return;
 
 		var selectedCamp = _selectionManager.GetSelectedCamp();
+		if (selectedCamp == null || !IsInstanceValid(selectedCamp)) return;
 
-		if (selectedCamp == null || !IsInstanceValid(selectedCamp))
-		{
-			GD.Print("[HUD] Aucun camp sélectionné!");
-			return;
-		}
-
-		// Reseau : ne pas acheter sur un camp qui ne nous appartient pas
-		if (selectedCamp.GetTeamId() != GetLocalTeamId())
-		{
-			GD.Print($"[HUD] Ce camp appartient a l'equipe {selectedCamp.GetTeamId()}, pas a nous ({GetLocalTeamId()})");
-			return;
-		}
+		if (selectedCamp.GetTeamId() != GetLocalTeamId()) return;
 
 		int totalInQueue = selectedCamp.GetQueueCount();
 		int maxQueue = selectedCamp.GetMaxQueueSize();
 
-		if (totalInQueue >= maxQueue)
-		{
-			GD.Print($"[HUD] Impossible d'acheter {unitType} - file d'attente pleine ({totalInQueue}/{maxQueue})");
-			return;
-		}
+		if (totalInQueue >= maxQueue) return;
 
-		// Tenter d'acheter l'unité sur le camp sélectionné
-		bool success = selectedCamp.BuyUnit(unitType);
-
-		if (success)
-		{
-			GD.Print($"[HUD] Unité {unitType} achetée sur le camp #{selectedCamp.CampId}");
-		}
-		else
-		{
-			GD.Print($"[HUD] Impossible d'acheter {unitType} - pas assez d'or");
-		}
+		selectedCamp.BuyUnit(unitType);
 	}
 
 	private void OnShipButtonPressed(string shipType)
 	{
-		if (_selectionManager == null)
-		{
-			GD.Print("[HUD] Pas de SelectionManager!");
-			return;
-		}
+		if (_selectionManager == null) return;
 
 		var selectedPort = _selectionManager.GetSelectedPort();
+		if (selectedPort == null || !IsInstanceValid(selectedPort)) return;
 
-		if (selectedPort == null || !IsInstanceValid(selectedPort))
-		{
-			GD.Print("[HUD] Aucun port sélectionné!");
-			return;
-		}
+		if (selectedPort.GetTeamId() != GetLocalTeamId()) return;
 
-		// Reseau : ne pas acheter sur un port qui ne nous appartient pas
-		if (selectedPort.GetTeamId() != GetLocalTeamId())
-		{
-			GD.Print($"[HUD] Ce port appartient a l'equipe {selectedPort.GetTeamId()}, pas a nous ({GetLocalTeamId()})");
-			return;
-		}
-
-		bool success = selectedPort.BuyShip(shipType);
-
-		if (success)
-		{
-			GD.Print($"[HUD] Bateau {shipType} acheté sur le port du camp #{selectedPort.CampId}");
-		}
-		else
-		{
-			GD.Print($"[HUD] Impossible d'acheter {shipType}");
-		}
+		selectedPort.BuyShip(shipType);
 	}
 
 	public override void _Process(double delta)
 	{
-		// Chercher le SelectionManager si pas encore trouvé
 		if (_selectionManager == null)
 		{
 			FindSelectionManager();
@@ -401,7 +327,6 @@ public partial class GameHUD : Control
 
 		var selectedCamp = _selectionManager.GetSelectedCamp();
 
-		// Pas de camp sélectionné ou camp ennemi : laisser les boutons tels quels
 		if (selectedCamp == null || !IsInstanceValid(selectedCamp)) return;
 		if (selectedCamp.GetTeamId() != GetLocalTeamId()) return;
 
@@ -414,10 +339,8 @@ public partial class GameHUD : Control
 			bool canBuy = !queueFull && selectedCamp.CanBuyUnit(unitType);
 
 			btn.Disabled = !canBuy;
-			// Feedback couleur : rouge-grisé si impossible, blanc si disponible
 			btn.Modulate = canBuy ? new Color(1f, 1f, 1f, 1f) : new Color(0.5f, 0.5f, 0.5f, 0.8f);
 
-			// Tooltip d'erreur selon la cause
 			if (queueFull)
 				btn.TooltipText = "File de production pleine !";
 			else if (!selectedCamp.CanBuyUnit(unitType))
@@ -467,13 +390,7 @@ public partial class GameHUD : Control
 		if (currentScene == null)
 			return;
 
-		// Chercher récursivement dans la scène
 		_selectionManager = currentScene.FindChild("SelectionManager", true, false) as SelectionManager;
-
-		if (_selectionManager != null)
-		{
-			GD.Print("GameHUD: SelectionManager trouvé!");
-		}
 	}
 
 	private void UpdateContainerVisibility()
@@ -485,24 +402,20 @@ public partial class GameHUD : Control
 
 		if (selectedPort != null && IsInstanceValid(selectedPort))
 		{
-			// Port selectionne -> afficher bateaux, masquer unites
 			_shipsContainer.Visible = true;
 			_unitsContainer.Visible = false;
 		}
 		else if (selectedCamp != null && IsInstanceValid(selectedCamp))
 		{
-			// Camp selectionne -> afficher unites, masquer bateaux
 			_unitsContainer.Visible = true;
 			_shipsContainer.Visible = false;
 		}
 		else
 		{
-			// Rien selectionne -> masquer les deux
 			_unitsContainer.Visible = false;
 			_shipsContainer.Visible = false;
 		}
 
-		// Bouton port : visible si camp allie sans port selectionne
 		if (_portButton != null)
 		{
 			bool showPort = selectedCamp != null && IsInstanceValid(selectedCamp)
@@ -523,7 +436,6 @@ public partial class GameHUD : Control
 			return;
 		}
 
-		// Toujours afficher l'or de notre equipe
 		int localTeam = GetLocalTeamId();
 		int gold = GameManager.Instance.GetGold(localTeam);
 		_goldLabel.Text = $"{gold}";

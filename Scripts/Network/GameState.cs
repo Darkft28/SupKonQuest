@@ -1,31 +1,25 @@
 using Godot;
-using System;
-using System.Collections.Generic;
 
 public partial class GameState : Node
 {
 	public enum MapSizePreset { Small, Medium, Large }
 
-	// Seed de la map pour génération identique
+	// Seed de la map pour génération identique sur tous les peers (déterminisme réseau)
 	public int MapSeed { get; private set; }
 
 	// Equipe locale : Server=1, Client=2
 	public int LocalTeamId { get; set; } = 1;
 
-	// Mode IA : le joueur affronte un adversaire controle par l'ordinateur
 	public bool IsAIMode { get; set; } = false;
 	public AIController.Difficulty AILevel { get; set; } = AIController.Difficulty.Medium;
 
-	// Paramètres de partie solo
 	public MapSizePreset MapSize { get; set; } = MapSizePreset.Medium;
 	public int MaxCamps { get; set; } = 6;
 	public bool IsFreeForAll { get; set; } = false;
 
-	// Signaux
 	[Signal] public delegate void GameStartingEventHandler(int seed);
 	[Signal] public delegate void PlayerListUpdatedEventHandler();
 
-	// Référence au NetworkManager
 	private NetworkManager _networkManager;
 
 	public override void _Ready()
@@ -33,28 +27,20 @@ public partial class GameState : Node
 		_networkManager = GetNode<NetworkManager>("/root/NetworkManager");
 	}
 
-	/// <summary>
-	/// Génère une nouvelle seed aléatoire (côté serveur uniquement)
-	/// </summary>
 	public int GenerateSeed()
 	{
 		MapSeed = (int)GD.Randi();
-		GD.Print($"Seed générée: {MapSeed}");
 		return MapSeed;
 	}
 
-	/// <summary>
-	/// Définit la seed (utilisé lors de la synchronisation)
-	/// </summary>
 	public void SetSeed(int seed)
 	{
 		MapSeed = seed;
-		GD.Print($"Seed définie: {MapSeed}");
 	}
 
 	/// <summary>
-	/// Appelé par l'hôte pour lancer la partie
-	/// Envoie la seed à tous les clients puis charge la scène de jeu
+	/// Appelé par l'hôte pour lancer la partie.
+	/// Envoie la seed à tous les clients puis charge la scène de jeu.
 	/// </summary>
 	public void StartGame()
 	{
@@ -64,54 +50,36 @@ public partial class GameState : Node
 			return;
 		}
 
-		// Serveur = Team 1
 		LocalTeamId = 1;
-
-		// Générer la seed
 		GenerateSeed();
-
-		// Envoyer la seed à tous les clients
 		Rpc(nameof(RpcReceiveSeedAndStart), MapSeed);
-
-		// Charger la scène localement aussi
 		LoadGameScene();
 	}
 
 	/// <summary>
-	/// RPC reçu par les clients avec la seed et l'ordre de démarrer
+	/// RPC reçu par les clients avec la seed et l'ordre de démarrer.
+	/// Authority mode : seul le serveur peut appeler ce RPC.
 	/// </summary>
 	[Rpc(MultiplayerApi.RpcMode.Authority, CallLocal = false, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
 	private void RpcReceiveSeedAndStart(int seed)
 	{
-		// Client = Team 2
 		LocalTeamId = 2;
-
 		GD.Print($"Seed reçue du serveur: {seed}");
 		SetSeed(seed);
 		EmitSignal(SignalName.GameStarting, seed);
 		LoadGameScene();
 	}
 
-	/// <summary>
-	/// Charge la scène de jeu
-	/// </summary>
 	private void LoadGameScene()
 	{
-		GD.Print("Chargement de la scène de jeu...");
 		GetTree().ChangeSceneToFile("res://Scenes/Game.tscn");
 	}
 
-	/// <summary>
-	/// Retourne au lobby
-	/// </summary>
 	public void ReturnToLobby()
 	{
 		GetTree().ChangeSceneToFile("res://Scenes/Lobby.tscn");
 	}
 
-	/// <summary>
-	/// Retourne au menu principal et se déconnecte
-	/// </summary>
 	public void ReturnToMainMenu()
 	{
 		_networkManager?.Disconnect();
