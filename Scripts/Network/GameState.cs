@@ -3,6 +3,7 @@ using Godot;
 public partial class GameState : Node
 {
 	public enum MapSizePreset { Small, Medium, Large }
+	public enum MapType { Procedural, Irridium, Alabasta }
 
 	// Seed de la map pour génération identique sur tous les peers (déterminisme réseau)
 	public int MapSeed { get; private set; }
@@ -16,6 +17,7 @@ public partial class GameState : Node
 	public MapSizePreset MapSize { get; set; } = MapSizePreset.Medium;
 	public int MaxCamps { get; set; } = 6;
 	public bool IsFreeForAll { get; set; } = false;
+	public MapType SelectedMapType { get; set; } = MapType.Procedural;
 
 	[Signal] public delegate void GameStartingEventHandler(int seed);
 	[Signal] public delegate void PlayerListUpdatedEventHandler();
@@ -52,7 +54,7 @@ public partial class GameState : Node
 
 		LocalTeamId = 1;
 		GenerateSeed();
-		Rpc(nameof(RpcReceiveSeedAndStart), MapSeed);
+		Rpc(nameof(RpcReceiveSeedAndStart), MapSeed, (int)SelectedMapType);
 		LoadGameScene();
 	}
 
@@ -61,11 +63,12 @@ public partial class GameState : Node
 	/// Authority mode : seul le serveur peut appeler ce RPC.
 	/// </summary>
 	[Rpc(MultiplayerApi.RpcMode.Authority, CallLocal = false, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
-	private void RpcReceiveSeedAndStart(int seed)
+	private void RpcReceiveSeedAndStart(int seed, int mapTypeInt)
 	{
 		LocalTeamId = 2;
 		GD.Print($"Seed reçue du serveur: {seed}");
 		SetSeed(seed);
+		SelectedMapType = (MapType)mapTypeInt;
 		EmitSignal(SignalName.GameStarting, seed);
 		LoadGameScene();
 	}

@@ -1,5 +1,6 @@
 using Godot;
 using System;
+using SupKonQuest.Map.Presets;
 
 [Tool]
 public partial class MapGenerator : Node
@@ -156,17 +157,25 @@ public partial class MapGenerator : Node
 		int halfHeight = _mapHeight / 2;
 
 		// Générer le terrain (3 régions en parts de pizza depuis le centre)
-		TerrainGenerator.Generate(_tileMapSol, _tileMapObjets, _noiseElevation, _noiseForet, _seededRandom,
-			halfWidth, halfHeight, TileSize, TestMode,
-			out float[] armAngles, out _, out _);
+		var gsMap = GetNodeOrNull<GameState>("/root/GameState");
+		float[] armAngles;
+		if (gsMap?.SelectedMapType == null || gsMap.SelectedMapType == GameState.MapType.Procedural)
+		{
+			TerrainGenerator.Generate(_tileMapSol, _tileMapObjets, _noiseElevation, _noiseForet, _seededRandom,
+				halfWidth, halfHeight, TileSize, TestMode,
+				out armAngles, out _, out _);
+		}
+		else
+		{
+			armAngles = ApplyPresetMap(gsMap.SelectedMapType, halfWidth, halfHeight);
+		}
 
 		// Construire les meshes de navigation (terrestre pour unités, maritime pour bateaux)
 		BuildNavigationMesh();
 		BuildWaterNavigationMesh();
 
 		// Placer les camps
-		var gsMap = GetNodeOrNull<GameState>("/root/GameState");
-		int maxCamps = (gsMap?.IsFreeForAll == true) ? gsMap.MaxCamps : 0;
+		int maxCamps = (gsMap?.IsFreeForAll == true) ? gsMap.MaxCamps : 0; // gsMap déjà résolu plus haut
 		int campCount = CampPlacer.PlaceCamps(_tileMapSol, _tileMapObjets, _noiseElevation, _noiseForet, _seededRandom,
 			_unitsContainer, _campScene, _campUpScene, halfWidth, halfHeight, TileSize, TestMode, maxCamps,
 			armAngles);
@@ -182,6 +191,48 @@ public partial class MapGenerator : Node
 
 		// Zoom intro vers la base du joueur local
 		TriggerIntroZoom();
+	}
+
+	private float[] ApplyPresetMap(GameState.MapType mapType, int halfWidth, int halfHeight)
+	{
+		int[] solRle = mapType == GameState.MapType.Irridium
+			? IrridiumMap.SolRle : AlabastaMap.SolRle;
+		int[] objetsRle = mapType == GameState.MapType.Irridium
+			? IrridiumMap.ObjetsRle : AlabastaMap.ObjetsRle;
+
+		int width  = halfWidth  * 2;
+		int height = halfHeight * 2;
+
+		// Décaler les coordonnées pour correspondre à l'origine centrée du TileMap
+		// Les presets encodent à partir de (0,0), le TileMap attend (-halfWidth, -halfHeight) à (+halfWidth, +halfHeight)
+		// On applique donc à la couche normalement et on laisse le TileMapLayer gérer ses coords.
+		// Note : les données sont stockées en row-major depuis (0,0) dans l'espace preset.
+		// Pour aligner avec le TileMap centré, on décale l'origine de départ.
+		ApplyPresetLayer(_tileMapSol, solRle, width, height, -halfWidth, -halfHeight, skipId: -1);
+		ApplyPresetLayer(_tileMapObjets, objetsRle, width, height, -halfWidth, -halfHeight, skipId: -1);
+
+		// Angles de régions par défaut pour les presets (3 secteurs à 120°)
+		return new float[] { 0f, 2.094f, 4.189f }; // 0°, 120°, 240°
+	}
+
+	private static void ApplyPresetLayer(TileMapLayer layer, int[] rleData,
+		int width, int height, int originX, int originY, int skipId = -1)
+	{
+		int x = 0, y = 0;
+		for (int i = 0; i < rleData.Length - 1; i += 2)
+		{
+			int count  = rleData[i];
+			int tileId = rleData[i + 1];
+			for (int j = 0; j < count; j++)
+			{
+				if (x >= width) { x = 0; y++; }
+				if (y >= height) return;
+
+				if (tileId != skipId)
+					layer.SetCell(new Vector2I(originX + x, originY + y), tileId, Vector2I.Zero);
+				x++;
+			}
+		}
 	}
 
 	private void TriggerIntroZoom()

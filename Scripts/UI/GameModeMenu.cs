@@ -18,6 +18,7 @@ public partial class GameModeMenu : Control
 	private GameState.MapSizePreset _selectedSize = GameState.MapSizePreset.Medium;
 	private int _selectedMaxCamps = 6;
 	private AIController.Difficulty _selectedDifficulty = AIController.Difficulty.Medium;
+	private GameState.MapType _selectedMapType = GameState.MapType.Procedural;
 
 	public override void _Ready()
 	{
@@ -106,6 +107,35 @@ public partial class GameModeMenu : Control
 			var captured = sizeValues[i];
 			btn.Pressed += () => _selectedSize = captured;
 			sizeHBox.AddChild(btn);
+		}
+
+		// Sélection de la carte
+		var mapLabel = new Label();
+		mapLabel.Text = "Carte";
+		vbox.AddChild(mapLabel);
+
+		var mapHBox = new HBoxContainer();
+		mapHBox.AddThemeConstantOverride("separation", 8);
+		vbox.AddChild(mapHBox);
+
+		var mapGroup = new ButtonGroup();
+		string[] mapNames = { "Aléatoire", "Irridium", "Alabasta" };
+		GameState.MapType[] mapValues = {
+			GameState.MapType.Procedural,
+			GameState.MapType.Irridium,
+			GameState.MapType.Alabasta
+		};
+		for (int i = 0; i < 3; i++)
+		{
+			var btn = new Button();
+			btn.Text = mapNames[i];
+			btn.ToggleMode = true;
+			btn.ButtonGroup = mapGroup;
+			btn.ButtonPressed = (mapValues[i] == _selectedMapType);
+			btn.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+			var captured = mapValues[i];
+			btn.Pressed += () => _selectedMapType = captured;
+			mapHBox.AddChild(btn);
 		}
 
 		// Nombre de camps
@@ -198,6 +228,7 @@ public partial class GameModeMenu : Control
 			gameState.MapSize = _selectedSize;
 			gameState.MaxCamps = _selectedMaxCamps;
 			gameState.AILevel = _selectedDifficulty;
+			gameState.SelectedMapType = _selectedMapType;
 		}
 		GetTree().ChangeSceneToFile("res://Scenes/Game.tscn");
 	}
