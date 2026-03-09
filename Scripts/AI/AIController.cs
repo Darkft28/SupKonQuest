@@ -105,16 +105,12 @@ public partial class AIController : Node
 		foreach (var unit in idleUnits)
 		{
 			if (sent >= MaxUnitsPerOrder) break;
-			// Léger offset aléatoire pour éviter que toutes les unités se superposent
-			float angle = (float)GD.RandRange(0, Mathf.Tau);
-			float radius = (float)GD.RandRange(0, 200);
-			Vector2 offset = new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * radius;
-			unit.MoveTo(target.GlobalPosition + offset);
+			unit.AttackCamp(target);
 			sent++;
 		}
 
 		if (sent > 0)
-			GD.Print($"[IA] {sent} unité(s) envoyée(s) vers camp #{target.GetCampId()} (T{target.GetTeamId()})");
+			GD.Print($"[IA] {sent} unité(s) ordonnée(s) d'attaquer camp #{target.GetCampId()} (T{target.GetTeamId()})");
 	}
 
 	private List<Unit> FindIdleAIUnits()
