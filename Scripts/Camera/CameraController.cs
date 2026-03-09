@@ -93,11 +93,13 @@ namespace SupKonQuest
 			MapHeight = mapTilesHeight;
 			SetupCameraLimits();
 
-			// Zoom minimum dynamique : la map doit toujours remplir l'écran
+			// Zoom minimum dynamique : aucune dimension ne doit dépasser la map
+			// Max (et non Min) : on prend le facteur le plus grand pour que
+			// la map remplisse toujours entièrement l'écran, même en 16:9
 			Vector2 viewportSize = GetViewportRect().Size;
 			float mapPixelsW = MapWidth  * TileSize;
 			float mapPixelsH = MapHeight * TileSize;
-			float zoomToFit  = Mathf.Min(viewportSize.X / mapPixelsW, viewportSize.Y / mapPixelsH);
+			float zoomToFit  = Mathf.Max(viewportSize.X / mapPixelsW, viewportSize.Y / mapPixelsH);
 			MinZoom = Mathf.Max(0.02f, zoomToFit);
 
 			// Recaler le zoom actuel si nécessaire
