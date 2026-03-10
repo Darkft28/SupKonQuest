@@ -14,7 +14,10 @@ public static class TerrainGenerator
 	private const int IdObjetArbre = 100;
 	private const int IdObjetMontagne = 101;
 
-	public static void Generate(TileMapLayer sol, TileMapLayer objets,
+	private static Texture2D _texTree;
+	private static Texture2D _texMontagne;
+
+	public static void Generate(TileMapLayer sol, TileMapLayer objets, Node2D objectsContainer,
 		FastNoiseLite noiseElevation, FastNoiseLite noiseForet, Random seededRandom,
 		int halfWidth, int halfHeight, int tileSize, bool testMode,
 		out float[] armAngles, out float armHalfWidth, out float centralRadius)
@@ -105,6 +108,7 @@ public static class TerrainGenerator
 				if (objetId != -1)
 				{
 					objets.SetCell(coords, objetId, new Vector2I(0, 0));
+					SpawnObjectSprite(objectsContainer, objetId, x, y, tileSize);
 				}
 			}
 		}
@@ -133,6 +137,33 @@ public static class TerrainGenerator
 			float hw = 3 + seededRandom.Next(0, 4);                            // demi-largeur du passage (3-6)
 			armStraits[i] = new float[] { t, hw };
 		}
+	}
+
+	private static void SpawnObjectSprite(Node2D container, int objetId, int tx, int ty, int tileSize)
+	{
+		if (container == null) return;
+
+		string texPath = objetId == IdObjetArbre
+			? "res://Assets/Objects/Tree.png"
+			: "res://Assets/Objects/montagne.png";
+
+		if (objetId == IdObjetArbre)
+			_texTree ??= GD.Load<Texture2D>(texPath);
+		else
+			_texMontagne ??= GD.Load<Texture2D>(texPath);
+
+		var tex = objetId == IdObjetArbre ? _texTree : _texMontagne;
+		if (tex == null) return;
+
+		var sprite = new Sprite2D();
+		sprite.Texture = tex;
+		// Centre sur la tuile
+		sprite.Position = new Vector2(tx * tileSize + tileSize / 2f, ty * tileSize + tileSize / 2f);
+		// Arbre x5, Montagne x10
+		float scale = objetId == IdObjetArbre ? 5f : 10f;
+		sprite.Scale = new Vector2(scale, scale);
+		sprite.ZIndex = 1;
+		container.AddChild(sprite);
 	}
 
 	// Vérifie si une tuile (x,y) est dans l'eau pizza (hub central ou bras radial)

@@ -9,6 +9,7 @@ public partial class MapGenerator : Node
 	private TileMapLayer _tileMapObjets;
 	private Camera2D _camera;
 	private Node2D _unitsContainer;
+	private Node2D _objectsContainer;
 	private SelectionManager _selectionManager;
 	private TerritoryManager _territoryManager;
 	private System.Collections.Generic.List<AIController> _aiControllers = new System.Collections.Generic.List<AIController>();
@@ -143,7 +144,7 @@ public partial class MapGenerator : Node
 		_tileMapSol.Clear();
 		_tileMapObjets.Clear();
 
-		// Detruire et recreer le conteneur d'unites pour un reset complet
+		// Detruire et recreer les conteneurs pour un reset complet
 		if (_unitsContainer != null)
 		{
 			RemoveChild(_unitsContainer);
@@ -153,6 +154,15 @@ public partial class MapGenerator : Node
 		_unitsContainer.Name = "Units";
 		AddChild(_unitsContainer);
 
+		if (_objectsContainer != null)
+		{
+			RemoveChild(_objectsContainer);
+			_objectsContainer.QueueFree();
+		}
+		_objectsContainer = new Node2D();
+		_objectsContainer.Name = "Objects";
+		AddChild(_objectsContainer);
+
 		int halfWidth = _mapWidth / 2;
 		int halfHeight = _mapHeight / 2;
 
@@ -161,7 +171,8 @@ public partial class MapGenerator : Node
 		float[] armAngles;
 		if (gsMap?.SelectedMapType == null || gsMap.SelectedMapType == GameState.MapType.Procedural)
 		{
-			TerrainGenerator.Generate(_tileMapSol, _tileMapObjets, _noiseElevation, _noiseForet, _seededRandom,
+			TerrainGenerator.Generate(_tileMapSol, _tileMapObjets, _objectsContainer,
+				_noiseElevation, _noiseForet, _seededRandom,
 				halfWidth, halfHeight, TileSize, TestMode,
 				out armAngles, out _, out _);
 		}
