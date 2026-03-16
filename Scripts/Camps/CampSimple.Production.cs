@@ -53,6 +53,52 @@ public partial class CampSimple
 		return true;
 	}
 
+	// IDs des biomes/objets à éviter au spawn (forêt, neige, eau, arbres, montagnes)
+	private const int IdSolForet = 3;
+	private const int IdSolNeige = 4;
+	private const int IdSolEau = 6;
+	private const int IdObjetArbreSpawn = 100;
+	private const int IdObjetMontagneSpawn = 101;
+
+	private bool IsSpawnBlocked(Vector2 worldPos)
+	{
+		if (_tileMapSol == null) return false;
+		Vector2I tc = _tileMapSol.LocalToMap(_tileMapSol.ToLocal(worldPos));
+		int solId = _tileMapSol.GetCellSourceId(tc);
+		if (solId == IdSolForet || solId == IdSolNeige || solId == IdSolEau) return true;
+		if (_tileMapObjets != null)
+		{
+			int objId = _tileMapObjets.GetCellSourceId(tc);
+			if (objId == IdObjetArbreSpawn || objId == IdObjetMontagneSpawn) return true;
+		}
+		return false;
+	}
+
+	private Vector2 FindClearSpawnPosition(float angle, float dist)
+	{
+		Vector2 pos = GlobalPosition + new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * dist;
+		if (!IsSpawnBlocked(pos)) return pos;
+
+		for (int i = 1; i < 16; i++)
+		{
+			float a = angle + i * (Mathf.Tau / 16f);
+			pos = GlobalPosition + new Vector2(Mathf.Cos(a), Mathf.Sin(a)) * dist;
+			if (!IsSpawnBlocked(pos)) return pos;
+		}
+
+		for (float d = dist + 128f; d <= dist + 512f; d += 128f)
+		{
+			for (int i = 0; i < 8; i++)
+			{
+				float a = i * (Mathf.Tau / 8f);
+				pos = GlobalPosition + new Vector2(Mathf.Cos(a), Mathf.Sin(a)) * d;
+				if (!IsSpawnBlocked(pos)) return pos;
+			}
+		}
+
+		return GlobalPosition + new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * dist;
+	}
+
 	private void SpawnPurchasedUnit(string unitType)
 	{
 		var unitScene = GD.Load<PackedScene>("res://Scenes/Unit.tscn");
@@ -61,10 +107,8 @@ public partial class CampSimple
 
 		var unit = unitScene.Instantiate<Unit>();
 
-		float angle = (float)GD.RandRange(0, Mathf.Tau);
-		Vector2 offset = new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * 525f;
-
-		unit.GlobalPosition = GlobalPosition + offset;
+		float spawnAngle = (float)GD.RandRange(0, Mathf.Tau);
+		unit.GlobalPosition = FindClearSpawnPosition(spawnAngle, 525f);
 		unit.UnitType = unitType;
 		unit.TeamId = TeamId;
 		unit.IsNeutralCampUnit = false;
@@ -98,9 +142,7 @@ public partial class CampSimple
 			var unit = unitScene.Instantiate<Unit>();
 
 			float angle = (i * Mathf.Tau) / UnitTypes.Length;
-			Vector2 offset = new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * 525f;
-
-			unit.GlobalPosition = campPos + offset;
+			unit.GlobalPosition = FindClearSpawnPosition(angle, 525f);
 			unit.UnitType = UnitTypes[i];
 			unit.TeamId = TeamId;
 			unit.IsNeutralCampUnit = IsNeutralCamp;

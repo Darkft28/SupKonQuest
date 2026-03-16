@@ -7,6 +7,11 @@ public partial class CampSimple
 		_tileMapSol = tileMapSol;
 	}
 
+	public void SetTileMapObjets(TileMapLayer tileMapObjets)
+	{
+		_tileMapObjets = tileMapObjets;
+	}
+
 	private void ProcessShipProductionQueue(double delta)
 	{
 		if (!HasPort) return;

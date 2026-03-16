@@ -34,9 +34,13 @@ public static class CampPlacer
 				float altitude = noiseElevation.GetNoise2D(x, y);
 				float densiteArbre = noiseForet.GetNoise2D(x, y);
 
-				// Seul le biome herbe (pas foret) peut avoir des camps
+				// Seul le biome herbe (pas foret, montagne, neige) peut avoir des camps
 				if (altitude >= -0.15f && altitude < 0.4f && densiteArbre <= 0.2f)
 				{
+					// Vérification supplémentaire : pas d'objet (arbre/montagne) sur cette tuile
+					int existingObj = objets.GetCellSourceId(new Vector2I(x, y));
+					if (existingObj == 100 || existingObj == 101) continue;
+
 					if (!testMode && seededRandom.NextDouble() < 0.001)
 					{
 						if (IsNearTilemapWater(x, y, sol)) continue;
@@ -73,6 +77,7 @@ public static class CampPlacer
 										campSimple.TeamId = campCount;
 										campSimple.RegionId = GetRegionId(worldPos, armAngles, tileSize);
 										campSimple.SetTileMapSol(sol);
+										campSimple.SetTileMapObjets(objets);
 									}
 
 									unitsContainer.AddChild(camp);
