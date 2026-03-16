@@ -209,6 +209,7 @@ public partial class SelectionManager : Node2D
 
 	private void SelectPort(CampSimple camp)
 	{
+		if (camp.GetTeamId() != GetLocalTeamId()) return;
 		_selectedPort = camp;
 		_selectedPort.Modulate = new Color(0.8f, 1.0f, 1.2f, 1);
 	}
