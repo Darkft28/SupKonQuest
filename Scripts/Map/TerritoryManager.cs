@@ -299,21 +299,108 @@ public partial class TerritoryManager : Node2D
 		return false;
 	}
 
-	private void ApplyManualTiles()
+	private void ApplyManualTiles(int captorTeamId = -1)
 	{
+		if (_manualTiles.Count == 0) return;
+
+		int[] dx = { 0, 0, 1, -1 };
+		int[] dy = { 1, -1, 0, 0 };
+
+		// Regrouper les tuiles manuelles par équipe
+		var byTeam = new Dictionary<int, HashSet<(int, int)>>();
 		foreach (var ((x, y), teamId) in _manualTiles)
-			_territoryMap[x, y] = teamId;
+		{
+			if (!byTeam.TryGetValue(teamId, out var set))
+				byTeam[teamId] = set = new HashSet<(int, int)>();
+			set.Add((x, y));
+		}
+
+		// Pour chaque équipe : BFS depuis le territoire naturel (ComputeTerritory)
+		// → ne conserver que les tuiles encore connectées au territoire naturel du joueur
+		// NOTE : on lit _territoryMap AVANT d'y écrire (que du territoire naturel à ce stade)
+		var reachableByTeam = new Dictionary<int, HashSet<(int, int)>>();
+		foreach (var (teamId, tiles) in byTeam)
+		{
+			var reachable = new HashSet<(int, int)>();
+			var queue = new Queue<(int, int)>();
+
+			// Amorcer le BFS : tuiles manuelles directement adjacentes au territoire naturel de cette équipe
+			foreach (var (tx, ty) in tiles)
+			{
+				for (int i = 0; i < 4; i++)
+				{
+					int nx = tx + dx[i], ny = ty + dy[i];
+					if (nx >= 0 && nx < MapWidth && ny >= 0 && ny < MapHeight
+						&& _territoryMap[nx, ny] == teamId  // territoire naturel uniquement
+						&& reachable.Add((tx, ty)))
+					{
+						queue.Enqueue((tx, ty));
+						break;
+					}
+				}
+			}
+
+			// Propager à travers les tuiles manuelles adjacentes de la même équipe
+			while (queue.Count > 0)
+			{
+				var (cx, cy) = queue.Dequeue();
+				for (int i = 0; i < 4; i++)
+				{
+					var nb = (cx + dx[i], cy + dy[i]);
+					if (tiles.Contains(nb) && reachable.Add(nb))
+						queue.Enqueue(nb);
+				}
+			}
+
+			reachableByTeam[teamId] = reachable;
+		}
+
+		// Appliquer les tuiles connectées ; tuiles orphelines → données au capteur
+		var toRemove = new List<(int, int)>();
+		foreach (var ((x, y), teamId) in _manualTiles)
+		{
+			if (reachableByTeam.TryGetValue(teamId, out var reachable) && reachable.Contains((x, y)))
+				_territoryMap[x, y] = teamId;
+			else
+			{
+				// Donner la tuile au capteur s'il est connu, sinon laisser le territoire naturel
+				if (captorTeamId >= 0)
+					_territoryMap[x, y] = captorTeamId;
+				toRemove.Add((x, y));
+			}
+		}
+
+		int removed = toRemove.Count;
+
+		// Supprimer les entrées de l'ancien proprio
+		foreach (var key in toRemove)
+			_manualTiles.Remove(key);
+
+		// Persister les tuiles orphelines dans _manualTiles pour le capteur
+		// Sans ça, le prochain ComputeTerritory() efface tout car _territoryMap est reset
+		if (captorTeamId >= 0)
+		{
+			foreach (var key in toRemove)
+				_manualTiles[key] = captorTeamId;
+		}
+
+		if (removed > 0)
+			GD.Print($"[TERRITOIRE] {removed} tuile(s) orpheline(s) persistées pour team {captorTeamId}.");
 	}
 
 	private void ConnectCampSignals()
 	{
+		// Les signaux sont gardés pour d'éventuels autres listeners,
+		// mais le territoire est rafraîchi via appel direct depuis CaptureCamp().
+		int connected = 0;
 		foreach (Node node in GetTree().GetNodesInGroup("camps"))
 		{
 			if (node is CampSimple camp)
 			{
-				camp.CampCaptured += (_newTeamId) => OnCampCaptured();
+				connected++;
 			}
 		}
+		GD.Print($"[TERRITOIRE] ConnectCampSignals : {connected} camp(s) dans le groupe 'camps'.");
 	}
 
 	private Color GetTeamColor(int teamId)
@@ -468,10 +555,12 @@ public partial class TerritoryManager : Node2D
 		}
 	}
 
-	private void OnCampCaptured()
+	// Appelé directement depuis CampSimple.CaptureCamp() et ApplyRemoteCapture()
+	public void RefreshTerritory(int captorTeamId = -1)
 	{
+		GD.Print($"[TERRITOIRE] RefreshTerritory() — capteur : team {captorTeamId}");
 		ComputeTerritory();
-		ApplyManualTiles();
+		ApplyManualTiles(captorTeamId);
 		UpdateTintImage();
 		QueueRedraw();
 	}

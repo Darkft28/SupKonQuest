@@ -50,6 +50,7 @@ public partial class CampSimple : Area2D
 	private const int MaxShipQueueSize = 5;
 	private List<Ship> _spawnedShips = new List<Ship>();
 	private TileMapLayer _tileMapSol;
+	private TileMapLayer _tileMapObjets;
 
 	private ColorRect _healthBarBackground;
 	private ColorRect _healthBarForeground;
@@ -150,6 +151,9 @@ public partial class CampSimple : Area2D
 
 		GD.Print($"[NET] Camp #{CampId} capture a distance: Team {oldTeamId} -> {newTeamId}");
 		EmitSignal(SignalName.CampCaptured, newTeamId);
+
+		// Appel direct garanti — ne dépend pas de la connexion signal
+		TerritoryManager.Instance?.RefreshTerritory(newTeamId);
 	}
 
 	// Reseau : reset l'ID counter pour les IDs deterministes

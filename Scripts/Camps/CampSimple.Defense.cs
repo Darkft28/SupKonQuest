@@ -186,6 +186,10 @@ public partial class CampSimple
 
 		EmitSignal(SignalName.CampCaptured, newTeamId);
 		NetworkSync.Instance?.SendCampCaptured(CampId, newTeamId);
+
+		// Appel direct garanti — ne dépend pas de la connexion signal
+		TerritoryManager.Instance?.RefreshTerritory(newTeamId);
+		GD.Print($"[TERRITOIRE] Camp #{CampId} capturé : Team {oldTeamId} → {newTeamId}");
 	}
 
 	private void SpawnBonusUnits()
