@@ -141,8 +141,11 @@ public partial class MapGenerator : Node
 		CampSimple.ResetCampIdCounter();
 		NetworkEntityRegistry.Clear();
 
+		TerrainGenerator.InitTileVariants(_tileMapSol);
+
 		_tileMapSol.Clear();
 		_tileMapObjets.Clear();
+		_tileMapObjets.Visible = true;
 
 		// Detruire et recreer les conteneurs pour un reset complet
 		if (_unitsContainer != null)
@@ -179,11 +182,16 @@ public partial class MapGenerator : Node
 		else
 		{
 			armAngles = ApplyPresetMap(gsMap.SelectedMapType, halfWidth, halfHeight);
+			SpawnPresetObjectSprites(halfWidth, halfHeight);
 		}
 
 		// Construire les meshes de navigation (terrestre pour unités, maritime pour bateaux)
 		BuildNavigationMesh();
 		BuildWaterNavigationMesh();
+
+		// Les arbres et montagnes sont rendus via Sprite2D dans _objectsContainer (plus grands).
+		// La couche Objets reste active pour la navigation (GetCellSourceId) mais n'est pas affichée.
+		_tileMapObjets.Visible = false;
 
 		// Placer les camps
 		int maxCamps = (gsMap?.IsFreeForAll == true) ? gsMap.MaxCamps : 0; // gsMap déjà résolu plus haut
@@ -204,6 +212,16 @@ public partial class MapGenerator : Node
 		TriggerIntroZoom();
 	}
 
+	private void SpawnPresetObjectSprites(int halfWidth, int halfHeight)
+	{
+		foreach (var cell in _tileMapObjets.GetUsedCells())
+		{
+			int objId = _tileMapObjets.GetCellSourceId(cell);
+			if (objId == 100 || objId == 101)
+				TerrainGenerator.SpawnObjectSprite(_objectsContainer, objId, cell.X, cell.Y, TileSize);
+		}
+	}
+
 	private float[] ApplyPresetMap(GameState.MapType mapType, int halfWidth, int halfHeight)
 	{
 		int[] solRle = mapType == GameState.MapType.Irridium
@@ -219,15 +237,15 @@ public partial class MapGenerator : Node
 		// On applique donc à la couche normalement et on laisse le TileMapLayer gérer ses coords.
 		// Note : les données sont stockées en row-major depuis (0,0) dans l'espace preset.
 		// Pour aligner avec le TileMap centré, on décale l'origine de départ.
-		ApplyPresetLayer(_tileMapSol, solRle, width, height, -halfWidth, -halfHeight, skipId: -1);
-		ApplyPresetLayer(_tileMapObjets, objetsRle, width, height, -halfWidth, -halfHeight, skipId: -1);
+		ApplyPresetLayer(_tileMapSol, solRle, width, height, -halfWidth, -halfHeight, skipId: -1, addVariants: true);
+		ApplyPresetLayer(_tileMapObjets, objetsRle, width, height, -halfWidth, -halfHeight, skipId: -1, addVariants: false);
 
 		// Angles de régions par défaut pour les presets (3 secteurs à 120°)
 		return new float[] { 0f, 2.094f, 4.189f }; // 0°, 120°, 240°
 	}
 
 	private static void ApplyPresetLayer(TileMapLayer layer, int[] rleData,
-		int width, int height, int originX, int originY, int skipId = -1)
+		int width, int height, int originX, int originY, int skipId = -1, bool addVariants = false)
 	{
 		int x = 0, y = 0;
 		for (int i = 0; i < rleData.Length - 1; i += 2)
@@ -240,7 +258,10 @@ public partial class MapGenerator : Node
 				if (y >= height) return;
 
 				if (tileId != skipId)
-					layer.SetCell(new Vector2I(originX + x, originY + y), tileId, Vector2I.Zero);
+				{
+					int alt = addVariants ? TerrainGenerator.PickAlt(originX + x, originY + y) : 0;
+					layer.SetCell(new Vector2I(originX + x, originY + y), tileId, Vector2I.Zero, alt);
+				}
 				x++;
 			}
 		}
@@ -487,7 +508,7 @@ public partial class MapGenerator : Node
 			SetupNoise();
 			GenererMap();
 			InitAIControllers();
-			InitTerritory();
+			CallDeferred(nameof(InitTerritory)); // différé comme dans _Ready(), pour que les camps aient leur _Ready()
 		}
 	}
 }
