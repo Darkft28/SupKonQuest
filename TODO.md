@@ -1,6 +1,6 @@
 # TODO - SupKonQuest
 
-Mis a jour le 2026-03-09 apres correction des 8 bugs critiques.
+Mis a jour le 2026-03-16 — corrections territoire, port, spawn, reseau + variation tuiles.
 Format : priorite, domaine, description, solution proposee, fichiers concernes.
 
 ---
@@ -45,11 +45,11 @@ Toutes les 8 unites terrestres sont implementees. **COMPLET.**
 | Transport (embarquement/debarquement)   | Oui     | FAIT    | Capacite 10 unites, RPC UnitBoarded/TransportUnloaded                                               |
 | Fregate                                 | Oui     | FAIT    | 180HP, 20 ATK, portee 250, 200g                                                                     |
 | Destroyer                               | Oui     | FAIT    | 250HP, 35 ATK, portee 350, 300g                                                                     |
-| Gestion obstacles (forets, montagnes)   | Oui     | PARTIEL | Forets et montagnes visuels SEULEMENT, pas d'impact sur pathfinding                                 |
+| Gestion obstacles (forets, montagnes)   | Oui     | PARTIEL | Spawn unites evite forets/arbres/montagnes (FindClearSpawnPosition). Traversal pas encore bloque.   |
 | Pathfinding terrestre vs naval          | Oui     | PARTIEL | Unites terrestres ne vont pas sur l'eau (checks tuile), navires en eau seulement. Pas de A* reel.  |
 
 **Actions requises :**
-- [ ] [PR2-NAV-01] Forets et montagnes doivent bloquer les unites terrestres (CollisionShape2D sur les objets ou check de tuile)
+- [ ] [PR2-NAV-01] Forets et montagnes doivent bloquer le deplacement des unites terrestres (CollisionShape2D ou check de tuile dans Movement) — le spawn est deja corrige
 - [ ] [PR2-NAV-02] L'IA ne prend pas de bateaux. Si certains camps sont sur des iles, l'IA ne peut pas les atteindre. Ajouter logique navale dans AIController.
 
 ---
@@ -423,6 +423,10 @@ Si un `PackedScene` n'est pas trouve, l'erreur est silencieuse. Ajouter try/catc
 - [x] BUG-06 Desync or multi — RpcSyncGold toutes les 10s, seuil 5 or
 - [x] BUG-07 Deconnexion — overlay HUD + retour menu 5s (peer + serveur)
 - [x] BUG-08 Blocage unites lentes — Mathf.Max(..., 0.5f) dans ProcessStuckDetection
+- [x] BUG-09 Territoire non transfere a l'ennemi lors d'une capture — TerritoryManager.ApplyManualTiles() BFS + persistance dans _manualTiles pour le capteur, appel direct RefreshTerritory() depuis CaptureCamp/ApplyRemoteCapture
+- [x] BUG-10 Port ennemi selectionnable sans filtre d'equipe — SelectionManager.SelectPort() verifie maintenant GetTeamId() == GetLocalTeamId()
+- [x] BUG-11 Unites spawnees dans obstacles (forets, arbres, montagnes) — FindClearSpawnPosition() dans CampSimple.Production, CampPlacer refuse de placer un camp sur un objet existant
+- [x] BUG-12 NetworkEntityRegistry peer ID null en mode solo — verif MultiplayerPeer != null avant GetUniqueId(), fallback peerId = 1
 
 ### Ameliorations a faire (priorite pre-rendu)
 - [ ] [PR2-NAV-01] Forets/montagnes bloquantes
@@ -434,6 +438,9 @@ Si un `PackedScene` n'est pas trouve, l'erreur est silencieuse. Ajouter try/catc
 - [ ] [PR2-DOC-01] Doc architecture reseau
 - [ ] [PR2-DOC-02] Doc algo IA
 - [ ] [PR2-DOC-03] Guide multijoueur pas-a-pas
+
+### Ameliorations realisees
+- [x] Variation de tuiles FlipH/FlipV — TerrainGenerator.InitTileVariants() + PickAlt() hash deterministique, 4 variantes par source terrain, cartes procedurales et predefinies couvertes
 
 ### Ameliorations importantes
 - [ ] [AMELIO-02] File de production visible dans HUD
