@@ -7,9 +7,10 @@ public static class CampPlacer
 	// Spawn les camps depuis une liste de positions pré-définies (maps presets)
 	// Les positions sont mélangées aléatoirement pour créer des parties différentes
 	public static int PlacePresetCamps(
-		System.Collections.Generic.List<Vector2I> campCells,
+		List<Vector2I> campCells,
 		TileMapLayer sol, Node2D unitsContainer, PackedScene campScene,
-		Random seededRandom, int tileSize, float[] armAngles = null)
+		Random seededRandom, int tileSize, float[] armAngles = null,
+		int[,] territoryGrid = null, int halfWidth = 128, int halfHeight = 128)
 	{
 		if (Engine.IsEditorHint() || unitsContainer == null || campScene == null)
 			return 0;
@@ -33,7 +34,7 @@ public static class CampPlacer
 			{
 				campSimple.IsNeutralCamp = true;
 				campSimple.TeamId = campCount;
-				campSimple.RegionId = GetRegionId(worldPos, armAngles, tileSize);
+				campSimple.RegionId = GetRegionIdFromGrid(worldPos, tileSize, territoryGrid, halfWidth, halfHeight, armAngles);
 				campSimple.SetTileMapSol(sol);
 			}
 
@@ -43,8 +44,34 @@ public static class CampPlacer
 		return campCount;
 	}
 
-	// Assigne une région (1, 2 ou 3) selon le secteur angulaire du camp par rapport au centre
-	private static int GetRegionId(Vector2 worldPos, float[] armAngles, int tileSize)
+	// Lit le RegionId directement depuis la grille territoire.
+	// Fallback vers le calcul angulaire si la grille est null ou si la tuile est hors limites / id=0.
+	private static int GetRegionIdFromGrid(Vector2 worldPos, int tileSize,
+		int[,] territoryGrid, int halfWidth, int halfHeight, float[] armAngles)
+	{
+		if (territoryGrid != null)
+		{
+			// Convertir la position monde en coordonnée de grille [0, width[ × [0, height[
+			int tileX = (int)Math.Floor(worldPos.X / tileSize) + halfWidth;
+			int tileY = (int)Math.Floor(worldPos.Y / tileSize) + halfHeight;
+
+			int gridW = territoryGrid.GetLength(0);
+			int gridH = territoryGrid.GetLength(1);
+
+			if (tileX >= 0 && tileX < gridW && tileY >= 0 && tileY < gridH)
+			{
+				int id = territoryGrid[tileX, tileY];
+				if (id > 0)
+					return id;
+			}
+		}
+
+		// Fallback angulaire
+		return GetRegionIdAngular(worldPos, armAngles, tileSize);
+	}
+
+	// Calcul angulaire d'origine (fallback si pas de grille territoire)
+	private static int GetRegionIdAngular(Vector2 worldPos, float[] armAngles, int tileSize)
 	{
 		if (armAngles == null) return 1;
 
@@ -61,7 +88,7 @@ public static class CampPlacer
 			a[i] = armAngles[i] % (float)(Math.PI * 2.0);
 			if (a[i] < 0) a[i] += (float)(Math.PI * 2.0);
 		}
-		System.Array.Sort(a);
+		Array.Sort(a);
 
 		// Secteur 1 : entre a[0] et a[1], secteur 2 : entre a[1] et a[2], secteur 3 : le reste
 		if (angle >= a[0] && angle < a[1]) return 1;

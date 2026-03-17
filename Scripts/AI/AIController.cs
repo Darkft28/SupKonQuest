@@ -121,12 +121,16 @@ public partial class AIController : Node
 	/// 1. Camp neutre dont les défenseurs sont morts (facile à capturer)
 	/// 2. Camp ennemi dont les défenseurs sont morts
 	/// 3. Camp le plus proche
-	/// Score-based : distance de base + pénalités/bonus selon défenseurs et type de camp
+	/// Score-based : distance de base + pénalités/bonus selon défenseurs, type de camp et territoire.
 	/// </summary>
 	private CampSimple FindBestAttackTarget()
 	{
 		// Position de référence = centre de masse des unités IA
 		Vector2 aiCenter = GetAICenter();
+
+		// Région principale de l'IA : RegionId du camp IA le plus central
+		int currentAIRegion = GetAIRegionId();
+		var graph = MapGenerator.TerritoryGraph;
 
 		var camps = GetTree().GetNodesInGroup("camps");
 		CampSimple bestCamp = null;
@@ -153,6 +157,15 @@ public partial class AIController : Node
 			if (Level == Difficulty.Hard && !camp.IsNeutralCamp)
 				score -= 1000f; // en Hard, l'IA cible aussi les camps ennemis
 
+			// Bonus territoire : favoriser les camps dans la même région ou adjacent
+			if (currentAIRegion > 0 && graph != null)
+			{
+				if (camp.RegionId == currentAIRegion)
+					score -= 3000f; // même région = priorité maximale
+				else if (camp.RegionId > 0 && TerritoryConnectivity.AreConnected(graph, currentAIRegion, camp.RegionId))
+					score -= 1500f; // région adjacente = priorité secondaire
+			}
+
 			if (score < bestScore)
 			{
 				bestScore = score;
@@ -161,6 +174,31 @@ public partial class AIController : Node
 		}
 
 		return bestCamp;
+	}
+
+	// Retourne le RegionId du camp IA le plus proche du centre de masse des unités IA
+	private int GetAIRegionId()
+	{
+		Vector2 aiCenter = GetAICenter();
+		var camps = GetTree().GetNodesInGroup("camps");
+		float closestDist = float.MaxValue;
+		int regionId = 0;
+
+		foreach (var node in camps)
+		{
+			if (node is not CampSimple camp) continue;
+			if (camp.GetTeamId() != AITeamId || camp.IsNeutralCamp) continue;
+			if (camp.RegionId <= 0) continue;
+
+			float dist = aiCenter.DistanceTo(camp.GlobalPosition);
+			if (dist < closestDist)
+			{
+				closestDist = dist;
+				regionId = camp.RegionId;
+			}
+		}
+
+		return regionId;
 	}
 
 	private Vector2 GetAICenter()

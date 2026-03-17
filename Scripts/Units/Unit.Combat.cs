@@ -318,25 +318,46 @@ public partial class Unit
 	private CampSimple FindAttackableCampInRange()
 	{
 		var allCamps = GetTree().GetNodesInGroup("camps");
-		CampSimple closestCamp = null;
-		float closestDistance = float.MaxValue;
+		CampSimple bestCamp = null;
+		float bestScore = float.MaxValue;
+
+		// Région de cette unité (héritée du camp propriétaire ou assignée directement)
+		int myRegion = RegionId > 0 ? RegionId : (OwnerCamp?.RegionId ?? 0);
+		var graph = MapGenerator.TerritoryGraph;
 
 		foreach (var node in allCamps)
 		{
-			if (node is CampSimple camp)
-			{
-				if (camp.GetTeamId() == TeamId) continue;
-				if (!camp.AreAllUnitsDefeated()) continue;
+			if (node is not CampSimple camp) continue;
+			if (camp.GetTeamId() == TeamId) continue;
+			if (!camp.AreAllUnitsDefeated()) continue;
 
-				float distance = GlobalPosition.DistanceTo(camp.GlobalPosition);
-				if (distance <= CampAttackDetectionRange && distance < closestDistance)
-				{
-					closestCamp = camp;
-					closestDistance = distance;
-				}
+			float distance = GlobalPosition.DistanceTo(camp.GlobalPosition);
+			if (distance > CampAttackDetectionRange) continue;
+
+			// Score de base : distance euclidienne
+			float score = distance;
+
+			// Bonus territoire : réduire le score selon la proximité de région
+			if (myRegion > 0 && graph != null)
+			{
+				if (camp.RegionId == myRegion)
+					score -= 3000f; // Même région = priorité maximale
+				else if (camp.RegionId > 0 && TerritoryConnectivity.AreConnected(graph, myRegion, camp.RegionId))
+					score -= 1500f; // Région adjacente accessible = priorité secondaire
+			}
+			else if (myRegion > 0 && camp.RegionId == myRegion)
+			{
+				// Fallback sans graphe : même région quand même prioritaire
+				score -= 2000f;
+			}
+
+			if (score < bestScore)
+			{
+				bestScore = score;
+				bestCamp = camp;
 			}
 		}
 
-		return closestCamp;
+		return bestCamp;
 	}
 }

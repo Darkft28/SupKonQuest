@@ -16,6 +16,9 @@ namespace SupKonQuest
 		[Export] public int MapHeight = 256;
 		[Export] public int TileSize = 128;
 
+		[ExportGroup("HUD Compensation")]
+		[Export] public float HudHeightFraction = 0.20f; // fraction de l'écran occupée par le HUD bas
+
 		private Vector2 _targetZoom;
 		private Vector2 _mapCenter;
 		private Vector2 _minBounds;
@@ -90,12 +93,12 @@ namespace SupKonQuest
 			SetupCameraLimits();
 
 			// Zoom minimum dynamique : aucune dimension ne doit dépasser la map
-			// Max (et non Min) : on prend le facteur le plus grand pour que
-			// la map remplisse toujours entièrement l'écran, même en 16:9
+			// On soustrait la hauteur HUD de la hauteur utile du viewport
 			Vector2 viewportSize = GetViewportRect().Size;
+			float hudPx      = viewportSize.Y * HudHeightFraction;
 			float mapPixelsW = MapWidth  * TileSize;
 			float mapPixelsH = MapHeight * TileSize;
-			float zoomToFit  = Mathf.Max(viewportSize.X / mapPixelsW, viewportSize.Y / mapPixelsH);
+			float zoomToFit  = Mathf.Max(viewportSize.X / mapPixelsW, (viewportSize.Y - hudPx) / mapPixelsH);
 			MinZoom = Mathf.Max(0.02f, zoomToFit);
 
 			// Recaler le zoom actuel si nécessaire
@@ -162,16 +165,24 @@ namespace SupKonQuest
 
 		private void ClampPosition()
 		{
-			Vector2 viewportSize = GetViewportRect().Size / Zoom;
-			Vector2 halfViewport = viewportSize / 2;
+			Vector2 screenSize    = GetViewportRect().Size;
+			float   hudPx         = screenSize.Y * HudHeightFraction;
+			Vector2 viewportSize  = screenSize / Zoom;
+			float   hudWorld      = hudPx / Zoom.X;
+
+			// Zone utile en Y : viewport complet moins la hauteur du HUD (en world-space)
+			Vector2 usableView  = new Vector2(viewportSize.X, viewportSize.Y - hudWorld);
+			Vector2 halfUsable  = usableView / 2f;
+			float   shift       = hudWorld / 2f; // décale le centre de clamp vers le haut
 
 			// Si viewport > map sur un axe : centrer, sinon clamper normalement
-			float clampedX = (_maxBounds.X - _minBounds.X >= viewportSize.X)
-				? Mathf.Clamp(Position.X, _minBounds.X + halfViewport.X, _maxBounds.X - halfViewport.X)
+			float clampedX = (_maxBounds.X - _minBounds.X >= usableView.X)
+				? Mathf.Clamp(Position.X, _minBounds.X + halfUsable.X, _maxBounds.X - halfUsable.X)
 				: _mapCenter.X;
-			float clampedY = (_maxBounds.Y - _minBounds.Y >= viewportSize.Y)
-				? Mathf.Clamp(Position.Y, _minBounds.Y + halfViewport.Y, _maxBounds.Y - halfViewport.Y)
-				: _mapCenter.Y;
+
+			float clampedY = (_maxBounds.Y - _minBounds.Y >= usableView.Y)
+				? Mathf.Clamp(Position.Y - shift, _minBounds.Y + halfUsable.Y, _maxBounds.Y - halfUsable.Y) + shift
+				: _mapCenter.Y - shift;
 
 			Position = new Vector2(clampedX, clampedY);
 		}

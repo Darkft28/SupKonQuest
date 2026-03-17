@@ -79,6 +79,9 @@ public partial class Unit : CharacterBody2D
 	// Camp propriétaire (pour notifier à la mort)
 	public CampSimple OwnerCamp = null;
 
+	// Région économique de cette unité (héritée du camp qui l'a produite)
+	public int RegionId { get; set; } = 0;
+
 	// Aura de defense (Support)
 	private const float SupportAuraRadius = 200f;
 	private const float SupportDefenseBonus = 10f;

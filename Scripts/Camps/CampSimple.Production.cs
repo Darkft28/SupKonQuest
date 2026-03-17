@@ -113,6 +113,7 @@ public partial class CampSimple
 		unit.TeamId = TeamId;
 		unit.IsNeutralCampUnit = false;
 		unit.OwnerCamp = this;
+		unit.RegionId = RegionId;
 
 		// Reseau : assigner un NetworkId et broadcaster le spawn
 		string networkId = NetworkEntityRegistry.GenerateId();
@@ -147,6 +148,7 @@ public partial class CampSimple
 			unit.TeamId = TeamId;
 			unit.IsNeutralCampUnit = IsNeutralCamp;
 			unit.OwnerCamp = this;
+			unit.RegionId = RegionId;
 
 			// ID deterministe pour les defenseurs initiaux (sync reseau)
 			unit.NetworkId = $"camp_{CampId}_unit_{i}";

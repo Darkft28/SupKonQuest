@@ -290,21 +290,20 @@ public partial class GameManager : Node
 	{
 		_speedMultipliers.Clear();
 
+		// Détection dynamique des RegionIds présents (variable selon la map : 3 pour Irridium, 4 pour Alabasta)
 		var regionCamps = new Dictionary<int, List<CampSimple>>();
-		for (int r = 1; r <= 3; r++)
-			regionCamps[r] = new List<CampSimple>();
-
 		foreach (var camp in _allCamps)
 		{
 			if (camp == null || !IsInstanceValid(camp)) continue;
 			int r = camp.RegionId;
-			if (r >= 1 && r <= 3)
-				regionCamps[r].Add(camp);
+			if (r <= 0) continue;
+			if (!regionCamps.ContainsKey(r))
+				regionCamps[r] = new List<CampSimple>();
+			regionCamps[r].Add(camp);
 		}
 
-		for (int r = 1; r <= 3; r++)
+		foreach (var (r, camps) in regionCamps)
 		{
-			var camps = regionCamps[r];
 			if (camps.Count == 0) continue;
 
 			int firstTeam = camps[0].TeamId;

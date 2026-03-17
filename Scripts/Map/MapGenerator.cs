@@ -1,5 +1,6 @@
 ﻿using Godot;
 using System;
+using System.Collections.Generic;
 using SupKonQuest.Map.Presets;
 
 [Tool]
@@ -12,7 +13,14 @@ public partial class MapGenerator : Node
 	private Node2D _objectsContainer;
 	private SelectionManager _selectionManager;
 	private TerritoryManager _territoryManager;
-	private System.Collections.Generic.List<AIController> _aiControllers = new System.Collections.Generic.List<AIController>();
+	private List<AIController> _aiControllers = new List<AIController>();
+
+	// Grille de territoires (256×256) décodée depuis le RLE de la map preset
+	private int[,] _territoryGrid;
+	private string[] _territoireNoms;
+
+	// Graphe de connectivité des territoires (exposé pour l'IA et les unités)
+	public static Dictionary<int, HashSet<int>> TerritoryGraph { get; private set; }
 
 	private PackedScene _campScene;
 
@@ -142,7 +150,10 @@ public partial class MapGenerator : Node
 
 		// Placer les camps depuis les positions prédéfinies de la map preset
 		CampPlacer.PlacePresetCamps(presetCampPositions, _tileMapSol, _unitsContainer, _campScene,
-			_seededRandom, TileSize, armAngles);
+			_seededRandom, TileSize, armAngles, _territoryGrid, halfWidth, halfHeight);
+
+		// Construire le graphe de connectivité des territoires
+		TerritoryGraph = TerritoryConnectivity.Build(_territoryGrid, _tileMapSol, halfWidth, halfHeight);
 
 		if (GameManager.Instance != null)
 		{
@@ -185,8 +196,38 @@ public partial class MapGenerator : Node
 		// Collecter les positions de camps depuis le RLE pour un placement aléatoire ensuite
 		campPositions = CollectPresetCampPositions(objetsRle, width, height, -halfWidth, -halfHeight);
 
+		// Charger la grille de territoires depuis le RLE de la map preset
+		int[] territoiresRle = mapType == GameState.MapType.Irridium
+			? IrridiumMap.TerritoiresRle : AlabastaMap.TerritoiresRle;
+		_territoireNoms = mapType == GameState.MapType.Irridium
+			? IrridiumMap.TerritoireNoms : AlabastaMap.TerritoireNoms;
+		LoadTerritoryMap(territoiresRle, width, height, halfWidth, halfHeight);
+
 		// Angles de régions par défaut pour les presets (3 secteurs à 120°)
 		return new float[] { 0f, 2.094f, 4.189f }; // 0°, 120°, 240°
+	}
+
+	// Décode le RLE territoire (paires count/id) et remplit _territoryGrid[256,256].
+	// id 0 = pas de territoire assigné.
+	private void LoadTerritoryMap(int[] rleData, int width, int height, int halfWidth, int halfHeight)
+	{
+		_territoryGrid = new int[width, height];
+
+		int x = 0, y = 0;
+		for (int i = 0; i < rleData.Length - 1; i += 2)
+		{
+			int count = rleData[i];
+			int id    = rleData[i + 1];
+			for (int j = 0; j < count; j++)
+			{
+				if (x >= width) { x = 0; y++; }
+				if (y >= height) return;
+
+				// Stocker en coordonnées de grille [0, width[ × [0, height[
+				_territoryGrid[x, y] = id;
+				x++;
+			}
+		}
 	}
 
 	private System.Collections.Generic.List<Vector2I> CollectPresetCampPositions(
@@ -298,8 +339,9 @@ public partial class MapGenerator : Node
 			long key = ((long)vx << 32) | (uint)vy;
 			if (vertexMap.TryGetValue(key, out int idx))
 				return idx;
-			float wx = (vx * groupSize - halfWidth)  * TileSize - TileSize / 2f;
-			float wy = (vy * groupSize - halfHeight) * TileSize - TileSize / 2f;
+			// Coordonnées monde alignées exactement sur les bords de tuiles
+			float wx = (vx * groupSize - halfWidth)  * TileSize;
+			float wy = (vy * groupSize - halfHeight) * TileSize;
 			int newIdx = verticesList.Count;
 			verticesList.Add(new Vector2(wx, wy));
 			vertexMap[key] = newIdx;
@@ -394,8 +436,10 @@ public partial class MapGenerator : Node
 				var tileCoord = new Vector2I(tx, ty);
 
 				int solId = _tileMapSol.GetCellSourceId(tileCoord);
-				if (solId == 6 || solId == -1)
-					continue; // eau ou vide → pas de terrain valide ici
+				if (solId == 6)
+					return false; // eau dans la cellule → non-marchable (navmesh ne déborde plus dans l'eau)
+				if (solId == -1)
+					continue;     // vide (bord de map) → ignorer
 
 				// Forêt = obstacle (même sans objet arbre placé dessus)
 				if (solId == 3 || solId == 5 || solId == 4)
