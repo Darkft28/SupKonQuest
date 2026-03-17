@@ -3,7 +3,7 @@ using Godot;
 public partial class GameState : Node
 {
 	public enum MapSizePreset { Small, Medium, Large }
-	public enum MapType { Procedural, Irridium, Alabasta }
+	public enum MapType { Irridium, Alabasta }
 
 	// Seed de la map pour génération identique sur tous les peers (déterminisme réseau)
 	public int MapSeed { get; private set; }
@@ -17,7 +17,7 @@ public partial class GameState : Node
 	public MapSizePreset MapSize { get; set; } = MapSizePreset.Medium;
 	public int MaxCamps { get; set; } = 6;
 	public bool IsFreeForAll { get; set; } = false;
-	public MapType SelectedMapType { get; set; } = MapType.Procedural;
+	public MapType SelectedMapType { get; set; } = MapType.Irridium;
 
 	[Signal] public delegate void GameStartingEventHandler(int seed);
 	[Signal] public delegate void PlayerListUpdatedEventHandler();

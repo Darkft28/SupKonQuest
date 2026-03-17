@@ -12,15 +12,10 @@ public partial class GameModeMenu : Control
 	// Popup paramètres
 	private ColorRect _overlay;
 	private Label _popupTitle;
-	private Label _campsValueLabel;
 	private VBoxContainer _difficultySection;
-	private Control _sizeSection;
-	private Control _campsSection;
 	private bool _pendingIsIA = false;
-	private GameState.MapSizePreset _selectedSize = GameState.MapSizePreset.Medium;
-	private int _selectedMaxCamps = 6;
 	private AIController.Difficulty _selectedDifficulty = AIController.Difficulty.Medium;
-	private GameState.MapType _selectedMapType = GameState.MapType.Procedural;
+	private GameState.MapType _selectedMapType = GameState.MapType.Irridium;
 
 	public override void _Ready()
 	{
@@ -82,39 +77,6 @@ public partial class GameModeMenu : Control
 
 		vbox.AddChild(new HSeparator());
 
-		// Taille de la map
-		_sizeSection = new VBoxContainer();
-		((VBoxContainer)_sizeSection).AddThemeConstantOverride("separation", 6);
-		vbox.AddChild(_sizeSection);
-
-		var sizeLabel = new Label();
-		sizeLabel.Text = "Taille de la map";
-		_sizeSection.AddChild(sizeLabel);
-
-		var sizeHBox = new HBoxContainer();
-		sizeHBox.AddThemeConstantOverride("separation", 8);
-		_sizeSection.AddChild(sizeHBox);
-
-		var sizeGroup = new ButtonGroup();
-		string[] sizeNames = { "Petite", "Moyenne", "Grande" };
-		GameState.MapSizePreset[] sizeValues = {
-			GameState.MapSizePreset.Small,
-			GameState.MapSizePreset.Medium,
-			GameState.MapSizePreset.Large
-		};
-		for (int i = 0; i < 3; i++)
-		{
-			var btn = new Button();
-			btn.Text = sizeNames[i];
-			btn.ToggleMode = true;
-			btn.ButtonGroup = sizeGroup;
-			btn.ButtonPressed = (sizeValues[i] == _selectedSize);
-			btn.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-			var captured = sizeValues[i];
-			btn.Pressed += () => _selectedSize = captured;
-			sizeHBox.AddChild(btn);
-		}
-
 		// Sélection de la carte
 		var mapLabel = new Label();
 		mapLabel.Text = "Carte";
@@ -125,13 +87,9 @@ public partial class GameModeMenu : Control
 		vbox.AddChild(mapHBox);
 
 		var mapGroup = new ButtonGroup();
-		string[] mapNames = { "Aléatoire", "Irridium", "Alabasta" };
-		GameState.MapType[] mapValues = {
-			GameState.MapType.Procedural,
-			GameState.MapType.Irridium,
-			GameState.MapType.Alabasta
-		};
-		for (int i = 0; i < 3; i++)
+		var mapNames = new[] { "Irridium", "Alabasta" };
+		var mapValues = new[] { GameState.MapType.Irridium, GameState.MapType.Alabasta };
+		for (int i = 0; i < 2; i++)
 		{
 			var btn = new Button();
 			btn.Text = mapNames[i];
@@ -140,30 +98,9 @@ public partial class GameModeMenu : Control
 			btn.ButtonPressed = (mapValues[i] == _selectedMapType);
 			btn.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
 			var captured = mapValues[i];
-			btn.Pressed += () => { _selectedMapType = captured; UpdateMapDependentControls(); };
+			btn.Pressed += () => { _selectedMapType = captured; };
 			mapHBox.AddChild(btn);
 		}
-
-		// Nombre de camps
-		_campsSection = new VBoxContainer();
-		((VBoxContainer)_campsSection).AddThemeConstantOverride("separation", 6);
-		vbox.AddChild(_campsSection);
-
-		_campsValueLabel = new Label();
-		_campsValueLabel.Text = $"Nombre de camps : {_selectedMaxCamps}";
-		_campsSection.AddChild(_campsValueLabel);
-
-		var campsSlider = new HSlider();
-		campsSlider.MinValue = 2;
-		campsSlider.MaxValue = 12;
-		campsSlider.Step = 1;
-		campsSlider.Value = _selectedMaxCamps;
-		campsSlider.ValueChanged += (v) =>
-		{
-			_selectedMaxCamps = (int)v;
-			_campsValueLabel.Text = $"Nombre de camps : {_selectedMaxCamps}";
-		};
-		_campsSection.AddChild(campsSlider);
 
 		// Difficulté (mode IA uniquement)
 		_difficultySection = new VBoxContainer();
@@ -218,13 +155,6 @@ public partial class GameModeMenu : Control
 		actionsHBox.AddChild(launchBtn);
 	}
 
-	private void UpdateMapDependentControls()
-	{
-		bool isProcedural = (_selectedMapType == GameState.MapType.Procedural);
-		_sizeSection.Visible = isProcedural;
-		_campsSection.Visible = isProcedural;
-	}
-
 	private void ShowSettingsPopup(bool isIA)
 	{
 		_pendingIsIA = isIA;
@@ -242,8 +172,6 @@ public partial class GameModeMenu : Control
 			gameState.LocalTeamId = 1;
 			gameState.IsAIMode = _pendingIsIA;
 			gameState.IsFreeForAll = true;
-			gameState.MapSize = _selectedSize;
-			gameState.MaxCamps = _selectedMaxCamps;
 			gameState.AILevel = _selectedDifficulty;
 			gameState.SelectedMapType = _selectedMapType;
 		}

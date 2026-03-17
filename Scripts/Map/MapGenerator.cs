@@ -20,13 +20,8 @@ public partial class MapGenerator : Node
 	private int _mapHeight = 256;
 	private const int TileSize = 128;
 
-	// Mode test : spawn seulement 2 camps proches pour tester la victoire
-	private const bool TestMode = false;
-
 	private int? _networkSeed = null;
 
-	private FastNoiseLite _noiseElevation = new FastNoiseLite();
-	private FastNoiseLite _noiseForet = new FastNoiseLite();
 	private Random _seededRandom;
 
 	public override void _Ready()
@@ -78,7 +73,6 @@ public partial class MapGenerator : Node
 			}
 
 			ReadMapSettings();
-			SetupNoise();
 			GenererMap();
 			InitAIControllers();
 
@@ -86,7 +80,6 @@ public partial class MapGenerator : Node
 		}
 		else if (_tileMapSol.GetUsedCells().Count == 0)
 		{
-			SetupNoise();
 			GenererMap();
 		}
 	}
@@ -94,43 +87,6 @@ public partial class MapGenerator : Node
 	public void SetSeed(int seed)
 	{
 		_networkSeed = seed;
-	}
-
-	[Export]
-	public bool GenererMapMaintenant
-	{
-		get => false;
-		set
-		{
-			if (value)
-			{
-				InitialiserEtGenerer();
-			}
-		}
-	}
-
-	private void InitialiserEtGenerer()
-	{
-		if (_tileMapSol == null) _tileMapSol = GetNode<TileMapLayer>("Sol");
-		if (_tileMapObjets == null) _tileMapObjets = GetNode<TileMapLayer>("Objets");
-
-		SetupNoise();
-		GenererMap();
-	}
-
-	private void SetupNoise()
-	{
-		int baseSeed = _networkSeed ?? (int)GD.Randi();
-
-		_noiseElevation.Seed = baseSeed;
-		_noiseElevation.Frequency = 0.008f;
-		_noiseElevation.FractalType = FastNoiseLite.FractalTypeEnum.Fbm;
-		_noiseElevation.FractalOctaves = 5;
-
-		_noiseForet.Seed = baseSeed + 1000;
-		_noiseForet.Frequency = 0.05f;
-
-		_seededRandom = new Random(baseSeed + 2000);
 	}
 
 	private void GenererMap()
@@ -167,22 +123,14 @@ public partial class MapGenerator : Node
 		int halfWidth = _mapWidth / 2;
 		int halfHeight = _mapHeight / 2;
 
-		// Générer le terrain (3 régions en parts de pizza depuis le centre)
+		// Générer le terrain depuis la map preset sélectionnée
 		var gsMap = GetNodeOrNull<GameState>("/root/GameState");
+		int baseSeed = _networkSeed ?? (int)GD.Randi();
+		_seededRandom = new Random(baseSeed + 2000);
 		float[] armAngles;
-		System.Collections.Generic.List<Vector2I> presetCampPositions = null;
-		if (gsMap?.SelectedMapType == null || gsMap.SelectedMapType == GameState.MapType.Procedural)
-		{
-			TerrainGenerator.Generate(_tileMapSol, _tileMapObjets, _objectsContainer,
-				_noiseElevation, _noiseForet, _seededRandom,
-				halfWidth, halfHeight, TileSize, TestMode,
-				out armAngles, out _, out _);
-		}
-		else
-		{
-			armAngles = ApplyPresetMap(gsMap.SelectedMapType, halfWidth, halfHeight, out presetCampPositions);
-			SpawnPresetObjectSprites(halfWidth, halfHeight);
-		}
+		var presetCampPositions = new System.Collections.Generic.List<Vector2I>();
+		armAngles = ApplyPresetMap(gsMap.SelectedMapType, halfWidth, halfHeight, out presetCampPositions);
+		SpawnPresetObjectSprites(halfWidth, halfHeight);
 
 		// Construire les meshes de navigation (terrestre pour unités, maritime pour bateaux)
 		BuildNavigationMesh();
@@ -192,20 +140,9 @@ public partial class MapGenerator : Node
 		// La couche Objets reste active pour la navigation (GetCellSourceId) mais n'est pas affichée.
 		_tileMapObjets.Visible = false;
 
-		// Placer les camps
-		if (presetCampPositions != null)
-		{
-			// Map preset : positions fixes définies dans l'éditeur, ordre mélangé aléatoirement
-			CampPlacer.PlacePresetCamps(presetCampPositions, _tileMapSol, _unitsContainer, _campScene,
-				_seededRandom, TileSize, armAngles);
-		}
-		else
-		{
-			// Map procédurale : placement aléatoire classique
-			int maxCamps = (gsMap?.IsFreeForAll == true) ? gsMap.MaxCamps : 0;
-			CampPlacer.PlaceCamps(_tileMapSol, _tileMapObjets, _noiseElevation, _noiseForet, _seededRandom,
-				_unitsContainer, _campScene, halfWidth, halfHeight, TileSize, TestMode, maxCamps, armAngles);
-		}
+		// Placer les camps depuis les positions prédéfinies de la map preset
+		CampPlacer.PlacePresetCamps(presetCampPositions, _tileMapSol, _unitsContainer, _campScene,
+			_seededRandom, TileSize, armAngles);
 
 		if (GameManager.Instance != null)
 		{
@@ -339,17 +276,7 @@ public partial class MapGenerator : Node
 
 	private void ReadMapSettings()
 	{
-		var gameState = GetNodeOrNull<GameState>("/root/GameState");
-		switch (gameState?.MapSize)
-		{
-			case GameState.MapSizePreset.Small:  _mapWidth = _mapHeight = 128; break;
-			case GameState.MapSizePreset.Large:  _mapWidth = _mapHeight = 384; break;
-			default:                             _mapWidth = _mapHeight = 256; break;
-		}
-
-		// Les maps preset sont toujours encodées en 256×256 — ignorer la taille choisie par le joueur
-		if (gameState?.SelectedMapType != null && gameState.SelectedMapType != GameState.MapType.Procedural)
-			_mapWidth = _mapHeight = 256;
+		_mapWidth = _mapHeight = 256;
 	}
 
 	// Helper commun : construit un NavigationPolygon à partir d'un prédicat de marchabilité
@@ -538,7 +465,6 @@ public partial class MapGenerator : Node
 			}
 
 			ReadMapSettings();
-			SetupNoise();
 			GenererMap();
 			InitAIControllers();
 			CallDeferred(nameof(InitTerritory)); // différé comme dans _Ready(), pour que les camps aient leur _Ready()
