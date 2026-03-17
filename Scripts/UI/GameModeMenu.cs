@@ -14,6 +14,8 @@ public partial class GameModeMenu : Control
 	private Label _popupTitle;
 	private Label _campsValueLabel;
 	private VBoxContainer _difficultySection;
+	private Control _sizeSection;
+	private Control _campsSection;
 	private bool _pendingIsIA = false;
 	private GameState.MapSizePreset _selectedSize = GameState.MapSizePreset.Medium;
 	private int _selectedMaxCamps = 6;
@@ -81,13 +83,17 @@ public partial class GameModeMenu : Control
 		vbox.AddChild(new HSeparator());
 
 		// Taille de la map
+		_sizeSection = new VBoxContainer();
+		((VBoxContainer)_sizeSection).AddThemeConstantOverride("separation", 6);
+		vbox.AddChild(_sizeSection);
+
 		var sizeLabel = new Label();
 		sizeLabel.Text = "Taille de la map";
-		vbox.AddChild(sizeLabel);
+		_sizeSection.AddChild(sizeLabel);
 
 		var sizeHBox = new HBoxContainer();
 		sizeHBox.AddThemeConstantOverride("separation", 8);
-		vbox.AddChild(sizeHBox);
+		_sizeSection.AddChild(sizeHBox);
 
 		var sizeGroup = new ButtonGroup();
 		string[] sizeNames = { "Petite", "Moyenne", "Grande" };
@@ -134,14 +140,18 @@ public partial class GameModeMenu : Control
 			btn.ButtonPressed = (mapValues[i] == _selectedMapType);
 			btn.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
 			var captured = mapValues[i];
-			btn.Pressed += () => _selectedMapType = captured;
+			btn.Pressed += () => { _selectedMapType = captured; UpdateMapDependentControls(); };
 			mapHBox.AddChild(btn);
 		}
 
 		// Nombre de camps
+		_campsSection = new VBoxContainer();
+		((VBoxContainer)_campsSection).AddThemeConstantOverride("separation", 6);
+		vbox.AddChild(_campsSection);
+
 		_campsValueLabel = new Label();
 		_campsValueLabel.Text = $"Nombre de camps : {_selectedMaxCamps}";
-		vbox.AddChild(_campsValueLabel);
+		_campsSection.AddChild(_campsValueLabel);
 
 		var campsSlider = new HSlider();
 		campsSlider.MinValue = 2;
@@ -153,7 +163,7 @@ public partial class GameModeMenu : Control
 			_selectedMaxCamps = (int)v;
 			_campsValueLabel.Text = $"Nombre de camps : {_selectedMaxCamps}";
 		};
-		vbox.AddChild(campsSlider);
+		_campsSection.AddChild(campsSlider);
 
 		// Difficulté (mode IA uniquement)
 		_difficultySection = new VBoxContainer();
@@ -206,6 +216,13 @@ public partial class GameModeMenu : Control
 		launchBtn.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
 		launchBtn.Pressed += OnLaunchPressed;
 		actionsHBox.AddChild(launchBtn);
+	}
+
+	private void UpdateMapDependentControls()
+	{
+		bool isProcedural = (_selectedMapType == GameState.MapType.Procedural);
+		_sizeSection.Visible = isProcedural;
+		_campsSection.Visible = isProcedural;
 	}
 
 	private void ShowSettingsPopup(bool isIA)

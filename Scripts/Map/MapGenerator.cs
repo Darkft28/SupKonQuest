@@ -241,7 +241,7 @@ public partial class MapGenerator : Node
 		int width  = halfWidth  * 2;
 		int height = halfHeight * 2;
 
-		ApplyPresetLayer(_tileMapSol, solRle, width, height, -halfWidth, -halfHeight, skipId: -1, addVariants: true);
+		ApplyPresetLayer(_tileMapSol, solRle, width, height, -halfWidth, -halfHeight, skipId: -1, addVariants: true, skipCamps: true);
 		// skipCamps=true : les camps (ID 102) ne sont pas placés sur le tilemap pour ne pas bloquer le nav mesh
 		ApplyPresetLayer(_tileMapObjets, objetsRle, width, height, -halfWidth, -halfHeight, skipId: -1, addVariants: false, skipCamps: true);
 
@@ -346,6 +346,10 @@ public partial class MapGenerator : Node
 			case GameState.MapSizePreset.Large:  _mapWidth = _mapHeight = 384; break;
 			default:                             _mapWidth = _mapHeight = 256; break;
 		}
+
+		// Les maps preset sont toujours encodées en 256×256 — ignorer la taille choisie par le joueur
+		if (gameState?.SelectedMapType != null && gameState.SelectedMapType != GameState.MapType.Procedural)
+			_mapWidth = _mapHeight = 256;
 	}
 
 	// Helper commun : construit un NavigationPolygon à partir d'un prédicat de marchabilité
