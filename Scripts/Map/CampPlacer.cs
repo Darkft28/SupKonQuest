@@ -8,7 +8,6 @@ public static class CampPlacer
 	private const int IdEau = 6;
 	private const int IdHerbe = 0;
 	private const int IdObjetCamp = 102;
-	private const int IdObjetCampUp = 103;
 
 	// Distance min entre camps (en pixels)
 	private const float MinCampDistance = 3500f;
@@ -18,7 +17,7 @@ public static class CampPlacer
 
 	public static int PlaceCamps(TileMapLayer sol, TileMapLayer objets,
 		FastNoiseLite noiseElevation, FastNoiseLite noiseForet, Random seededRandom,
-		Node2D unitsContainer, PackedScene campScene, PackedScene campUpScene,
+		Node2D unitsContainer, PackedScene campScene,
 		int halfWidth, int halfHeight, int tileSize, bool testMode, int maxCamps = 0,
 		float[] armAngles = null)
 	{
@@ -47,42 +46,26 @@ public static class CampPlacer
 						Vector2 candidatePos = new Vector2(x * tileSize + tileSize / 2, y * tileSize + tileSize / 2);
 						if (IsFarEnoughFromCamps(candidatePos, campPositions))
 						{
-							bool spawnCampUp = false;
-							int objetId;
-							if (seededRandom.NextDouble() < 0.2)
-							{
-								spawnCampUp = true;
-								objetId = IdObjetCampUp;
-							}
-							else
-							{
-								objetId = IdObjetCamp;
-							}
+							objets.SetCell(new Vector2I(x, y), IdObjetCamp, new Vector2I(0, 0));
 
-							objets.SetCell(new Vector2I(x, y), objetId, new Vector2I(0, 0));
-
-							if (!Engine.IsEditorHint() && unitsContainer != null)
+							if (!Engine.IsEditorHint() && unitsContainer != null && campScene != null)
 							{
-								PackedScene campSceneToUse = spawnCampUp ? campUpScene : campScene;
-								if (campSceneToUse != null)
+								var camp = campScene.Instantiate<Node2D>();
+								Vector2 worldPos = new Vector2(x * tileSize + tileSize / 2, y * tileSize + tileSize / 2);
+								camp.GlobalPosition = worldPos;
+								camp.Name = $"Camp_{campCount++}";
+
+								if (camp is CampSimple campSimple)
 								{
-									var camp = campSceneToUse.Instantiate<Node2D>();
-									Vector2 worldPos = new Vector2(x * tileSize + tileSize / 2, y * tileSize + tileSize / 2);
-									camp.GlobalPosition = worldPos;
-									camp.Name = $"Camp_{campCount++}";
-
-									if (camp is CampSimple campSimple)
-									{
-										campSimple.IsNeutralCamp = true;
-										campSimple.TeamId = campCount;
-										campSimple.RegionId = GetRegionId(worldPos, armAngles, tileSize);
-										campSimple.SetTileMapSol(sol);
-										campSimple.SetTileMapObjets(objets);
-									}
-
-									unitsContainer.AddChild(camp);
-									campPositions.Add(worldPos);
+									campSimple.IsNeutralCamp = true;
+									campSimple.TeamId = campCount;
+									campSimple.RegionId = GetRegionId(worldPos, armAngles, tileSize);
+									campSimple.SetTileMapSol(sol);
+									campSimple.SetTileMapObjets(objets);
 								}
+
+								unitsContainer.AddChild(camp);
+								campPositions.Add(worldPos);
 							}
 						}
 						else
@@ -152,6 +135,45 @@ public static class CampPlacer
 			cs2.SetTileMapSol(sol);
 		}
 		unitsContainer.AddChild(camp2);
+
+		return campCount;
+	}
+
+	// Spawn les camps depuis une liste de positions pré-définies (maps presets)
+	// Les positions sont mélangées aléatoirement pour créer des parties différentes
+	public static int PlacePresetCamps(
+		System.Collections.Generic.List<Vector2I> campCells,
+		TileMapLayer sol, Node2D unitsContainer, PackedScene campScene,
+		Random seededRandom, int tileSize, float[] armAngles = null)
+	{
+		if (Engine.IsEditorHint() || unitsContainer == null || campScene == null)
+			return 0;
+
+		// Mélange Fisher-Yates déterministe (même seed = même résultat pour tous les joueurs)
+		for (int i = campCells.Count - 1; i > 0; i--)
+		{
+			int j = seededRandom.Next(i + 1);
+			(campCells[i], campCells[j]) = (campCells[j], campCells[i]);
+		}
+
+		int campCount = 0;
+		foreach (var cell in campCells)
+		{
+			var camp = campScene.Instantiate<Node2D>();
+			Vector2 worldPos = new Vector2(cell.X * tileSize + tileSize / 2f, cell.Y * tileSize + tileSize / 2f);
+			camp.GlobalPosition = worldPos;
+			camp.Name = $"Camp_{campCount++}";
+
+			if (camp is CampSimple campSimple)
+			{
+				campSimple.IsNeutralCamp = true;
+				campSimple.TeamId = campCount;
+				campSimple.RegionId = GetRegionId(worldPos, armAngles, tileSize);
+				campSimple.SetTileMapSol(sol);
+			}
+
+			unitsContainer.AddChild(camp);
+		}
 
 		return campCount;
 	}

@@ -1,4 +1,4 @@
-using Godot;
+﻿using Godot;
 using System;
 using SupKonQuest.Map.Presets;
 
@@ -15,7 +15,6 @@ public partial class MapGenerator : Node
 	private System.Collections.Generic.List<AIController> _aiControllers = new System.Collections.Generic.List<AIController>();
 
 	private PackedScene _campScene;
-	private PackedScene _campUpScene;
 
 	private int _mapWidth = 256;
 	private int _mapHeight = 256;
@@ -37,7 +36,6 @@ public partial class MapGenerator : Node
 		_camera = GetNode<Camera2D>("Camera2D");
 
 		_campScene = GD.Load<PackedScene>("res://Scenes/camp_simple.tscn");
-		_campUpScene = GD.Load<PackedScene>("res://Scenes/camp_avancé.tscn");
 
 		_unitsContainer = GetNodeOrNull<Node2D>("Units");
 		if (_unitsContainer == null && !Engine.IsEditorHint())
@@ -172,6 +170,7 @@ public partial class MapGenerator : Node
 		// Générer le terrain (3 régions en parts de pizza depuis le centre)
 		var gsMap = GetNodeOrNull<GameState>("/root/GameState");
 		float[] armAngles;
+		System.Collections.Generic.List<Vector2I> presetCampPositions = null;
 		if (gsMap?.SelectedMapType == null || gsMap.SelectedMapType == GameState.MapType.Procedural)
 		{
 			TerrainGenerator.Generate(_tileMapSol, _tileMapObjets, _objectsContainer,
@@ -181,7 +180,7 @@ public partial class MapGenerator : Node
 		}
 		else
 		{
-			armAngles = ApplyPresetMap(gsMap.SelectedMapType, halfWidth, halfHeight);
+			armAngles = ApplyPresetMap(gsMap.SelectedMapType, halfWidth, halfHeight, out presetCampPositions);
 			SpawnPresetObjectSprites(halfWidth, halfHeight);
 		}
 
@@ -194,10 +193,19 @@ public partial class MapGenerator : Node
 		_tileMapObjets.Visible = false;
 
 		// Placer les camps
-		int maxCamps = (gsMap?.IsFreeForAll == true) ? gsMap.MaxCamps : 0; // gsMap déjà résolu plus haut
-		int campCount = CampPlacer.PlaceCamps(_tileMapSol, _tileMapObjets, _noiseElevation, _noiseForet, _seededRandom,
-			_unitsContainer, _campScene, _campUpScene, halfWidth, halfHeight, TileSize, TestMode, maxCamps,
-			armAngles);
+		if (presetCampPositions != null)
+		{
+			// Map preset : positions fixes définies dans l'éditeur, ordre mélangé aléatoirement
+			CampPlacer.PlacePresetCamps(presetCampPositions, _tileMapSol, _unitsContainer, _campScene,
+				_seededRandom, TileSize, armAngles);
+		}
+		else
+		{
+			// Map procédurale : placement aléatoire classique
+			int maxCamps = (gsMap?.IsFreeForAll == true) ? gsMap.MaxCamps : 0;
+			CampPlacer.PlaceCamps(_tileMapSol, _tileMapObjets, _noiseElevation, _noiseForet, _seededRandom,
+				_unitsContainer, _campScene, halfWidth, halfHeight, TileSize, TestMode, maxCamps, armAngles);
+		}
 
 		if (GameManager.Instance != null)
 		{
@@ -222,7 +230,8 @@ public partial class MapGenerator : Node
 		}
 	}
 
-	private float[] ApplyPresetMap(GameState.MapType mapType, int halfWidth, int halfHeight)
+	private float[] ApplyPresetMap(GameState.MapType mapType, int halfWidth, int halfHeight,
+		out System.Collections.Generic.List<Vector2I> campPositions)
 	{
 		int[] solRle = mapType == GameState.MapType.Irridium
 			? IrridiumMap.SolRle : AlabastaMap.SolRle;
@@ -232,20 +241,40 @@ public partial class MapGenerator : Node
 		int width  = halfWidth  * 2;
 		int height = halfHeight * 2;
 
-		// Décaler les coordonnées pour correspondre à l'origine centrée du TileMap
-		// Les presets encodent à partir de (0,0), le TileMap attend (-halfWidth, -halfHeight) à (+halfWidth, +halfHeight)
-		// On applique donc à la couche normalement et on laisse le TileMapLayer gérer ses coords.
-		// Note : les données sont stockées en row-major depuis (0,0) dans l'espace preset.
-		// Pour aligner avec le TileMap centré, on décale l'origine de départ.
 		ApplyPresetLayer(_tileMapSol, solRle, width, height, -halfWidth, -halfHeight, skipId: -1, addVariants: true);
-		ApplyPresetLayer(_tileMapObjets, objetsRle, width, height, -halfWidth, -halfHeight, skipId: -1, addVariants: false);
+		// skipCamps=true : les camps (ID 102) ne sont pas placés sur le tilemap pour ne pas bloquer le nav mesh
+		ApplyPresetLayer(_tileMapObjets, objetsRle, width, height, -halfWidth, -halfHeight, skipId: -1, addVariants: false, skipCamps: true);
+
+		// Collecter les positions de camps depuis le RLE pour un placement aléatoire ensuite
+		campPositions = CollectPresetCampPositions(objetsRle, width, height, -halfWidth, -halfHeight);
 
 		// Angles de régions par défaut pour les presets (3 secteurs à 120°)
 		return new float[] { 0f, 2.094f, 4.189f }; // 0°, 120°, 240°
 	}
 
+	private System.Collections.Generic.List<Vector2I> CollectPresetCampPositions(
+		int[] rleData, int width, int height, int originX, int originY)
+	{
+		var result = new System.Collections.Generic.List<Vector2I>();
+		int x = 0, y = 0;
+		for (int i = 0; i < rleData.Length - 1; i += 2)
+		{
+			int count  = rleData[i];
+			int tileId = rleData[i + 1];
+			for (int j = 0; j < count; j++)
+			{
+				if (x >= width) { x = 0; y++; }
+				if (y >= height) return result;
+				if (tileId == 102)
+					result.Add(new Vector2I(originX + x, originY + y));
+				x++;
+			}
+		}
+		return result;
+	}
+
 	private static void ApplyPresetLayer(TileMapLayer layer, int[] rleData,
-		int width, int height, int originX, int originY, int skipId = -1, bool addVariants = false)
+		int width, int height, int originX, int originY, int skipId = -1, bool addVariants = false, bool skipCamps = false)
 	{
 		int x = 0, y = 0;
 		for (int i = 0; i < rleData.Length - 1; i += 2)
@@ -257,7 +286,7 @@ public partial class MapGenerator : Node
 				if (x >= width) { x = 0; y++; }
 				if (y >= height) return;
 
-				if (tileId != skipId)
+				if (tileId != skipId && !(skipCamps && tileId == 102))
 				{
 					int alt = addVariants ? TerrainGenerator.PickAlt(originX + x, originY + y) : 0;
 					layer.SetCell(new Vector2I(originX + x, originY + y), tileId, Vector2I.Zero, alt);
@@ -438,7 +467,7 @@ public partial class MapGenerator : Node
 					continue; // eau ou vide → pas de terrain valide ici
 
 				// Forêt = obstacle (même sans objet arbre placé dessus)
-				if (solId == 3)
+				if (solId == 3 || solId == 5 || solId == 4)
 					return false;
 
 				// Si une tuile objet (arbre=100 ou montagne=101) est présente → obstacle physique
