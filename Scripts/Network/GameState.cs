@@ -14,6 +14,9 @@ public partial class GameState : Node
 	public bool IsAIMode { get; set; } = false;
 	public AIController.Difficulty AILevel { get; set; } = AIController.Difficulty.Medium;
 
+	// Mode test : temps x3 via Engine.TimeScale
+	public bool FastMode { get; set; } = false;
+
 	public MapSizePreset MapSize { get; set; } = MapSizePreset.Medium;
 	public int MaxCamps { get; set; } = 6;
 	public bool IsFreeForAll { get; set; } = false;
@@ -89,6 +92,8 @@ public partial class GameState : Node
 		LocalTeamId = 1;
 		MapSeed = 0;
 		IsFreeForAll = false;
+		FastMode = false;
+		Engine.TimeScale = 1.0;
 		GetTree().ChangeSceneToFile("res://Scenes/MainMenu.tscn");
 	}
 }

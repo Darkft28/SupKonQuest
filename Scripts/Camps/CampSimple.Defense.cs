@@ -5,8 +5,8 @@ public partial class CampSimple
 	private float _alertTimer = 0f;
 	private float _alertCooldownTimer = 0f;
 	private const float AlertCheckInterval = 1.5f;
-	private const float AlertCooldown = 6f;
-	private const float TerritoryRadius = 1024f; // 8 tuiles * 128px
+	private const float AlertCooldown = 8f;
+	private const float TerritoryRadius = 600f; // réduit pour laisser des failles au joueur
 
 	private void ProcessTerritoryAlert(double delta)
 	{

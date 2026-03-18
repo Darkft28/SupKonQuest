@@ -15,6 +15,7 @@ public partial class GameModeMenu : Control
 	private bool _pendingIsIA = false;
 	private AIController.Difficulty _selectedDifficulty = AIController.Difficulty.Medium;
 	private GameState.MapType _selectedMapType = GameState.MapType.Irridium;
+	private CheckBox _fastModeCheckBox;
 
 	public override void _Ready()
 	{
@@ -137,6 +138,13 @@ public partial class GameModeMenu : Control
 
 		vbox.AddChild(new HSeparator());
 
+		// Mode test : vitesse x3
+		_fastModeCheckBox = new CheckBox();
+		_fastModeCheckBox.Text = "⚡ Vitesse x3 (test)";
+		vbox.AddChild(_fastModeCheckBox);
+
+		vbox.AddChild(new HSeparator());
+
 		// Boutons action
 		var actionsHBox = new HBoxContainer();
 		actionsHBox.AddThemeConstantOverride("separation", 12);
@@ -176,7 +184,9 @@ public partial class GameModeMenu : Control
 			gameState.IsFreeForAll = true;
 			gameState.AILevel = _selectedDifficulty;
 			gameState.SelectedMapType = _selectedMapType;
+			gameState.FastMode = _fastModeCheckBox.ButtonPressed;
 		}
+		Engine.TimeScale = _fastModeCheckBox.ButtonPressed ? 3.0 : 1.0;
 		GetTree().ChangeSceneToFile("res://Scenes/Game.tscn");
 	}
 
