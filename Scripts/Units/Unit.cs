@@ -55,7 +55,7 @@ public partial class Unit : CharacterBody2D
 	private const float BoardingDistance = 250f;
 
 	private CampSimple _campTarget = null;
-	private const float CampAttackDetectionRange = 600f;
+	private const float CampAttackDetectionRange = 900f;
 
 	private NavigationAgent2D _navAgent = null;
 	private Vector2 _lastNavTargetPos = Vector2.Zero;
@@ -182,8 +182,8 @@ public partial class Unit : CharacterBody2D
 		_currentHealth = _maxHealth;
 		_lastPosition = GlobalPosition;
 
-		// Detection range = portée de l'arme + 150px de buffer
-		DetectionRange = _stats.Range + 150f;
+		// Detection range = portée de l'arme + 400px de buffer
+		DetectionRange = _stats.Range + 400f;
 
 		CreateCollision();
 		CreateSprite();

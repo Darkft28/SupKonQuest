@@ -1,4 +1,5 @@
 using Godot;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -37,6 +38,11 @@ public partial class AIController : Node
 
 	// Naval : l'IA a conquis tous les camps de sa région de départ
 	private bool _homeRegionConquered = false;
+
+	// RNG interne par instance : initialisé avec mapSeed ^ teamId pour briser la symétrie
+	private Random _rng;
+	// Fix 4 : seuil de retraite unique par instance (entre 0.40 et 0.60)
+	private float _retreatThreshold;
 
 	// Intervalle de décision selon la difficulté
 	private float TickInterval => Level switch
@@ -122,6 +128,20 @@ public partial class AIController : Node
 		_ => MediumUnits
 	};
 
+	public override void _Ready()
+	{
+		// Fix 2 : RNG interne unique par instance — seed = mapSeed XOR (teamId * 1337)
+		var gameState = GetNodeOrNull<GameState>("/root/GameState");
+		int seed = (gameState?.MapSeed ?? 0) ^ (AITeamId * 1337);
+		_rng = new Random(seed);
+
+		// Fix 1 : décalage de phase du tick — premier tick à un moment unique dans [0, TickInterval]
+		_tickTimer = (float)(_rng.NextDouble() * TickInterval);
+
+		// Fix 4 : seuil de retraite variable entre 40% et 60%
+		_retreatThreshold = 0.40f + (float)(_rng.NextDouble() * 0.20f);
+	}
+
 	public override void _Process(double delta)
 	{
 		float dt = (float)delta;
@@ -154,7 +174,7 @@ public partial class AIController : Node
 
 	private void RunTick()
 	{
-		if (GD.Randf() < SkipChance)
+		if ((float)_rng.NextDouble() < SkipChance)
 			return;
 
 		// IA-02-04 : vérifier les retraites avant tout
@@ -206,15 +226,10 @@ public partial class AIController : Node
 			{
 				_activeAttackGroups.RemoveAt(i);
 			}
-			else if (survivors < group.InitialCount * 0.5f)
+			else if (survivors < group.InitialCount * _retreatThreshold)
 			{
-				foreach (Unit unit in group.Units)
-				{
-					if (!IsInstanceValid(unit) || unit.GetCurrentHealth() <= 0) continue;
-					CampSimple nearest = GetNearestAICamp(unit);
-					if (nearest != null)
-						unit.MoveTo(nearest.GlobalPosition);
-				}
+				// Les survivants sont libérés — leur état Idle reprend et ils trouvent
+				// de nouvelles cibles seuls, sans forcer un retour à la base
 				_activeAttackGroups.RemoveAt(i);
 			}
 		}
@@ -268,7 +283,7 @@ public partial class AIController : Node
 		if (affordable.Count == 0) return;
 
 		// Choisir aléatoirement parmi les unités abordables pour diversifier la composition
-		string chosen = affordable[GD.RandRange(0, affordable.Count - 1)];
+		string chosen = affordable[_rng.Next(0, affordable.Count)];
 		camp.BuyUnit(chosen);
 	}
 
@@ -454,7 +469,9 @@ public partial class AIController : Node
 				continue;
 
 			float dist = aiCenter.DistanceTo(camp.GlobalPosition);
-			float score = dist;
+			// Fix 3 : bruit ±200 pour briser la symétrie de ciblage entre deux IA identiques
+			float noise = (float)(_rng.NextDouble() * 400.0 - 200.0);
+			float score = dist + noise;
 
 			if (!camp.AreAllUnitsDefeated())
 				score += 4000f;
@@ -487,8 +504,8 @@ public partial class AIController : Node
 		}
 
 		// IA-02-03 : erreur de ciblage — retourner une cible aléatoire parmi les candidats
-		if (bestCamp != null && candidates.Count > 1 && GD.Randf() < MistakeRate)
-			return candidates[(int)(GD.Randf() * candidates.Count)];
+		if (bestCamp != null && candidates.Count > 1 && (float)_rng.NextDouble() < MistakeRate)
+			return candidates[_rng.Next(0, candidates.Count)];
 
 		return bestCamp;
 	}
