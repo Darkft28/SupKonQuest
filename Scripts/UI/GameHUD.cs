@@ -395,12 +395,19 @@ public partial class GameHUD : Control
 		if (_tierInfoLabel != null)
 		{
 			_tierInfoLabel.Visible = true;
-			_tierInfoLabel.Text = unlockedTier switch
+			if (unlockedTier >= 3)
 			{
-				1 => "Palier 1/3 — Débloquez le palier 2 : possédez 2 camps",
-				2 => "Palier 2/3 — Débloquez le palier 3 : contrôlez une région entière (2+ camps) + 1 camp ailleurs + un port",
-				_ => "Palier 3/3 — Toutes les unités débloquées ✓"
-			};
+				_tierInfoLabel.Text = "Palier 3/3 — Toutes les unités débloquées ✓";
+			}
+			else if (unlockedTier == 2)
+			{
+				string regionDesc = GetTier3RegionDescription(GetLocalTeamId());
+				_tierInfoLabel.Text = $"Palier 2/3 — Débloquez le palier 3 : {regionDesc} + 1 camp ailleurs + un port";
+			}
+			else
+			{
+				_tierInfoLabel.Text = "Palier 1/3 — Débloquez le palier 2 : possédez 2 camps";
+			}
 		}
 
 		foreach (string unitType in UnitTypes)
@@ -470,6 +477,49 @@ public partial class GameHUD : Control
 			else
 				btn.TooltipText = "";
 		}
+	}
+
+	private string GetTier3RegionDescription(int teamId)
+	{
+		if (GameManager.Instance == null) return "contrôlez une région entière";
+
+		var allCamps = GameManager.Instance.GetAllCamps();
+		var ownedCamps = allCamps.FindAll(c => c.GetTeamId() == teamId);
+
+		// Grouper tous les camps par région
+		var regionCamps = new Dictionary<int, List<CampSimple>>();
+		foreach (var camp in allCamps)
+		{
+			if (camp.RegionId <= 0) continue;
+			if (!regionCamps.ContainsKey(camp.RegionId))
+				regionCamps[camp.RegionId] = new List<CampSimple>();
+			regionCamps[camp.RegionId].Add(camp);
+		}
+
+		// Trouver la région la plus avancée pour ce joueur (celle où il a le plus de camps)
+		int bestRegion = -1;
+		int bestOwned = -1;
+		int bestTotal = 0;
+
+		foreach (var (regionId, camps) in regionCamps)
+		{
+			if (camps.Count < 2) continue;
+			int owned = camps.FindAll(c => c.GetTeamId() == teamId).Count;
+			if (owned > bestOwned)
+			{
+				bestOwned = owned;
+				bestTotal = camps.Count;
+				bestRegion = regionId;
+			}
+		}
+
+		if (bestRegion < 0)
+			return "contrôlez une région entière";
+
+		if (bestOwned == bestTotal)
+			return $"région complète ✓ ({bestTotal}/{bestTotal} camps)";
+
+		return $"contrôlez les {bestTotal} camps d'une région ({bestOwned}/{bestTotal})";
 	}
 
 	private void FindSelectionManager()
