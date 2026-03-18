@@ -171,7 +171,7 @@ public partial class AIController : Node
 		_pendingCommandTimer = 0f;
 	}
 
-	// Retourne true si tous les camps non-neutres de la région de départ IA sont possédés par l'IA.
+	// Retourne true si tous les camps de la région de départ IA appartiennent à l'IA.
 	// La région de départ est celle du camp IA le plus proche du centre de masse des unités IA.
 	private bool HasConqueredHomeRegion()
 	{
@@ -179,14 +179,15 @@ public partial class AIController : Node
 		if (homeRegion <= 0) return false;
 
 		var camps = GetTree().GetNodesInGroup("camps");
+		bool foundAnyCamp = false;
 		foreach (var node in camps)
 		{
 			if (node is not CampSimple camp) continue;
-			if (camp.IsNeutralCamp) continue;
 			if (camp.RegionId != homeRegion) continue;
+			foundAnyCamp = true;
 			if (camp.GetTeamId() != AITeamId) return false;
 		}
-		return true;
+		return foundAnyCamp;
 	}
 
 	// IA-02-04 : vérifie si un groupe d'attaque a perdu >50% de ses unités initiales
