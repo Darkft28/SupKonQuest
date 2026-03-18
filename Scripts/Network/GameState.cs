@@ -11,9 +11,6 @@ public partial class GameState : Node
 	// Equipe locale : Server=1, Client=2
 	public int LocalTeamId { get; set; } = 1;
 
-	public bool IsAIMode { get; set; } = false;
-	public AIController.Difficulty AILevel { get; set; } = AIController.Difficulty.Medium;
-
 	// Mode test : temps x3 via Engine.TimeScale
 	public bool FastMode { get; set; } = false;
 
