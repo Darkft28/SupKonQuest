@@ -1,11 +1,32 @@
-[gd_scene load_steps=4 format=3 uid="uid://cg8x5vqk2mj1r"]
+[gd_scene load_steps=7 format=3 uid="uid://cg8x5vqk2mj1r"]
 
 [ext_resource type="Texture2D" uid="uid://b04lypslc5oeg" path="res://Assets/Menu/Texture/Menu_bg.png" id="1_bg"]
-[ext_resource type="Texture2D" uid="uid://cx4j1ibd7hv4t" path="res://Assets/Menu/Texture/Button.png" id="2_btn"]
-[ext_resource type="Script" path="res://Scripts/UI/GameModeMenu.cs" id="3_script"]
+[ext_resource type="Texture2D" uid="uid://j0eqoi64tmqd" path="res://Assets/Menu/Texture/Title_stone.png" id="2_title"]
+[ext_resource type="Texture2D" uid="uid://clbmelrr2gjaw" path="res://Assets/Menu/Texture/Button_stone.png" id="3_btn"]
+[ext_resource type="Script" path="res://Scripts/UI/GameModeMenu.cs" id="4_script"]
 
-[sub_resource type="StyleBoxTexture" id="StyleBoxTexture_btn"]
-texture = ExtResource("2_btn")
+[sub_resource type="StyleBoxTexture" id="SBT_normal"]
+texture = ExtResource("3_btn")
+content_margin_left = 14.0
+content_margin_right = 14.0
+content_margin_top = 8.0
+content_margin_bottom = 8.0
+
+[sub_resource type="StyleBoxTexture" id="SBT_hover"]
+texture = ExtResource("3_btn")
+modulate_color = Color(1, 0.88, 0.42, 1)
+content_margin_left = 14.0
+content_margin_right = 14.0
+content_margin_top = 8.0
+content_margin_bottom = 8.0
+
+[sub_resource type="StyleBoxTexture" id="SBT_pressed"]
+texture = ExtResource("3_btn")
+modulate_color = Color(0.68, 0.48, 0.18, 1)
+content_margin_left = 14.0
+content_margin_right = 14.0
+content_margin_top = 8.0
+content_margin_bottom = 8.0
 
 [node name="GameModeMenu" type="Control"]
 layout_mode = 3
@@ -14,7 +35,7 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
-script = ExtResource("3_script")
+script = ExtResource("4_script")
 
 [node name="Background" type="TextureRect" parent="."]
 layout_mode = 1
@@ -27,73 +48,79 @@ texture = ExtResource("1_bg")
 expand_mode = 1
 stretch_mode = 6
 
-[node name="VBoxContainer" type="VBoxContainer" parent="."]
+[node name="MarginContainer" type="MarginContainer" parent="Background"]
 layout_mode = 1
-anchors_preset = 8
-anchor_left = 0.5
-anchor_top = 0.5
-anchor_right = 0.5
-anchor_bottom = 0.5
-offset_left = -160.0
-offset_top = -220.0
-offset_right = 160.0
-offset_bottom = 220.0
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_top = 71.0
 grow_horizontal = 2
 grow_vertical = 2
+
+[node name="VBoxContainer" type="VBoxContainer" parent="Background/MarginContainer"]
+layout_mode = 2
 theme_override_constants/separation = 15
 
-[node name="TitleLabel" type="Label" parent="VBoxContainer"]
+[node name="TitleRect" type="TextureRect" parent="Background/MarginContainer/VBoxContainer"]
+custom_minimum_size = Vector2(350, 180)
 layout_mode = 2
-theme_override_font_sizes/font_size = 36
-text = "Mode de jeu"
-horizontal_alignment = 1
+size_flags_horizontal = 4
+size_flags_vertical = 0
+texture = ExtResource("2_title")
+expand_mode = 1
+stretch_mode = 5
 
-[node name="SoloButton" type="Button" parent="VBoxContainer"]
-custom_minimum_size = Vector2(304, 79)
+[node name="Control" type="Control" parent="Background/MarginContainer/VBoxContainer"]
+custom_minimum_size = Vector2(0, 20)
+layout_mode = 2
+
+[node name="SoloButton" type="Button" parent="Background/MarginContainer/VBoxContainer"]
+custom_minimum_size = Vector2(304, 64)
 layout_mode = 2
 size_flags_horizontal = 4
 size_flags_vertical = 4
 theme_override_font_sizes/font_size = 24
-theme_override_styles/normal = SubResource("StyleBoxTexture_btn")
-theme_override_styles/hover = SubResource("StyleBoxTexture_btn")
-theme_override_styles/pressed = SubResource("StyleBoxTexture_btn")
-theme_override_styles/focus = SubResource("StyleBoxTexture_btn")
+theme_override_styles/normal = SubResource("SBT_normal")
+theme_override_styles/hover = SubResource("SBT_hover")
+theme_override_styles/pressed = SubResource("SBT_pressed")
+theme_override_styles/focus = SubResource("SBT_hover")
 text = "Solo"
 
-[node name="MultiButton" type="Button" parent="VBoxContainer"]
-custom_minimum_size = Vector2(304, 79)
+[node name="MultiButton" type="Button" parent="Background/MarginContainer/VBoxContainer"]
+custom_minimum_size = Vector2(304, 64)
 layout_mode = 2
 size_flags_horizontal = 4
 size_flags_vertical = 4
 theme_override_font_sizes/font_size = 24
-theme_override_styles/normal = SubResource("StyleBoxTexture_btn")
-theme_override_styles/hover = SubResource("StyleBoxTexture_btn")
-theme_override_styles/pressed = SubResource("StyleBoxTexture_btn")
-theme_override_styles/focus = SubResource("StyleBoxTexture_btn")
+theme_override_styles/normal = SubResource("SBT_normal")
+theme_override_styles/hover = SubResource("SBT_hover")
+theme_override_styles/pressed = SubResource("SBT_pressed")
+theme_override_styles/focus = SubResource("SBT_hover")
 text = "Multijoueur"
 
-[node name="IAButton" type="Button" parent="VBoxContainer"]
-custom_minimum_size = Vector2(304, 79)
+[node name="IAButton" type="Button" parent="Background/MarginContainer/VBoxContainer"]
+visible = false
+custom_minimum_size = Vector2(304, 64)
 layout_mode = 2
 size_flags_horizontal = 4
 size_flags_vertical = 4
 theme_override_font_sizes/font_size = 24
-theme_override_styles/normal = SubResource("StyleBoxTexture_btn")
-theme_override_styles/hover = SubResource("StyleBoxTexture_btn")
-theme_override_styles/pressed = SubResource("StyleBoxTexture_btn")
-theme_override_styles/focus = SubResource("StyleBoxTexture_btn")
+theme_override_styles/normal = SubResource("SBT_normal")
+theme_override_styles/hover = SubResource("SBT_hover")
+theme_override_styles/pressed = SubResource("SBT_pressed")
+theme_override_styles/focus = SubResource("SBT_hover")
 text = "Contre IA"
 
-[node name="BackButton" type="Button" parent="VBoxContainer"]
-custom_minimum_size = Vector2(304, 79)
+[node name="BackButton" type="Button" parent="Background/MarginContainer/VBoxContainer"]
+custom_minimum_size = Vector2(304, 64)
 layout_mode = 2
 size_flags_horizontal = 4
 size_flags_vertical = 4
 theme_override_font_sizes/font_size = 24
-theme_override_styles/normal = SubResource("StyleBoxTexture_btn")
-theme_override_styles/hover = SubResource("StyleBoxTexture_btn")
-theme_override_styles/pressed = SubResource("StyleBoxTexture_btn")
-theme_override_styles/focus = SubResource("StyleBoxTexture_btn")
+theme_override_styles/normal = SubResource("SBT_normal")
+theme_override_styles/hover = SubResource("SBT_hover")
+theme_override_styles/pressed = SubResource("SBT_pressed")
+theme_override_styles/focus = SubResource("SBT_hover")
 text = "Retour"
 
 [node name="LangButton" type="Button" parent="."]
