@@ -342,11 +342,66 @@ Un clic droit deplace les unites selectionnees. Clic droit sur un Transport alli
 
 ## Git
 
-- `main` : version stable
-- `develop` : integration
-- `feature/*` : nouvelles fonctionnalites
+### Branches
 
-Ne jamais push directement sur main. Les features partent de develop et y sont mergees.
+| Branche | Role | Protection |
+|---------|------|------------|
+| `main` | Version stable (releases) | PR obligatoire + 1 approbation + no force push |
+| `develop` | Integration (code teste) | PR obligatoire + 1 approbation + no force push |
+| `feature/*` | Developpement quotidien | Aucune restriction |
+
+### Workflow
+
+```
+feature/ma-fonctionnalite
+        │
+        │  git push origin feature/ma-fonctionnalite
+        │
+        ▼
+   Pull Request → develop
+        │
+        │  Review + approbation requise
+        │
+        ▼
+     develop  (integration, tests)
+        │
+        │  Pull Request de release
+        │
+        ▼
+       main   (version stable)
+```
+
+### Etapes pour contribuer
+
+```bash
+# 1. Partir d'un develop a jour
+git checkout develop
+git pull origin develop
+
+# 2. Creer une branche de feature
+git checkout -b feature/nom-de-la-feature
+
+# 3. Developper et commiter
+git add Scripts/MonFichier.cs
+git commit -m "feat: description de la feature"
+
+# 4. Pusher la branche
+git push origin feature/nom-de-la-feature
+
+# 5. Ouvrir une Pull Request vers develop sur GitHub
+# → attendre review et approbation avant de merger
+```
+
+### Convention de commits
+
+| Prefixe | Usage |
+|---------|-------|
+| `feat:` | Nouvelle fonctionnalite |
+| `fix:` | Correction de bug |
+| `refactor:` | Reorganisation du code |
+| `docs:` | Documentation |
+| `style:` | Formatage, pas de changement logique |
+| `test:` | Ajout ou modification de tests |
 
 ## Auteurs
 
