@@ -429,7 +429,7 @@ public partial class GameHUD : Control
 			if (locked)
 				btn.TooltipText = requiredTier == 2
 					? "🔒 Palier 2 : possédez 2 camps"
-					: "🔒 Palier 3 : région complète + camp externe + port";
+					: "🔒 Palier 3 : capturez tous les camps de votre région de départ";
 			else if (queueFull)
 				btn.TooltipText = "File de production pleine !";
 			else if (!selectedCamp.CanBuyUnit(unitType))
@@ -491,17 +491,8 @@ public partial class GameHUD : Control
 		int total = homeCamps.Count;
 		int owned = homeCamps.FindAll(c => c.GetTeamId() == teamId).Count;
 
-		bool hasExternalCamp = allCamps.FindAll(c => c.GetTeamId() == teamId)
-			.Exists(c => c.RegionId != homeRegion);
-		bool hasPort = allCamps.FindAll(c => c.GetTeamId() == teamId)
-			.Exists(c => c.HasPort);
-
 		if (owned == total && total >= 2)
-		{
-			string extra = !hasExternalCamp ? " + capturez 1 camp hors de votre région" : "";
-			string port  = !hasPort         ? " + construisez un port" : "";
-			return $"région de départ complète ✓ ({owned}/{total}){extra}{port}";
-		}
+			return $"région de départ complète ✓ ({owned}/{total})";
 
 		return $"contrôlez les {total} camps de votre région de départ ({owned}/{total})";
 	}

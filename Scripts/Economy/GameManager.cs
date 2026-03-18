@@ -364,17 +364,13 @@ public partial class GameManager : Node
 
 		if (ownedCamps.Count < 2) return 1;
 
-		// Tier 3 : contrôle tous les camps de sa home region (≥2) + 1 camp ailleurs + port
+		// Tier 3 : contrôle tous les camps de sa home region (≥2 camps dans la région)
 		if (!_homeRegions.TryGetValue(teamId, out int homeRegion)) return 2;
 
 		var homeCamps = _allCamps.FindAll(c => c.RegionId == homeRegion);
-		if (homeCamps.Count < 2) return 2; // région trop petite, condition non satisfaisable seule
+		if (homeCamps.Count < 2) return 2;
 
-		bool allOwned = homeCamps.TrueForAll(c => c.GetTeamId() == teamId);
-		bool hasExternalCamp = ownedCamps.Exists(c => c.RegionId != homeRegion);
-		bool hasPort = ownedCamps.Exists(c => c.HasPort);
-
-		if (allOwned && hasExternalCamp && hasPort) return 3;
+		if (homeCamps.TrueForAll(c => c.GetTeamId() == teamId)) return 3;
 
 		return 2;
 	}
