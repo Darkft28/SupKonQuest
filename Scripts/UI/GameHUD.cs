@@ -8,11 +8,13 @@ public partial class GameHUD : Control
 	private SelectionManager _selectionManager;
 	private Dictionary<string, TextureButton> _unitButtons = new Dictionary<string, TextureButton>();
 	private Dictionary<string, TextureButton> _shipButtons = new Dictionary<string, TextureButton>();
+	private Dictionary<string, Label> _lockLabels = new Dictionary<string, Label>();
 	private HBoxContainer _unitsContainer;
 	private HBoxContainer _shipsContainer;
 	private Button _territoryButton;
 	private HBoxContainer _brushSizeContainer;
 	private Button _portButton;
+	private Label _tierInfoLabel;
 
 		private Panel _disconnectPanel;
 	private Label _disconnectLabel;
@@ -43,6 +45,8 @@ public partial class GameHUD : Control
 
 		ConnectUnitButtons();
 		ConnectShipButtons();
+		CreateLockLabels();
+		CreateTierInfoLabel();
 		CreateQuitButton();
 		CreateTerritoryButton();
 		CreatePortButton();
@@ -237,6 +241,48 @@ public partial class GameHUD : Control
 	}
 
 
+	private void CreateLockLabels()
+	{
+		foreach (string unitType in UnitTypes)
+		{
+			if (!_unitButtons.TryGetValue(unitType, out var btn)) continue;
+
+			var lbl = new Label();
+			lbl.Text = "";
+			lbl.HorizontalAlignment = HorizontalAlignment.Center;
+			lbl.VerticalAlignment = VerticalAlignment.Center;
+			lbl.AddThemeFontSizeOverride("font_size", 14);
+			lbl.Modulate = new Color(1f, 0.85f, 0.2f, 1f);
+			lbl.MouseFilter = Control.MouseFilterEnum.Ignore;
+
+			// Positionné au centre du bouton
+			lbl.SetAnchorsPreset(Control.LayoutPreset.FullRect);
+			btn.AddChild(lbl);
+			_lockLabels[unitType] = lbl;
+		}
+	}
+
+	private void CreateTierInfoLabel()
+	{
+		_tierInfoLabel = new Label();
+		_tierInfoLabel.HorizontalAlignment = HorizontalAlignment.Center;
+		_tierInfoLabel.AddThemeFontSizeOverride("font_size", 13);
+		_tierInfoLabel.Modulate = new Color(1f, 0.9f, 0.5f, 1f);
+		_tierInfoLabel.AutowrapMode = TextServer.AutowrapMode.WordSmart;
+		_tierInfoLabel.Visible = false;
+
+		// Ancré juste au-dessus du NinePatchRect (barre d'unités)
+		_tierInfoLabel.AnchorLeft   = 0f;
+		_tierInfoLabel.AnchorTop    = 1f;
+		_tierInfoLabel.AnchorRight  = 1f;
+		_tierInfoLabel.AnchorBottom = 1f;
+		_tierInfoLabel.OffsetLeft   = 10f;
+		_tierInfoLabel.OffsetTop    = -145f;
+		_tierInfoLabel.OffsetRight  = -10f;
+		_tierInfoLabel.OffsetBottom = -115f;
+		AddChild(_tierInfoLabel);
+	}
+
 	private void ConnectUnitButtons()
 	{
 		foreach (string unitType in UnitTypes)
@@ -331,11 +377,31 @@ public partial class GameHUD : Control
 
 		var selectedCamp = _selectionManager.GetSelectedCamp();
 
-		if (selectedCamp == null || !IsInstanceValid(selectedCamp)) return;
-		if (selectedCamp.GetTeamId() != GetLocalTeamId()) return;
+		if (selectedCamp == null || !IsInstanceValid(selectedCamp))
+		{
+			if (_tierInfoLabel != null) _tierInfoLabel.Visible = false;
+			return;
+		}
+		if (selectedCamp.GetTeamId() != GetLocalTeamId())
+		{
+			if (_tierInfoLabel != null) _tierInfoLabel.Visible = false;
+			return;
+		}
 
 		bool queueFull = selectedCamp.GetQueueCount() >= selectedCamp.GetMaxQueueSize();
 		int unlockedTier = GameManager.Instance?.GetUnlockedTier(GetLocalTeamId()) ?? 1;
+
+		// Barre d'info palier
+		if (_tierInfoLabel != null)
+		{
+			_tierInfoLabel.Visible = true;
+			_tierInfoLabel.Text = unlockedTier switch
+			{
+				1 => "Palier 1/3 — Débloquez le palier 2 : possédez 2 camps",
+				2 => "Palier 2/3 — Débloquez le palier 3 : contrôlez une région entière (2+ camps) + 1 camp ailleurs + un port",
+				_ => "Palier 3/3 — Toutes les unités débloquées ✓"
+			};
+		}
 
 		foreach (string unitType in UnitTypes)
 		{
@@ -350,10 +416,13 @@ public partial class GameHUD : Control
 				? new Color(0.35f, 0.35f, 0.35f, 0.55f)
 				: canBuy ? new Color(1f, 1f, 1f, 1f) : new Color(0.5f, 0.5f, 0.5f, 0.8f);
 
+			if (_lockLabels.TryGetValue(unitType, out var lbl))
+				lbl.Text = locked ? $"🔒 P{requiredTier}" : "";
+
 			if (locked)
 				btn.TooltipText = requiredTier == 2
-					? "🔒 Possédez 2 camps pour débloquer"
-					: "🔒 Capturez toute votre région de départ + construisez un port";
+					? "🔒 Palier 2 : possédez 2 camps"
+					: "🔒 Palier 3 : région complète + camp externe + port";
 			else if (queueFull)
 				btn.TooltipText = "File de production pleine !";
 			else if (!selectedCamp.CanBuyUnit(unitType))
