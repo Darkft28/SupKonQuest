@@ -93,6 +93,7 @@ public partial class GameHUD : Control
 		var btn = new Button();
 		btn.Text = "✕ Menu";
 		btn.AddThemeFontSizeOverride("font_size", 18);
+		UIStyle.ApplyStone(btn);
 		btn.AnchorLeft   = 1f;
 		btn.AnchorTop    = 0f;
 		btn.AnchorRight  = 1f;
@@ -117,11 +118,12 @@ public partial class GameHUD : Control
 		_territoryButton.Text = $"🗺 Territoire ({TerritoryManager.TileCost}g/tuile)";
 		_territoryButton.AddThemeFontSizeOverride("font_size", 15);
 		_territoryButton.ToggleMode = true;
+		UIStyle.ApplyStone(_territoryButton);
 		_territoryButton.AnchorLeft   = 1f;
 		_territoryButton.AnchorTop    = 0f;
 		_territoryButton.AnchorRight  = 1f;
 		_territoryButton.AnchorBottom = 0f;
-		_territoryButton.OffsetLeft   = -300f;
+		_territoryButton.OffsetLeft   = -340f;
 		_territoryButton.OffsetTop    = 10f;
 		_territoryButton.OffsetRight  = -130f;
 		_territoryButton.OffsetBottom = 45f;
@@ -137,7 +139,7 @@ public partial class GameHUD : Control
 		_brushSizeContainer.AnchorTop    = 0f;
 		_brushSizeContainer.AnchorRight  = 1f;
 		_brushSizeContainer.AnchorBottom = 0f;
-		_brushSizeContainer.OffsetLeft   = -300f;
+		_brushSizeContainer.OffsetLeft   = -340f;
 		_brushSizeContainer.OffsetTop    = 50f;
 		_brushSizeContainer.OffsetRight  = -130f;
 		_brushSizeContainer.OffsetBottom = 85f;
@@ -150,6 +152,7 @@ public partial class GameHUD : Control
 			var sizeBtn = new Button();
 			sizeBtn.Text = l;
 			sizeBtn.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+			UIStyle.ApplyStone(sizeBtn);
 			sizeBtn.Pressed += () => TerritoryManager.Instance?.SetBrushSize(s);
 			_brushSizeContainer.AddChild(sizeBtn);
 		}
@@ -160,6 +163,7 @@ public partial class GameHUD : Control
 		_portButton = new Button();
 		_portButton.Text = $"⚓ Port ({CampSimple.PortCost}g)";
 		_portButton.AddThemeFontSizeOverride("font_size", 16);
+		UIStyle.ApplyStone(_portButton);
 		_portButton.AnchorLeft   = 0.5f;
 		_portButton.AnchorTop    = 1f;
 		_portButton.AnchorRight  = 0.5f;

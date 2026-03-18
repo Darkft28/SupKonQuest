@@ -2,7 +2,6 @@ using Godot;
 
 public partial class GameModeMenu : Control
 {
-	private Label _titleLabel;
 	private Button _soloButton;
 	private Button _multiButton;
 	private Button _iaButton;
@@ -19,11 +18,10 @@ public partial class GameModeMenu : Control
 
 	public override void _Ready()
 	{
-		_titleLabel = GetNode<Label>("VBoxContainer/TitleLabel");
-		_soloButton = GetNode<Button>("VBoxContainer/SoloButton");
-		_multiButton = GetNode<Button>("VBoxContainer/MultiButton");
-		_iaButton = GetNode<Button>("VBoxContainer/IAButton");
-		_backButton = GetNode<Button>("VBoxContainer/BackButton");
+		_soloButton = GetNode<Button>("Background/MarginContainer/VBoxContainer/SoloButton");
+		_multiButton = GetNode<Button>("Background/MarginContainer/VBoxContainer/MultiButton");
+		_iaButton = GetNode<Button>("Background/MarginContainer/VBoxContainer/IAButton");
+		_backButton = GetNode<Button>("Background/MarginContainer/VBoxContainer/BackButton");
 		_langButton = GetNode<Button>("LangButton");
 
 		_soloButton.Pressed += () => ShowSettingsPopup(true);
@@ -97,6 +95,7 @@ public partial class GameModeMenu : Control
 			btn.ButtonGroup = mapGroup;
 			btn.ButtonPressed = (mapValues[i] == _selectedMapType);
 			btn.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+			UIStyle.ApplyStone(btn);
 			var captured = mapValues[i];
 			btn.Pressed += () => { _selectedMapType = captured; };
 			mapHBox.AddChild(btn);
@@ -130,6 +129,7 @@ public partial class GameModeMenu : Control
 			btn.ButtonGroup = diffGroup;
 			btn.ButtonPressed = (diffValues[i] == _selectedDifficulty);
 			btn.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+			UIStyle.ApplyStone(btn);
 			var captured = diffValues[i];
 			btn.Pressed += () => _selectedDifficulty = captured;
 			diffHBox.AddChild(btn);
@@ -145,12 +145,14 @@ public partial class GameModeMenu : Control
 		var cancelBtn = new Button();
 		cancelBtn.Text = "Annuler";
 		cancelBtn.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+		UIStyle.ApplyStone(cancelBtn);
 		cancelBtn.Pressed += () => _overlay.Visible = false;
 		actionsHBox.AddChild(cancelBtn);
 
 		var launchBtn = new Button();
 		launchBtn.Text = "Lancer";
 		launchBtn.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+		UIStyle.ApplyStone(launchBtn);
 		launchBtn.Pressed += OnLaunchPressed;
 		actionsHBox.AddChild(launchBtn);
 	}
@@ -199,7 +201,6 @@ public partial class GameModeMenu : Control
 	{
 		if (LocalizationManager.Instance == null) return;
 
-		_titleLabel.Text = LocalizationManager.Instance.GetText("game_mode");
 		_soloButton.Text = LocalizationManager.Instance.GetText("solo");
 		_multiButton.Text = LocalizationManager.Instance.GetText("multi");
 		_iaButton.Text = LocalizationManager.Instance.GetText("ia");
