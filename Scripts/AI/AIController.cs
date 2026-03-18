@@ -41,7 +41,7 @@ public partial class AIController : Node
 	// Intervalle de décision selon la difficulté
 	private float TickInterval => Level switch
 	{
-		Difficulty.Easy => 10f,
+		Difficulty.Easy => 5f,
 		Difficulty.Hard => 1.5f,
 		_ => 3f
 	};
@@ -49,15 +49,15 @@ public partial class AIController : Node
 	// Nombre max d'unités envoyées en attaque par tick
 	private int MaxUnitsPerOrder => Level switch
 	{
-		Difficulty.Easy => 1,
-		Difficulty.Hard => int.MaxValue,
+		Difficulty.Easy => 2,
+		Difficulty.Hard => 12,
 		_ => 6
 	};
 
 	// Nombre minimum de défenseurs à conserver par camp IA
 	private int MinDefendersPerCamp => Level switch
 	{
-		Difficulty.Easy => 4,
+		Difficulty.Easy => 2,
 		Difficulty.Hard => 1,
 		_ => 2
 	};
@@ -66,22 +66,22 @@ public partial class AIController : Node
 	private int MinAttackForce => Level switch
 	{
 		Difficulty.Easy => 3,
-		Difficulty.Hard => 1,
+		Difficulty.Hard => 2,
 		_ => 3
 	};
 
 	// IA-02-01 : délai avant la première attaque selon la difficulté
 	private float FirstAttackDelay => Level switch
 	{
-		Difficulty.Easy => 10f,
-		Difficulty.Hard => 3f,
-		_ => 5f
+		Difficulty.Easy => 15f,
+		Difficulty.Hard => 7f,
+		_ => 10f
 	};
 
 	// IA-02-02 : délai de réaction entre décision et exécution des ordres
 	private float ReactionDelay => Level switch
 	{
-		Difficulty.Easy => 4f,
+		Difficulty.Easy => 2f,
 		Difficulty.Hard => 0.5f,
 		_ => 1.5f
 	};
@@ -89,25 +89,25 @@ public partial class AIController : Node
 	// IA-02-06 : intervalle max sans attaque avant d'en forcer une (anti-turtling)
 	private float ForceAttackInterval => Level switch
 	{
-		Difficulty.Easy => 120f,
-		Difficulty.Hard => 60f,
-		_ => 90f
+		Difficulty.Easy => 180f,
+		Difficulty.Hard => 90f,
+		_ => 120f
 	};
 
 	// Probabilité de sauter un tick selon la difficulté
 	private float SkipChance => Level switch
 	{
-		Difficulty.Easy => 0.50f,
-		Difficulty.Hard => 0.10f,
-		_ => 0.25f
+		Difficulty.Easy => 0.15f,
+		Difficulty.Hard => 0.05f,
+		_ => 0.10f
 	};
 
 	// IA-02-03 : taux d'erreur de ciblage (chance de choisir une cible sous-optimale)
 	private float MistakeRate => Level switch
 	{
-		Difficulty.Easy => 0.35f,
-		Difficulty.Hard => 0f,
-		_ => 0.15f
+		Difficulty.Easy => 0.40f,
+		Difficulty.Hard => 0.05f,
+		_ => 0.20f
 	};
 
 	// Types d'unités autorisés selon la difficulté
@@ -398,7 +398,7 @@ public partial class AIController : Node
 	// Retourne true si au moins un ennemi vivant est dans le rayon de détection du camp
 	private bool HasEnemiesNearCamp(CampSimple camp)
 	{
-		const float detectionRadius = 800f;
+		const float detectionRadius = 500f;
 		var units = GetTree().GetNodesInGroup("units");
 		foreach (var node in units)
 		{
