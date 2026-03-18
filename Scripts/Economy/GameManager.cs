@@ -353,35 +353,28 @@ public partial class GameManager : Node
 		_ => 1
 	};
 
+	public int GetHomeRegion(int teamId)
+	{
+		return _homeRegions.TryGetValue(teamId, out int r) ? r : -1;
+	}
+
 	public int GetUnlockedTier(int teamId)
 	{
 		var ownedCamps = _allCamps.FindAll(c => c.GetTeamId() == teamId);
 
 		if (ownedCamps.Count < 2) return 1;
 
-		// Tier 3 : contrôle une région entière (≥2 camps) + au moins 1 camp hors de cette région + un port
+		// Tier 3 : contrôle tous les camps de sa home region (≥2) + 1 camp ailleurs + port
+		if (!_homeRegions.TryGetValue(teamId, out int homeRegion)) return 2;
+
+		var homeCamps = _allCamps.FindAll(c => c.RegionId == homeRegion);
+		if (homeCamps.Count < 2) return 2; // région trop petite, condition non satisfaisable seule
+
+		bool allOwned = homeCamps.TrueForAll(c => c.GetTeamId() == teamId);
+		bool hasExternalCamp = ownedCamps.Exists(c => c.RegionId != homeRegion);
 		bool hasPort = ownedCamps.Exists(c => c.HasPort);
-		if (hasPort)
-		{
-			var regionCamps = new Dictionary<int, List<CampSimple>>();
-			foreach (var camp in _allCamps)
-			{
-				if (camp.RegionId <= 0) continue;
-				if (!regionCamps.ContainsKey(camp.RegionId))
-					regionCamps[camp.RegionId] = new List<CampSimple>();
-				regionCamps[camp.RegionId].Add(camp);
-			}
 
-			foreach (var (regionId, campsInRegion) in regionCamps)
-			{
-				if (campsInRegion.Count < 2) continue;
-				if (!campsInRegion.TrueForAll(c => c.GetTeamId() == teamId)) continue;
-
-				// Région entière contrôlée — vérifie qu'il possède au moins 1 camp hors de cette région
-				if (ownedCamps.Exists(c => c.RegionId != regionId))
-					return 3;
-			}
-		}
+		if (allOwned && hasExternalCamp && hasPort) return 3;
 
 		return 2;
 	}

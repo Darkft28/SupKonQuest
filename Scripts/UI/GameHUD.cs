@@ -481,45 +481,29 @@ public partial class GameHUD : Control
 
 	private string GetTier3RegionDescription(int teamId)
 	{
-		if (GameManager.Instance == null) return "contrôlez une région entière";
+		if (GameManager.Instance == null) return "contrôlez tous les camps de votre région de départ";
+
+		int homeRegion = GameManager.Instance.GetHomeRegion(teamId);
+		if (homeRegion < 0) return "contrôlez tous les camps de votre région de départ";
 
 		var allCamps = GameManager.Instance.GetAllCamps();
-		var ownedCamps = allCamps.FindAll(c => c.GetTeamId() == teamId);
+		var homeCamps = allCamps.FindAll(c => c.RegionId == homeRegion);
+		int total = homeCamps.Count;
+		int owned = homeCamps.FindAll(c => c.GetTeamId() == teamId).Count;
 
-		// Grouper tous les camps par région
-		var regionCamps = new Dictionary<int, List<CampSimple>>();
-		foreach (var camp in allCamps)
+		bool hasExternalCamp = allCamps.FindAll(c => c.GetTeamId() == teamId)
+			.Exists(c => c.RegionId != homeRegion);
+		bool hasPort = allCamps.FindAll(c => c.GetTeamId() == teamId)
+			.Exists(c => c.HasPort);
+
+		if (owned == total && total >= 2)
 		{
-			if (camp.RegionId <= 0) continue;
-			if (!regionCamps.ContainsKey(camp.RegionId))
-				regionCamps[camp.RegionId] = new List<CampSimple>();
-			regionCamps[camp.RegionId].Add(camp);
+			string extra = !hasExternalCamp ? " + capturez 1 camp hors de votre région" : "";
+			string port  = !hasPort         ? " + construisez un port" : "";
+			return $"région de départ complète ✓ ({owned}/{total}){extra}{port}";
 		}
 
-		// Trouver la région la plus avancée pour ce joueur (celle où il a le plus de camps)
-		int bestRegion = -1;
-		int bestOwned = -1;
-		int bestTotal = 0;
-
-		foreach (var (regionId, camps) in regionCamps)
-		{
-			if (camps.Count < 2) continue;
-			int owned = camps.FindAll(c => c.GetTeamId() == teamId).Count;
-			if (owned > bestOwned)
-			{
-				bestOwned = owned;
-				bestTotal = camps.Count;
-				bestRegion = regionId;
-			}
-		}
-
-		if (bestRegion < 0)
-			return "contrôlez une région entière";
-
-		if (bestOwned == bestTotal)
-			return $"région complète ✓ ({bestTotal}/{bestTotal} camps)";
-
-		return $"contrôlez les {bestTotal} camps d'une région ({bestOwned}/{bestTotal})";
+		return $"contrôlez les {total} camps de votre région de départ ({owned}/{total})";
 	}
 
 	private void FindSelectionManager()
