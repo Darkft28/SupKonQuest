@@ -11,6 +11,7 @@ public partial class GameManager : Node
 	}
 
 	private Dictionary<int, int> _teamGold = new Dictionary<int, int>();
+	private Dictionary<int, int> _homeRegions = new Dictionary<int, int>();
 
 	private const int StartingGold = 100;
 	private const int CaptureBonus = 50;
@@ -44,6 +45,7 @@ public partial class GameManager : Node
 	{
 		// Reset de l'or entre les parties (GameManager est un autoload persistant)
 		_teamGold.Clear();
+		_homeRegions.Clear();
 		_allCamps.Clear();
 
 		var campNodes = GetTree().GetNodesInGroup("camps");
@@ -71,12 +73,14 @@ public partial class GameManager : Node
 		if (gameState?.IsFreeForAll == true)
 		{
 			shuffledCamps[0].SetTeam(1, false);
+			_homeRegions[1] = shuffledCamps[0].RegionId;
 			InitializeTeam(1);
 
 			for (int i = 1; i < shuffledCamps.Count; i++)
 			{
 				int teamId = i + 1;
 				shuffledCamps[i].SetTeam(teamId, false);
+				_homeRegions[teamId] = shuffledCamps[i].RegionId;
 				InitializeTeam(teamId);
 			}
 		}
@@ -87,11 +91,13 @@ public partial class GameManager : Node
 
 			for (int playerId = 1; playerId <= NumberOfPlayers; playerId++)
 			{
+				bool firstCamp = true;
 				for (int i = 0; i < campsPerPlayer; i++)
 				{
 					if (campIndex < shuffledCamps.Count)
 					{
 						shuffledCamps[campIndex].SetTeam(playerId, false);
+						if (firstCamp) { _homeRegions[playerId] = shuffledCamps[campIndex].RegionId; firstCamp = false; }
 						campIndex++;
 					}
 				}
@@ -328,6 +334,40 @@ public partial class GameManager : Node
 				_speedMultipliers[winningTeam] += RegionSpeedBonusPerRegion;
 			}
 		}
+	}
+
+	// ── Système de tiers de déverrouillage ───────────────────────────────────
+
+	public static int GetUnitTier(string unitType) => unitType switch
+	{
+		"Infantry" or "Support" or "Range" => 1,
+		"Heal" or "AntiArmor" => 2,
+		"Mortar" or "Heavy" or "Tank" => 3,
+		_ => 1
+	};
+
+	public static int GetShipTier(string shipType) => shipType switch
+	{
+		"Transport" => 1,
+		"Fregate" or "Destroyer" => 3,
+		_ => 1
+	};
+
+	public int GetUnlockedTier(int teamId)
+	{
+		var ownedCamps = _allCamps.FindAll(c => c.GetTeamId() == teamId);
+
+		if (ownedCamps.Count < 2) return 1;
+
+		if (_homeRegions.TryGetValue(teamId, out int homeRegion))
+		{
+			var homeCamps = _allCamps.FindAll(c => c.RegionId == homeRegion);
+			bool allOwned = homeCamps.Count > 0 && homeCamps.TrueForAll(c => c.GetTeamId() == teamId);
+			bool hasPort = ownedCamps.Exists(c => c.HasPort);
+			if (allOwned && hasPort) return 3;
+		}
+
+		return 2;
 	}
 
 	// Correction légère de l'or en multijoueur (évite micro-corrections sous 5 or d'écart)

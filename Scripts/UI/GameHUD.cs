@@ -335,17 +335,26 @@ public partial class GameHUD : Control
 		if (selectedCamp.GetTeamId() != GetLocalTeamId()) return;
 
 		bool queueFull = selectedCamp.GetQueueCount() >= selectedCamp.GetMaxQueueSize();
+		int unlockedTier = GameManager.Instance?.GetUnlockedTier(GetLocalTeamId()) ?? 1;
 
 		foreach (string unitType in UnitTypes)
 		{
 			if (!_unitButtons.TryGetValue(unitType, out var btn)) continue;
 
-			bool canBuy = !queueFull && selectedCamp.CanBuyUnit(unitType);
+			int requiredTier = GameManager.GetUnitTier(unitType);
+			bool locked = unlockedTier < requiredTier;
+			bool canBuy = !locked && !queueFull && selectedCamp.CanBuyUnit(unitType);
 
 			btn.Disabled = !canBuy;
-			btn.Modulate = canBuy ? new Color(1f, 1f, 1f, 1f) : new Color(0.5f, 0.5f, 0.5f, 0.8f);
+			btn.Modulate = locked
+				? new Color(0.35f, 0.35f, 0.35f, 0.55f)
+				: canBuy ? new Color(1f, 1f, 1f, 1f) : new Color(0.5f, 0.5f, 0.5f, 0.8f);
 
-			if (queueFull)
+			if (locked)
+				btn.TooltipText = requiredTier == 2
+					? "🔒 Possédez 2 camps pour débloquer"
+					: "🔒 Capturez toute votre région de départ + construisez un port";
+			else if (queueFull)
 				btn.TooltipText = "File de production pleine !";
 			else if (!selectedCamp.CanBuyUnit(unitType))
 				btn.TooltipText = $"Or insuffisant ({UnitStats.GetStats(unitType).Price}g requis)";
@@ -363,16 +372,24 @@ public partial class GameHUD : Control
 		if (selectedPort == null || !IsInstanceValid(selectedPort)) return;
 		if (selectedPort.GetTeamId() != GetLocalTeamId()) return;
 
+		int unlockedTier = GameManager.Instance?.GetUnlockedTier(GetLocalTeamId()) ?? 1;
+
 		foreach (string shipType in ShipTypes)
 		{
 			if (!_shipButtons.TryGetValue(shipType, out var btn)) continue;
 
-			bool canBuy = selectedPort.CanBuyShip(shipType);
+			int requiredTier = GameManager.GetShipTier(shipType);
+			bool locked = unlockedTier < requiredTier;
+			bool canBuy = !locked && selectedPort.CanBuyShip(shipType);
 
 			btn.Disabled = !canBuy;
-			btn.Modulate = canBuy ? new Color(1f, 1f, 1f, 1f) : new Color(0.5f, 0.5f, 0.5f, 0.8f);
+			btn.Modulate = locked
+				? new Color(0.35f, 0.35f, 0.35f, 0.55f)
+				: canBuy ? new Color(1f, 1f, 1f, 1f) : new Color(0.5f, 0.5f, 0.5f, 0.8f);
 
-			if (!canBuy)
+			if (locked)
+				btn.TooltipText = "🔒 Capturez toute votre région de départ + construisez un port";
+			else if (!canBuy)
 			{
 				int queueCount = selectedPort.GetShipQueueCount();
 				int maxQueue = selectedPort.GetMaxShipQueueSize();
@@ -382,9 +399,7 @@ public partial class GameHUD : Control
 					btn.TooltipText = $"Or insuffisant ({ShipStats.GetStats(shipType).Price}g requis)";
 			}
 			else
-			{
 				btn.TooltipText = "";
-			}
 		}
 	}
 

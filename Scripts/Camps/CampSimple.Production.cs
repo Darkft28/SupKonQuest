@@ -177,6 +177,9 @@ public partial class CampSimple
 		if (totalInQueue >= MaxQueueSize)
 			return false;
 
+		if (GameManager.Instance.GetUnlockedTier(TeamId) < GameManager.GetUnitTier(unitType))
+			return false;
+
 		var stats = UnitStats.GetStats(unitType);
 		return GameManager.Instance.CanAfford(TeamId, stats.Price);
 	}
