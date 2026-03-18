@@ -359,12 +359,28 @@ public partial class GameManager : Node
 
 		if (ownedCamps.Count < 2) return 1;
 
-		if (_homeRegions.TryGetValue(teamId, out int homeRegion))
+		// Tier 3 : contrôle une région entière (≥2 camps) + au moins 1 camp hors de cette région + un port
+		bool hasPort = ownedCamps.Exists(c => c.HasPort);
+		if (hasPort)
 		{
-			var homeCamps = _allCamps.FindAll(c => c.RegionId == homeRegion);
-			bool allOwned = homeCamps.Count > 0 && homeCamps.TrueForAll(c => c.GetTeamId() == teamId);
-			bool hasPort = ownedCamps.Exists(c => c.HasPort);
-			if (allOwned && hasPort) return 3;
+			var regionCamps = new Dictionary<int, List<CampSimple>>();
+			foreach (var camp in _allCamps)
+			{
+				if (camp.RegionId <= 0) continue;
+				if (!regionCamps.ContainsKey(camp.RegionId))
+					regionCamps[camp.RegionId] = new List<CampSimple>();
+				regionCamps[camp.RegionId].Add(camp);
+			}
+
+			foreach (var (regionId, campsInRegion) in regionCamps)
+			{
+				if (campsInRegion.Count < 2) continue;
+				if (!campsInRegion.TrueForAll(c => c.GetTeamId() == teamId)) continue;
+
+				// Région entière contrôlée — vérifie qu'il possède au moins 1 camp hors de cette région
+				if (ownedCamps.Exists(c => c.RegionId != regionId))
+					return 3;
+			}
 		}
 
 		return 2;
