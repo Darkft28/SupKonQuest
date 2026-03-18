@@ -1,4 +1,4 @@
-[gd_scene load_steps=8 format=3 uid="uid://d2v1sgk2tlmyr"]
+[gd_scene load_steps=10 format=3 uid="uid://d2v1sgk2tlmyr"]
 
 [ext_resource type="Texture2D" uid="uid://b04lypslc5oeg" path="res://Assets/Menu/Texture/Menu_bg.png" id="1_0fbet"]
 [ext_resource type="Texture2D" uid="uid://j0eqoi64tmqd" path="res://Assets/Menu/Texture/Title_stone.png" id="2_62e2m"]
@@ -7,8 +7,28 @@
 [ext_resource type="Script" uid="uid://cp4uowk8v5pn5" path="res://Scripts/UI/Button3Quit.cs" id="6_fj5cn"]
 [ext_resource type="Script" uid="uid://o7wkq34odbuj" path="res://Scripts/UI/MainMenu.cs" id="8_mainmenu"]
 
-[sub_resource type="StyleBoxTexture" id="StyleBoxTexture_btn"]
+[sub_resource type="StyleBoxTexture" id="SBT_normal"]
 texture = ExtResource("5_cmrfp")
+content_margin_left = 14.0
+content_margin_right = 14.0
+content_margin_top = 8.0
+content_margin_bottom = 8.0
+
+[sub_resource type="StyleBoxTexture" id="SBT_hover"]
+texture = ExtResource("5_cmrfp")
+modulate_color = Color(1, 0.88, 0.42, 1)
+content_margin_left = 14.0
+content_margin_right = 14.0
+content_margin_top = 8.0
+content_margin_bottom = 8.0
+
+[sub_resource type="StyleBoxTexture" id="SBT_pressed"]
+texture = ExtResource("5_cmrfp")
+modulate_color = Color(0.68, 0.48, 0.18, 1)
+content_margin_left = 14.0
+content_margin_right = 14.0
+content_margin_top = 8.0
+content_margin_bottom = 8.0
 
 [node name="Control" type="Control"]
 layout_mode = 3
@@ -57,40 +77,40 @@ custom_minimum_size = Vector2(0, 20)
 layout_mode = 2
 
 [node name="Button" type="Button" parent="TextureRect/MarginContainer/VBoxContainer"]
-custom_minimum_size = Vector2(304, 79)
+custom_minimum_size = Vector2(304, 64)
 layout_mode = 2
 size_flags_horizontal = 4
 size_flags_vertical = 4
 theme_override_font_sizes/font_size = 24
-theme_override_styles/normal = SubResource("StyleBoxTexture_btn")
-theme_override_styles/pressed = SubResource("StyleBoxTexture_btn")
-theme_override_styles/hover = SubResource("StyleBoxTexture_btn")
-theme_override_styles/focus = SubResource("StyleBoxTexture_btn")
+theme_override_styles/normal = SubResource("SBT_normal")
+theme_override_styles/hover = SubResource("SBT_hover")
+theme_override_styles/pressed = SubResource("SBT_pressed")
+theme_override_styles/focus = SubResource("SBT_hover")
 text = "Jouer"
 script = ExtResource("4_iy58a")
 
 [node name="Button2" type="Button" parent="TextureRect/MarginContainer/VBoxContainer"]
-custom_minimum_size = Vector2(304, 79)
+custom_minimum_size = Vector2(304, 64)
 layout_mode = 2
 size_flags_horizontal = 4
 size_flags_vertical = 4
 theme_override_font_sizes/font_size = 24
-theme_override_styles/normal = SubResource("StyleBoxTexture_btn")
-theme_override_styles/pressed = SubResource("StyleBoxTexture_btn")
-theme_override_styles/hover = SubResource("StyleBoxTexture_btn")
-theme_override_styles/focus = SubResource("StyleBoxTexture_btn")
+theme_override_styles/normal = SubResource("SBT_normal")
+theme_override_styles/hover = SubResource("SBT_hover")
+theme_override_styles/pressed = SubResource("SBT_pressed")
+theme_override_styles/focus = SubResource("SBT_hover")
 text = "Options"
 
 [node name="Button3" type="Button" parent="TextureRect/MarginContainer/VBoxContainer"]
-custom_minimum_size = Vector2(304, 79)
+custom_minimum_size = Vector2(304, 64)
 layout_mode = 2
 size_flags_horizontal = 4
 size_flags_vertical = 4
 theme_override_font_sizes/font_size = 24
-theme_override_styles/normal = SubResource("StyleBoxTexture_btn")
-theme_override_styles/pressed = SubResource("StyleBoxTexture_btn")
-theme_override_styles/hover = SubResource("StyleBoxTexture_btn")
-theme_override_styles/focus = SubResource("StyleBoxTexture_btn")
+theme_override_styles/normal = SubResource("SBT_normal")
+theme_override_styles/hover = SubResource("SBT_hover")
+theme_override_styles/pressed = SubResource("SBT_pressed")
+theme_override_styles/focus = SubResource("SBT_hover")
 text = "Quitter"
 script = ExtResource("6_fj5cn")
 
