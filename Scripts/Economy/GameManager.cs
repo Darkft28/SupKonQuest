@@ -195,7 +195,7 @@ public partial class GameManager : Node
 				CheckRegionBonuses(-1); // -1 = toutes les equipes
 			}
 
-			CheckRegionBonuses();
+			UpdateSpeedMultipliers();
 		}
 
 		_victoryManager.Update(delta);
@@ -292,7 +292,7 @@ public partial class GameManager : Node
 		return _speedMultipliers.TryGetValue(teamId, out float mult) ? mult : 1f;
 	}
 
-	private void CheckRegionBonuses()
+	private void UpdateSpeedMultipliers()
 	{
 		_speedMultipliers.Clear();
 
@@ -328,7 +328,6 @@ public partial class GameManager : Node
 			if (allSameTeam)
 			{
 				int winningTeam = firstTeam;
-				AddGold(winningTeam, 30);
 				if (!_speedMultipliers.ContainsKey(winningTeam))
 					_speedMultipliers[winningTeam] = 1f;
 				_speedMultipliers[winningTeam] += RegionSpeedBonusPerRegion;

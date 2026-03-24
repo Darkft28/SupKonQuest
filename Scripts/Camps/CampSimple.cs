@@ -201,12 +201,17 @@ public partial class CampSimple : Area2D
 		{
 			if (unit != null && IsInstanceValid(unit))
 			{
+				int oldUnitTeam = unit.GetTeamId();
 				bool wasNeutral = unit.IsNeutralCampUnit;
 				unit.SetTeamId(TeamId);
 				unit.IsNeutralCampUnit = IsNeutralCamp;
 				// Si l'unité perd le statut neutre, recalculer ses HP (retire le x1.5)
 				if (wasNeutral && !IsNeutralCamp)
 					unit.RecalculateMaxHealth();
+				// Si le camp est capturé, désassocier les unités de l'ancien propriétaire
+				// pour que l'IA les traite comme roamingUnits et non comme défenseurs de camp ennemi
+				if (oldUnitTeam != TeamId && unit.OwnerCamp == this)
+					unit.OwnerCamp = null;
 			}
 		}
 	}

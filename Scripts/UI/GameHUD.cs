@@ -16,7 +16,7 @@ public partial class GameHUD : Control
 	private Button _portButton;
 	private Label _tierInfoLabel;
 
-		private Panel _disconnectPanel;
+	private Panel _disconnectPanel;
 	private Label _disconnectLabel;
 
 		private static readonly string[] UnitTypes = new[]
