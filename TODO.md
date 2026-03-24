@@ -1,6 +1,6 @@
 # TODO - SupKonQuest
 
-Mis a jour le 2026-03-16 — corrections territoire, port, spawn, reseau + variation tuiles.
+Mis a jour le 2026-03-17 — corrections territoire, port, spawn, reseau + variation tuiles + audit IA Sprint 1.
 Format : priorite, domaine, description, solution proposee, fichiers concernes.
 
 ---
@@ -385,6 +385,89 @@ Definir `theme_override_styles/focus` avec bordure coloree dans le theme Godot.
 
 ---
 
+---
+
+## AUDIT IA — 2026-03-17
+
+*Audit realise par 4 agents (analyse code + recherches internet : patterns RTS, game feel, economie). Sources : ResearchGate, AAAI, GDC, AoE IV, StarCraft AI, Dune II.*
+
+---
+
+### Sprint 1 — Bugs critiques (impact immediat, faible risque)
+
+- [x] [IA-BUG-01] **Double CheckRegionBonuses() dans GameManager._Process()** — (non-reproductible : CheckRegionBonuses() n'existe pas dans le code actuel de GameManager.cs). **Fichiers :** `Scripts/Economy/GameManager.cs`
+
+- [x] [IA-BUG-02] **Healers comptes comme attaquants** — fix applique : dans `CommandIdleUnits()`, les unites `UnitType == "Heal"` sont exclues de la liste des attaquants (unitsByCamp loop + roamingUnits loop). **Fichiers :** `Scripts/AI/AIController.cs`
+
+- [x] [IA-BUG-03] **GetAICenter() inclut les navires** — (non-reproductible : Ship n'herite pas de Unit, le filtre `node is Unit` exclut deja les navires). **Fichiers :** `Scripts/AI/AIController.cs`
+
+- [x] [IA-BUG-04] **FindIdleAIUnits() sans validation** — fix applique : `IsInstanceValid(unit)` et `unit.GetCurrentHealth() > 0` ajoutes dans `FindIdleAIUnits()`. **Fichiers :** `Scripts/AI/AIController.cs`
+
+- [x] [IA-BUG-05] **OwnerCamp non reassigne apres capture** — fix applique : dans `UpdateSpawnedUnitsTeam()`, si `oldUnitTeam != TeamId && unit.OwnerCamp == this`, alors `unit.OwnerCamp = null`. **Fichiers :** `Scripts/Camps/CampSimple.cs`
+
+---
+
+### Sprint 2 — Comportement de base (haute valeur, faible complexite)
+
+- [ ] [IA-02-01] **Timer de premier attaque** — l'IA ne doit pas attaquer avant N secondes apres le debut de partie. Easy=90s, Medium=45s, Hard=20s. Ajouter `_gameStartTimer` dans `RunTick()`. **Fichiers :** `Scripts/AI/AIController.cs`
+
+- [ ] [IA-02-02] **Delai de reaction** — introduire `_reactionDelay` (Easy=4s, Medium=1.5s, Hard=0.5s) entre la detection d'une situation et l'execution de `CommandIdleUnits()`. L'IA "voit" mais reagit lentement, exploitable consciemment par le joueur. **Fichiers :** `Scripts/AI/AIController.cs`
+
+- [ ] [IA-02-03] **Taux d'erreur de ciblage** — Easy: 35% de chance de choisir un camp sous-optimal (pas le meilleur score). Medium: 15%. Hard: 0%. Plus fun qu'un skip complet car l'erreur est lisible. **Fichiers :** `Scripts/AI/AIController.cs`
+
+- [ ] [IA-02-04] **Seuil de retraite** — si un groupe d'attaque perd >50% de sa taille initiale en route, les survivants font `MoveTo()` vers le camp IA le plus proche. Easy et Medium uniquement (Hard ne recule jamais). **Fichiers :** `Scripts/AI/AIController.cs`, `Scripts/Units/Unit.cs`
+
+- [ ] [IA-02-05] **Defense reactive** — verifier en debut de chaque tick si un camp IA est sous attaque (HP < 80% OU ennemi detecte dans `TerritoryRadius`). Si oui, rediriger les unites idle les plus proches vers ce camp avant tout ordre offensif. **Fichiers :** `Scripts/AI/AIController.cs`
+
+- [ ] [IA-02-06] **Timer d'attaque minimum** — si l'IA n'a pas attaque depuis 120s (Easy), 90s (Medium), 60s (Hard), forcer une attaque avec ce qui est disponible. Evite le turtling infini. **Fichiers :** `Scripts/AI/AIController.cs`
+
+---
+
+### Sprint 3 — Qualite strategique (valeur haute, complexite moyenne)
+
+- [ ] [IA-03-01] **Composition d'armee par role** — remplacer le choix aleatoire par un systeme de ratio cible : 35% tank/melee (Infantry, Heavy), 35% DPS/range (Range, AntiArmor, Mortar), 30% support (Support, Heal). L'IA comptabilise sa composition actuelle et achete ce qui manque. **Fichiers :** `Scripts/AI/AIController.cs`
+
+- [ ] [IA-03-02] **Adaptation economique** — calculer `scoreRelatif = (campsIA / total) - (campsEnnemi / total)`. Si > +0.3 (avance) : acheter premium (Heavy, Tank). Si < -0.3 (retard) : spam Infantry. Sinon : mixte. **Fichiers :** `Scripts/AI/AIController.cs`
+
+- [ ] [IA-03-03] **Personnalites d'IA** — definir 3 profils comportementaux selectionnes par niveau ou aleatoirement :
+  - **Rusher** : attaque des 4 unites, 80% Infantry, timer 60s, seuil d'epargne 0-50g
+  - **Tortue** : attaque seulement a 8 unites + 200g en reserve, 30% Heavy/AntiArmor
+  - **Macro** : priorite capture camps neutres pour revenus, puis armee premium (Tank, AntiArmor)
+  - Chaque personnalite a un defaut exploitable connu (Rusher = camps vides, Tortue = rush early, Macro = fragile early).
+  - **Fichiers :** `Scripts/AI/AIController.cs`
+
+- [ ] [IA-03-04] **Recalibrer le scoring de cible** — les constantes actuelles (+4000, -2000, -3000) sont en pixels absolus et incoherentes selon la taille de la map. Normaliser en fonction de `mapMaxDistance` pour que les bonus/malus representent des % de la distance max. **Fichiers :** `Scripts/AI/AIController.cs`
+
+---
+
+### Sprint 4 — Fonctionnalites avancees (valeur haute, complexite elevee)
+
+- [ ] [IA-04-01] **Multi-front pour Hard** — selectionner 2 camps cibles distincts et envoyer des groupes separes depuis les camps IA les plus proches de chaque cible. Force le joueur a gerer 2 fronts simultanement. **Fichiers :** `Scripts/AI/AIController.cs`
+
+- [ ] [IA-04-02] **Composition adaptative (counter)** — observer `GetTree().GetNodesInGroup("team_1")` pour compter les types d'unites du joueur. Si >3 Heavy : augmenter priorite AntiArmor. Si >5 Infantry groupes : ajouter Mortar. **Fichiers :** `Scripts/AI/AIController.cs`
+
+- [ ] [IA-04-03] **AI Director leger** — si le joueur controle >70% des camps : forcer une contre-attaque sur son camp le plus faiblement defandu. Si l'IA gagne tres largement : ajouter un delai artificiel entre les vagues (fenetre de comeback invisible). **Fichiers :** `Scripts/AI/AIController.cs`
+
+- [ ] [IA-04-04] **Faiblesse geographique intentionnelle (Hard)** — definir une zone aveugle (ex: quadrant oppose en diagonale) que l'IA Hard n'attaque jamais. Win condition cachee pour les joueurs experts. Rend l'IA previsible sur un axe sans etre trop facile. **Fichiers :** `Scripts/AI/AIController.cs`
+
+---
+
+### Tableau de difficulte cible (apres implementation)
+
+| Parametre | Easy | Medium | Hard |
+|---|---|---|---|
+| Timer premier attaque | 90s | 45s | 20s |
+| Delai de reaction | 4-5s | 1.5-2s | <0.5s |
+| Taux d'erreur ciblage | 35% | 15% | 0% |
+| % unites en defense | 60-70% | 40-50% | 25-35% |
+| Seuil min avant attaque | 8 unites | 5 unites | 3 unites |
+| Retraite si pertes > | 50% | 50% | jamais |
+| Composition d'armee | Infantry+Range | Equilibree | Adaptive |
+| Multi-front | non | rarement | souvent |
+| Bonus or (cheat) | 0% | 0% | +20% |
+
+---
+
 ## Refactoring (dette technique)
 
 ### [REFACTO-01] Couplage singleton implicite dans Unit
@@ -469,3 +552,30 @@ Si un `PackedScene` n'est pas trouve, l'erreur est silencieuse. Ajouter try/catc
 - [ ] [REFACTO-01] Couplage singleton dans Unit
 - [ ] [REFACTO-02] Error handling RPCs reseau
 - [ ] [REFACTO-03] CampId deterministe base sur position
+
+### Audit IA — Bugs critiques (Sprint 1)
+- [x] [IA-BUG-01] Double CheckRegionBonuses() — non-reproductible (methode absente du code actuel)
+- [x] [IA-BUG-02] Healers exclus des attaquants — AIController.cs
+- [x] [IA-BUG-03] GetAICenter() inclut les navires — non-reproductible (Ship n'herite pas de Unit)
+- [x] [IA-BUG-04] FindIdleAIUnits() — IsInstanceValid + GetCurrentHealth() > 0 ajoutes
+- [x] [IA-BUG-05] OwnerCamp = null apres capture — CampSimple.UpdateSpawnedUnitsTeam()
+
+### Audit IA — Comportement de base (Sprint 2)
+- [x] [IA-02-01] Timer de premier attaque (Easy=90s, Medium=45s, Hard=20s)
+- [x] [IA-02-02] Delai de reaction par difficulte (Easy=4s, Medium=1.5s, Hard=0.5s)
+- [x] [IA-02-03] Taux d'erreur de ciblage (Easy=35%, Medium=15%, Hard=0%)
+- [x] [IA-02-04] Seuil de retraite si pertes >50% (Easy/Medium, AttackGroup tracking)
+- [x] [IA-02-05] Defense reactive (FindThreatenedAICamp + HasEnemiesNearCamp)
+- [x] [IA-02-06] Timer d'attaque minimum anti-turtling (Easy=120s, Medium=90s, Hard=60s)
+
+### Audit IA — Qualite strategique (Sprint 3)
+- [ ] [IA-03-01] Composition d'armee par role (35/35/30%)
+- [ ] [IA-03-02] Adaptation economique (winning/losing state)
+- [ ] [IA-03-03] Personnalites d'IA (Rusher / Tortue / Macro)
+- [ ] [IA-03-04] Recalibrer scoring de cible (normaliser distances)
+
+### Audit IA — Fonctionnalites avancees (Sprint 4)
+- [ ] [IA-04-01] Multi-front pour Hard (2 cibles simultanees)
+- [ ] [IA-04-02] Composition adaptative counter la compo ennemie
+- [ ] [IA-04-03] AI Director leger (comeback mechanic)
+- [ ] [IA-04-04] Faiblesse geographique intentionnelle Hard
