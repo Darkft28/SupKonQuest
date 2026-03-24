@@ -33,12 +33,7 @@ public partial class Ship
 		if (target == null || !IsInstanceValid(target) || !target.IsInsideTree()) return;
 		if (target.GetCurrentHealth() <= 0) return;
 
-		// Lancer un projectile (cannonball)
 		SpawnProjectile(target);
-
-		float totalDef = target._stats.Defense;
-		float actualDamage = _stats.Attack * 100f / (100f + totalDef);
-		GD.Print($"[SHIP ATK] {ShipType} T{TeamId} -> {target.GetShipType()} T{target.GetTeamId()} | {_stats.Attack} brut -> {actualDamage:F1} reel (def {totalDef}) | HP {target.GetCurrentHealth():F0}/{target.GetMaxHealth():F0} (projectile)");
 	}
 
 	private void SpawnProjectile(Ship target)
@@ -69,16 +64,9 @@ public partial class Ship
 
 	private void Die()
 	{
-		GD.Print($"[SHIP MORT] {ShipType} T{TeamId} coule (tue par T{_lastAttackerTeamId})");
-
-		// Si c'est un Transport avec des unites, elles coulent aussi
 		if (_loadedUnits.Count > 0)
-		{
-			GD.Print($"[SHIP] {_loadedUnits.Count} unites perdues avec le Transport!");
 			_loadedUnits.Clear();
-		}
 
-		// Reseau : notifier l'autre peer de la mort
 		if (IsLocalAuthority && !string.IsNullOrEmpty(NetworkId))
 		{
 			NetworkSync.Instance?.SendEntityDied(NetworkId);

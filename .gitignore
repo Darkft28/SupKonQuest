@@ -4,3 +4,11 @@
 
 # Documentation et fichiers de configuration personnels
 .claude/
+
+# Godot UID files
+*.cs.uid
+*.tscn.uid
+
+# IDE
+.idea/
+*.sln.DotSettings.user

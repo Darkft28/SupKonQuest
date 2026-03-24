@@ -14,83 +14,80 @@ public static class TerrainGenerator
 	private const int IdObjetArbre = 100;
 	private const int IdObjetMontagne = 101;
 
-	public static void Generate(TileMapLayer sol, TileMapLayer objets,
-		FastNoiseLite noiseElevation, FastNoiseLite noiseForet, Random seededRandom,
-		int halfWidth, int halfHeight, int tileSize, bool testMode)
+	private static Texture2D _texTree;
+	private static Texture2D _texMontagne;
+
+	// Crée les alternatives de flip (1=FlipH, 2=FlipV, 3=FlipH+V) pour chaque source terrain.
+	// Idempotent : vérifie avant de créer. À appeler avant toute génération.
+	public static void InitTileVariants(TileMapLayer sol)
 	{
-		for (int x = -halfWidth; x < halfWidth; x++)
+		var tileSet = sol.TileSet;
+		if (tileSet == null) return;
+
+		int[] terrainSources = { IdHerbe, IdSable, IdForet, IdRoche, IdNeige, IdEau };
+		var atlasCoords = new Vector2I(0, 0);
+
+		foreach (int sourceId in terrainSources)
 		{
-			for (int y = -halfHeight; y < halfHeight; y++)
+			if (tileSet.GetSource(sourceId) is not TileSetAtlasSource src) continue;
+
+			if (!src.HasAlternativeTile(atlasCoords, 1))
 			{
-				float altitude = noiseElevation.GetNoise2D(x, y);
-				float densiteArbre = noiseForet.GetNoise2D(x, y);
-
-				int solId = -1;
-				int objetId = -1;
-
-				// Biome selon l'altitude
-				if (altitude < -0.2f)
-				{
-					solId = IdEau;
-				}
-				else if (altitude < -0.15f)
-				{
-					solId = IdSable;
-				}
-				else if (altitude < 0.4f)
-				{
-					if (densiteArbre > 0.2f)
-					{
-						solId = IdForet;
-						if (densiteArbre > 0.3f)
-						{
-							if (seededRandom.NextDouble() < 0.25)
-							{
-								objetId = IdObjetArbre;
-							}
-						}
-					}
-					else
-					{
-						solId = IdHerbe;
-						// Consommer le random pour garder le RNG synchronise
-						// (le placement de camps est gere par CampPlacer)
-						if (!testMode && seededRandom.NextDouble() < 0.001)
-						{
-							// Consommer le 2eme random (etait pour camp up check)
-							seededRandom.NextDouble();
-						}
-					}
-				}
-				else if (altitude < 0.55f)
-				{
-					solId = IdRoche;
-					if (altitude < 0.66f)
-					{
-						if (seededRandom.NextDouble() < 0.25)
-						{
-							objetId = IdObjetMontagne;
-						}
-					}
-
-				}
-				else
-				{
-					solId = IdNeige;
-				}
-
-				Vector2I coords = new Vector2I(x, y);
-
-				if (solId != -1)
-				{
-					sol.SetCell(coords, solId, new Vector2I(0, 0));
-				}
-
-				if (objetId != -1)
-				{
-					objets.SetCell(coords, objetId, new Vector2I(0, 0));
-				}
+				src.CreateAlternativeTile(atlasCoords, 1);
+				src.GetTileData(atlasCoords, 1).FlipH = true;
+			}
+			if (!src.HasAlternativeTile(atlasCoords, 2))
+			{
+				src.CreateAlternativeTile(atlasCoords, 2);
+				src.GetTileData(atlasCoords, 2).FlipV = true;
+			}
+			if (!src.HasAlternativeTile(atlasCoords, 3))
+			{
+				src.CreateAlternativeTile(atlasCoords, 3);
+				var td = src.GetTileData(atlasCoords, 3);
+				td.FlipH = true;
+				td.FlipV = true;
 			}
 		}
+	}
+
+	// Hash déterministe par position → variante 0-3 (FlipH/FlipV combinés).
+	// N'utilise pas le Random → déterminisme multijoueur garanti.
+	public static int PickAlt(int x, int y)
+	{
+		unchecked
+		{
+			uint h = (uint)(x * 1664525 + y * 22695477 + 1013904223);
+			h ^= h >> 14;
+			return (int)(h & 3);
+		}
+	}
+
+	public static void SpawnObjectSprite(Node2D container, int objetId, int tx, int ty, int tileSize)
+	{
+		if (container == null) return;
+
+		string texPath = objetId == IdObjetArbre
+			? "res://Assets/Objects/Tree.png"
+			: "res://Assets/Objects/montagne.png";
+
+		if (objetId == IdObjetArbre)
+			_texTree ??= GD.Load<Texture2D>(texPath);
+		else
+			_texMontagne ??= GD.Load<Texture2D>(texPath);
+
+		var tex = objetId == IdObjetArbre ? _texTree : _texMontagne;
+		if (tex == null) return;
+
+		var sprite = new Sprite2D();
+		sprite.Texture = tex;
+		sprite.Position = new Vector2(tx * tileSize + tileSize / 2f, ty * tileSize + tileSize / 2f);
+		// Arbre x5, Montagne x10 (relatif à la tuile de 128px)
+		float scale = objetId == IdObjetArbre ? 2.5f : 10f;
+		sprite.Scale = new Vector2(scale, scale);
+		sprite.ZIndex = 5;
+		sprite.ZAsRelative = false;
+		sprite.YSortEnabled = false;
+		container.AddChild(sprite);
 	}
 }

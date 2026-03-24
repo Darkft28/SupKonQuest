@@ -1,5 +1,4 @@
 using Godot;
-using System;
 using System.Collections.Generic;
 
 public partial class Ship : CharacterBody2D
@@ -16,7 +15,6 @@ public partial class Ship : CharacterBody2D
 	[Export] public int TeamId = 1;
 	[Export] public float DetectionRange = 500f;
 
-	// Reseau
 	public string NetworkId = "";
 	public bool IsLocalAuthority = true;
 	private Vector2? _networkTargetPosition = null;
@@ -44,17 +42,19 @@ public partial class Ship : CharacterBody2D
 
 	private int _lastAttackerTeamId = 0;
 
-	// Transport : debarquement en attente (le bateau navigue d'abord, puis debarque)
-	private Vector2? _pendingUnloadPosition = null;
+	// Navigation maritime
+	private NavigationAgent2D _navAgent = null;
+	private Vector2 _lastNavTargetPos = Vector2.Zero;
+	private bool _navTargetDirty = true;
+	private const float NavUpdateDistance = 64f;
 
-	// Transport : unites embarquees (type, equipe, sante)
+	// debarquement en attente (le bateau navigue d'abord, puis debarque)
+	private Vector2? _pendingUnloadPosition = null;
 	private List<(string type, int teamId, float health)> _loadedUnits = new List<(string, int, float)>();
 
-	// Direction du sprite
 	private enum SpriteDirection { Front, Back, Left, Right }
 	private SpriteDirection _currentDirection = SpriteDirection.Front;
 
-	// Barre de vie
 	private const float HealthBarWidth = 100f;
 	private const float HealthBarHeight = 12f;
 	private const float HealthBarOffsetY = -200f;
@@ -97,15 +97,22 @@ public partial class Ship : CharacterBody2D
 		AddToGroup("ships");
 		AddToGroup($"team_{TeamId}");
 
-		// Reseau : enregistrer dans le registre
 		if (!string.IsNullOrEmpty(NetworkId))
 		{
 			NetworkEntityRegistry.Register(NetworkId, this);
 		}
 
+		// Créer le NavigationAgent2D pour le pathfinding maritime (couche 2 = eau)
+		_navAgent = new NavigationAgent2D();
+		_navAgent.PathDesiredDistance = 15f;
+		_navAgent.TargetDesiredDistance = ArrivalDistance;
+		_navAgent.AvoidanceEnabled = false;
+		_navAgent.NavigationLayers = 2u;
+		_navAgent.Radius = 60f; // marge autour des côtes
+		AddChild(_navAgent);
+
 		_currentState = ShipState.Idle;
 
-		// Chercher le TileMapSol dans la scene si pas deja set
 		if (_tileMapSol == null)
 		{
 			FindTileMapSol();
@@ -120,7 +127,6 @@ public partial class Ship : CharacterBody2D
 		}
 	}
 
-	// Reseau : appliquer l'etat recu du peer distant
 	public void ApplyNetworkState(Vector2 pos, float health)
 	{
 		_networkTargetPosition = pos;
@@ -141,6 +147,7 @@ public partial class Ship : CharacterBody2D
 				Velocity = Vector2.Zero;
 				break;
 			case ShipState.MovingToTarget:
+				_navTargetDirty = true;
 				break;
 			case ShipState.Attacking:
 				Velocity = Vector2.Zero;
@@ -148,14 +155,16 @@ public partial class Ship : CharacterBody2D
 				break;
 			case ShipState.MovingToPoint:
 				_currentTarget = null;
+				_navTargetDirty = true;
 				break;
 		}
 	}
 
 	public override void _PhysicsProcess(double delta)
 	{
-		// Puppet : interpoler vers la position reseau, pas d'IA
-		if (!IsLocalAuthority)
+		// Puppet : interpoler vers la position reseau, pas d'IA (multi seulement)
+		bool isMulti = NetworkSync.Instance?.IsMultiplayer() == true;
+		if (isMulti && !IsLocalAuthority)
 		{
 			if (_networkTargetPosition.HasValue)
 			{

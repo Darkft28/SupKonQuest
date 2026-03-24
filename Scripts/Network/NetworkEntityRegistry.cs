@@ -7,13 +7,17 @@ public static class NetworkEntityRegistry
 	private static readonly Dictionary<string, Node> _entities = new();
 	private static int _counter = 0;
 
-	// Genere un ID unique : "{peerId}_{counter}"
+	// ID format: "{peerId}_{counter}" — deterministe par peer pour eviter les collisions
 	public static string GenerateId()
 	{
-		long peerId = 0;
+		long peerId = 1;
 		var tree = Engine.GetMainLoop() as SceneTree;
 		if (tree != null)
-			peerId = tree.GetMultiplayer().GetUniqueId();
+		{
+			var mp = tree.GetMultiplayer();
+			if (mp.MultiplayerPeer != null)
+				peerId = mp.GetUniqueId();
+		}
 
 		_counter++;
 		return $"{peerId}_{_counter}";

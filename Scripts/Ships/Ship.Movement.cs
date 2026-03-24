@@ -32,33 +32,7 @@ public partial class Ship
 			return;
 		}
 
-		Vector2 direction = (_currentTarget.GlobalPosition - GlobalPosition).Normalized();
-		Vector2 desiredVelocity = direction * _stats.Speed;
-
-		// Verifier que la destination est sur l'eau
-		Vector2 nextPos = GlobalPosition + desiredVelocity * (float)delta;
-		if (IsWaterTile(nextPos))
-		{
-			Velocity = desiredVelocity;
-			UpdateSpriteDirection(desiredVelocity);
-			MoveAndSlide();
-		}
-		else
-		{
-			// Essayer de contourner l'obstacle
-			Vector2 slideVelocity = FindAlternativeWaterDirection(direction, (float)delta);
-			if (slideVelocity != Vector2.Zero)
-			{
-				Velocity = slideVelocity;
-				UpdateSpriteDirection(slideVelocity);
-				MoveAndSlide();
-			}
-			else
-			{
-				Velocity = Vector2.Zero;
-			}
-		}
-
+		MoveWithNav(_currentTarget.GlobalPosition);
 		ProcessStuckDetection();
 	}
 
@@ -86,7 +60,6 @@ public partial class Ship
 			}
 		}
 
-		Vector2 direction = (_targetPosition.Value - GlobalPosition).Normalized();
 		float distance = GlobalPosition.DistanceTo(_targetPosition.Value);
 
 		if (distance < ArrivalDistance)
@@ -104,42 +77,7 @@ public partial class Ship
 			return;
 		}
 
-		Vector2 desiredVelocity = direction * _stats.Speed;
-
-		// Verifier que la destination est sur l'eau
-		Vector2 nextPos = GlobalPosition + desiredVelocity * (float)delta;
-		if (IsWaterTile(nextPos))
-		{
-			Velocity = desiredVelocity;
-			UpdateSpriteDirection(desiredVelocity);
-			MoveAndSlide();
-		}
-		else
-		{
-			// Essayer de contourner l'obstacle au lieu de s'arreter
-			Vector2 slideVelocity = FindAlternativeWaterDirection(direction, (float)delta);
-			if (slideVelocity != Vector2.Zero)
-			{
-				Velocity = slideVelocity;
-				UpdateSpriteDirection(slideVelocity);
-				MoveAndSlide();
-			}
-			else
-			{
-				// Bloque par la terre - si debarquement en attente, decharger ici
-				if (_pendingUnloadPosition.HasValue)
-				{
-					UnloadUnits(_pendingUnloadPosition.Value);
-					_pendingUnloadPosition = null;
-				}
-
-				_targetPosition = null;
-				ChangeState(ShipState.Idle);
-				GD.Print($"[SHIP] {ShipType} T{TeamId} bloque par la terre, arret");
-				return;
-			}
-		}
-
+		MoveWithNav(_targetPosition.Value);
 		ProcessStuckDetection();
 	}
 
@@ -178,25 +116,50 @@ public partial class Ship
 		_lastPosition = GlobalPosition;
 	}
 
-	private Vector2 FindAlternativeWaterDirection(Vector2 desiredDirection, float delta)
+	// Déplacement maritime avec pathfinding sur le navmesh eau.
+	// Aucun fallback vers la terre : le bateau s'arrête si aucun chemin n'est trouvé.
+	private void MoveWithNav(Vector2 targetPos)
 	{
-		// Essayer des angles alternatifs pour longer la cote
-		float[] angles = { 30f, -30f, 60f, -60f, 90f, -90f };
-
-		foreach (float angleDeg in angles)
+		if (_navAgent == null || !_navAgent.IsInsideTree())
 		{
-			float angleRad = Mathf.DegToRad(angleDeg);
-			Vector2 rotated = desiredDirection.Rotated(angleRad);
-			Vector2 altVelocity = rotated * _stats.Speed;
-			Vector2 altNextPos = GlobalPosition + altVelocity * delta;
-
-			if (IsWaterTile(altNextPos))
+			// Avant que l'agent soit prêt : mouvement direct eau seulement (init)
+			Vector2 dir = (targetPos - GlobalPosition).Normalized();
+			Vector2 desiredVel = dir * _stats.Speed;
+			Vector2 nextPos = GlobalPosition + desiredVel / 60f;
+			if (IsWaterTile(nextPos))
 			{
-				return altVelocity;
+				Velocity = desiredVel;
+				UpdateSpriteDirection(desiredVel);
+				MoveAndSlide();
 			}
+			else
+			{
+				Velocity = Vector2.Zero;
+			}
+			return;
 		}
 
-		return Vector2.Zero;
+		// Throttle : recalculer le chemin seulement si la cible a bougé ou nouvel ordre
+		if (_navTargetDirty || targetPos.DistanceTo(_lastNavTargetPos) > NavUpdateDistance)
+		{
+			_navAgent.TargetPosition = targetPos;
+			_lastNavTargetPos = targetPos;
+			_navTargetDirty = false;
+		}
+
+		if (_navAgent.IsNavigationFinished())
+		{
+			// Chemin terminé ou cible inatteignable → arrêt propre
+			Velocity = Vector2.Zero;
+			return;
+		}
+
+		Vector2 nextNavPos = _navAgent.GetNextPathPosition();
+		Vector2 direction = (nextNavPos - GlobalPosition).Normalized();
+		Vector2 vel = direction * _stats.Speed;
+		Velocity = vel;
+		UpdateSpriteDirection(vel);
+		MoveAndSlide();
 	}
 
 	public bool IsWaterTile(Vector2 globalPos)
@@ -210,12 +173,8 @@ public partial class Ship
 
 	public void MoveTo(Vector2 target)
 	{
-		// Verifier que la destination est sur l'eau
 		if (!IsWaterTile(target))
-		{
-			GD.Print($"[SHIP] Destination refusee: pas sur l'eau");
 			return;
-		}
 
 		_pendingUnloadPosition = null; // Nouvel ordre annule le debarquement
 		_targetPosition = target;

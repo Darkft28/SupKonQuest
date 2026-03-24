@@ -16,14 +16,12 @@ public partial class CampSimple
 
 	private void CreateHealthBar()
 	{
-		//fond noir
 		_healthBarBackground = new ColorRect();
 		_healthBarBackground.Size = new Vector2(HealthBarWidth, HealthBarHeight);
 		_healthBarBackground.Position = new Vector2(-HealthBarWidth / 2, -100);
 		_healthBarBackground.Color = new Color(0, 0, 0, 0.8f);
 		AddChild(_healthBarBackground);
 
-		//bare de vie à la couleur de l'équipe
 		_healthBarForeground = new ColorRect();
 		_healthBarForeground.Size = new Vector2(HealthBarWidth, HealthBarHeight);
 		_healthBarForeground.Position = new Vector2(-HealthBarWidth / 2, -100);

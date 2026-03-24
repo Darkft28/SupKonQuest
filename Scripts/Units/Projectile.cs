@@ -32,11 +32,9 @@ public partial class Projectile : Node2D
 		_speed = speed;
 		GlobalPosition = start;
 
-		// Arc plus haut pour le mortier
 		float distance = start.DistanceTo(_targetPos);
 		_arcHeight = type == ProjectileType.Cannonball ? distance * 0.4f : 0f;
 
-		// Charger le sprite
 		CreateSprite();
 	}
 
@@ -52,7 +50,6 @@ public partial class Projectile : Node2D
 		}
 		else
 		{
-			// Choisir gauche ou droite selon la direction
 			bool goingRight = _targetPos.X >= _startPos.X;
 			texturePath = goingRight
 				? "res://Assets/Units/Characters/Range/Ammo_Range_Right.png"
@@ -74,7 +71,6 @@ public partial class Projectile : Node2D
 		if (_progress >= 1f)
 			return;
 
-		// Mettre a jour la position cible si l'unite bouge
 		if (_targetUnit != null && IsInstanceValid(_targetUnit) && _targetUnit.IsInsideTree())
 		{
 			_targetPos = _targetUnit.GlobalPosition;
@@ -96,10 +92,9 @@ public partial class Projectile : Node2D
 			return;
 		}
 
-		// Position lineaire
 		Vector2 linearPos = _startPos.Lerp(_targetPos, _progress);
 
-		// Arc parabolique pour le mortier
+		// Arc parabolique (Cannonball uniquement)
 		if (_type == ProjectileType.Cannonball)
 		{
 			float arc = -4f * _arcHeight * _progress * (_progress - 1f);
@@ -108,7 +103,6 @@ public partial class Projectile : Node2D
 
 		GlobalPosition = linearPos;
 
-		// Orienter la fleche vers la cible
 		if (_type == ProjectileType.Arrow && _sprite != null)
 		{
 			Vector2 direction = (_targetPos - GlobalPosition).Normalized();
@@ -121,8 +115,9 @@ public partial class Projectile : Node2D
 		if (_targetUnit != null && IsInstanceValid(_targetUnit) && _targetUnit.IsInsideTree()
 			&& _targetUnit.GetCurrentHealth() > 0)
 		{
-			// Reseau : si la cible est un puppet, envoyer via RPC
-			if (!_targetUnit.IsLocalAuthority && !string.IsNullOrEmpty(_targetUnit.NetworkId))
+			// Réseau : si la cible est un puppet, envoyer via RPC
+			bool isMulti = NetworkSync.Instance?.IsMultiplayer() == true;
+			if (isMulti && !_targetUnit.IsLocalAuthority && !string.IsNullOrEmpty(_targetUnit.NetworkId))
 			{
 				NetworkSync.Instance?.SendUnitDamage(_targetUnit.NetworkId, _damage, _attackerTeamId);
 			}
@@ -131,6 +126,34 @@ public partial class Projectile : Node2D
 				_targetUnit.TakeDamageFrom(_damage, _attackerTeamId);
 			}
 		}
+
+		if (_type == ProjectileType.Cannonball)
+			ApplyMortarSplash();
+
 		QueueFree();
+	}
+
+	private void ApplyMortarSplash()
+	{
+		const float SplashRadius = 200f;
+		const float SplashDamage = 20f;
+
+		var allUnits = GetTree().GetNodesInGroup("units");
+		foreach (var node in allUnits)
+		{
+			if (node is not Unit unit) continue;
+			if (unit == _targetUnit) continue;
+			if (unit.GetTeamId() == _attackerTeamId) continue;
+			if (unit.GetCurrentHealth() <= 0) continue;
+
+			float dist = _targetPos.DistanceTo(unit.GlobalPosition);
+			if (dist > SplashRadius) continue;
+
+			bool isMultiSplash = NetworkSync.Instance?.IsMultiplayer() == true;
+			if (isMultiSplash && !unit.IsLocalAuthority && !string.IsNullOrEmpty(unit.NetworkId))
+				NetworkSync.Instance?.SendUnitDamage(unit.NetworkId, SplashDamage, _attackerTeamId);
+			else
+				unit.TakeDamageFrom(SplashDamage, _attackerTeamId);
+		}
 	}
 }

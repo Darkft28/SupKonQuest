@@ -4,27 +4,22 @@ public partial class Unit
 {
 	private void ProcessAttackingState(double delta)
 	{
-		// Vérifier si la cible est encore valide
 		if (!IsTargetValid())
 		{
-			GD.Print($"[COMBAT] {UnitType} (Team {TeamId}) -> cible invalide, retour Idle");
 			ChangeState(UnitState.Idle);
 			return;
 		}
 
 		float distanceToTarget = GlobalPosition.DistanceTo(_currentTarget.GlobalPosition);
 
-		// Si la cible s'éloigne trop, la poursuivre
-		// On ajoute une marge de 20 pixels pour éviter les oscillations
+		// Marge de 20px pour éviter les oscillations
 		float rangeWithMargin = _stats.Range + 20f;
 		if (distanceToTarget > rangeWithMargin)
 		{
-			GD.Print($"[COMBAT] {UnitType} (Team {TeamId}) -> cible hors portee (distance={distanceToTarget:F1} > range+marge={rangeWithMargin}), poursuite");
 			ChangeState(UnitState.MovingToTarget);
 			return;
 		}
 
-		// Attaquer à intervalles réguliers
 		_attackTimer += (float)delta;
 
 		if (_attackTimer >= AttackInterval)
@@ -36,7 +31,6 @@ public partial class Unit
 
 	private void ProcessAttackingCampState(double delta)
 	{
-		// Verifier si le camp est encore valide
 		if (_campTarget == null || !IsInstanceValid(_campTarget) || !_campTarget.IsInsideTree())
 		{
 			_campTarget = null;
@@ -44,7 +38,7 @@ public partial class Unit
 			return;
 		}
 
-		// Si le camp est devenu allie (capture par notre equipe)
+		// Camp capturé par notre équipe → succès
 		if (_campTarget.GetTeamId() == TeamId)
 		{
 			_campTarget = null;
@@ -52,51 +46,100 @@ public partial class Unit
 			return;
 		}
 
-		// Si des defenseurs sont reapparus, les combattre d'abord
-		if (!_campTarget.AreAllUnitsDefeated())
-		{
-			Unit enemy = FindEnemyInDetectionRange();
-			if (enemy != null)
-			{
-				_campTarget = null;
-				SetNewTarget(enemy);
-				return;
-			}
-			// Pas d'ennemi direct, attendre
-			_campTarget = null;
-			ReturnToSavedPositionOrIdle();
-			return;
-		}
-
-		// Priorite aux ennemis proches
-		Unit nearbyEnemy = FindEnemyInDetectionRange();
-		if (nearbyEnemy != null)
-		{
-			_campTarget = null;
-			SetNewTarget(nearbyEnemy);
-			return;
-		}
-
 		float distanceToCamp = GlobalPosition.DistanceTo(_campTarget.GlobalPosition);
 
-		// Se rapprocher si trop loin
-		if (distanceToCamp > _stats.Range)
+		// Cache AreAllUnitsDefeated : évite le LINQ RemoveAll chaque frame
+		_campDefeatCheckTimer += (float)delta;
+		if (_campDefeatCheckTimer >= CampDefeatCheckInterval)
 		{
-			Vector2 direction = (_campTarget.GlobalPosition - GlobalPosition).Normalized();
-			Velocity = direction * _stats.Speed;
-			MoveAndSlide();
+			_campDefeatCheckTimer = 0f;
+			_campDefeatCached = _campTarget.AreAllUnitsDefeated();
+		}
+
+		// Recherche throttlée d'ennemis croisés en chemin (combat opportuniste)
+		_aiSearchTimer += (float)delta;
+		if (_aiSearchTimer >= EnemySearchInterval)
+		{
+			_aiSearchTimer = 0f;
+			_opportunisticTarget = FindEnemyInDetectionRange();
+		}
+		// Invalider si mort ou sorti de portée
+		if (_opportunisticTarget != null &&
+			(!IsInstanceValid(_opportunisticTarget)
+			|| _opportunisticTarget.GetCurrentHealth() <= 0
+			|| GlobalPosition.DistanceTo(_opportunisticTarget.GlobalPosition) > DetectionRange))
+		{
+			_opportunisticTarget = null;
+		}
+
+		float effectiveRange = _stats.Range + 80f;
+
+		// Phase 1 : des défenseurs sont encore en vie → les combattre en priorité
+		if (!_campDefeatCached)
+		{
+			Unit defender = FindNearestDefenderOfCamp(_campTarget);
+			Unit combatTarget = defender ?? _opportunisticTarget;
+
+			if (combatTarget != null)
+			{
+				float distToTarget = GlobalPosition.DistanceTo(combatTarget.GlobalPosition);
+				if (distToTarget <= effectiveRange)
+				{
+					Velocity = Vector2.Zero;
+					_attackTimer += (float)delta;
+					if (_attackTimer >= AttackInterval)
+					{
+						_attackTimer = 0f;
+						AttackTarget(combatTarget);
+					}
+				}
+				else
+				{
+					MoveWithNav(combatTarget.GlobalPosition);
+				}
+			}
+			else
+			{
+				// Aucun ennemi visible : avancer vers le camp
+				if (distanceToCamp > _stats.Range)
+					MoveWithNav(_campTarget.GlobalPosition);
+				else
+					Velocity = Vector2.Zero;
+			}
 			return;
 		}
 
-		// A portee : attaquer le camp
+		// Phase 2 : plus de défenseurs → attaquer le bâtiment, mais engager les ennemis de passage
+		if (_opportunisticTarget != null)
+		{
+			float distToOpp = GlobalPosition.DistanceTo(_opportunisticTarget.GlobalPosition);
+			if (distToOpp <= effectiveRange)
+			{
+				Velocity = Vector2.Zero;
+				_attackTimer += (float)delta;
+				if (_attackTimer >= AttackInterval)
+				{
+					_attackTimer = 0f;
+					AttackTarget(_opportunisticTarget);
+				}
+				return;
+			}
+		}
+
+		// Marge de 80px pour les unités bloquées par la collision du bâtiment ou des alliés
+		float effectiveCampRange = _stats.Range + 80f;
+		if (distanceToCamp > effectiveCampRange)
+		{
+			MoveWithNav(_campTarget.GlobalPosition);
+			return;
+		}
+
 		Velocity = Vector2.Zero;
 		_attackTimer += (float)delta;
-
 		if (_attackTimer >= AttackInterval)
 		{
 			_attackTimer = 0f;
 			_campTarget.TakeDamage(_stats.Attack, TeamId);
-			GD.Print($"[ATK CAMP] {UnitType} T{TeamId} -> Camp #{_campTarget.GetCampId()} | {_stats.Attack} degats | HP {_campTarget.GetCurrentHealth():F0}/{_campTarget.MaxHealth}");
 		}
 	}
 
@@ -108,32 +151,27 @@ public partial class Unit
 		if (target.GetCurrentHealth() <= 0)
 			return;
 
-		// Range et Mortar : lancer un projectile au lieu d'appliquer les degats directement
+		// Range et Mortar : projectile au lieu de dégâts directs
 		if (UnitType == "Range" || UnitType == "Mortar")
 		{
 			SpawnProjectile(target);
-			LogAttack(target);
 			return;
 		}
 
-		float hpBefore = target.GetCurrentHealth();
+		// AntiArmor : dégâts x2 contre les unités Heavy
+		float attackDamage = _stats.Attack;
+		if (UnitType == "AntiArmor" && target.GetUnitType() == "Heavy")
+			attackDamage *= 2f;
 
-		// Reseau : si la cible est un puppet (remote), envoyer via RPC
-		if (!target.IsLocalAuthority && !string.IsNullOrEmpty(target.NetworkId))
+		// Réseau : si la cible est un puppet, envoyer via RPC
+		bool isMulti = NetworkSync.Instance?.IsMultiplayer() == true;
+		if (isMulti && !target.IsLocalAuthority && !string.IsNullOrEmpty(target.NetworkId))
 		{
-			NetworkSync.Instance?.SendUnitDamage(target.NetworkId, _stats.Attack, TeamId);
+			NetworkSync.Instance?.SendUnitDamage(target.NetworkId, attackDamage, TeamId);
 			return;
 		}
 
-		// Autres unites : degats directs
-		target.TakeDamageFrom(_stats.Attack, TeamId);
-
-		float hpAfter = target.GetCurrentHealth();
-		float auraBonus = target.GetSupportDefenseBonus();
-		float totalDef = target._stats.Defense + auraBonus;
-		float actualDamage = _stats.Attack * 100f / (100f + totalDef);
-		string auraStr = auraBonus > 0 ? $" +{auraBonus:F0} aura" : "";
-		GD.Print($"[ATK] {UnitType} T{TeamId} -> {target.GetUnitType()} T{target.GetTeamId()} | {_stats.Attack} brut -> {actualDamage:F1} reel (def {target._stats.Defense}{auraStr}) | HP {hpBefore:F0} -> {hpAfter:F0}/{target.GetMaxHealth():F0}");
+		target.TakeDamageFrom(attackDamage, TeamId);
 	}
 
 	private void SpawnProjectile(Unit target)
@@ -147,15 +185,6 @@ public partial class Unit
 		projectile.Initialize(GlobalPosition, target, _stats.Attack, TeamId, type, speed);
 	}
 
-	private void LogAttack(Unit target)
-	{
-		float auraBonus = target.GetSupportDefenseBonus();
-		float totalDef = target._stats.Defense + auraBonus;
-		float actualDamage = _stats.Attack * 100f / (100f + totalDef);
-		string auraStr = auraBonus > 0 ? $" +{auraBonus:F0} aura" : "";
-		GD.Print($"[ATK] {UnitType} T{TeamId} -> {target.GetUnitType()} T{target.GetTeamId()} | {_stats.Attack} brut -> {actualDamage:F1} reel (def {target._stats.Defense}{auraStr}) | HP {target.GetCurrentHealth():F0}/{target.GetMaxHealth():F0} (projectile)");
-	}
-
 	public void TakeDamage(float damage)
 	{
 		TakeDamageFrom(damage, 0);
@@ -163,7 +192,7 @@ public partial class Unit
 
 	public void TakeDamageFrom(float damage, int attackerTeamId)
 	{
-		// Defense = base + bonus aura Support
+		// Formule de réduction : damage * 100 / (100 + defense)
 		float totalDefense = _stats.Defense + GetSupportDefenseBonus();
 		float actualDamage = damage * 100f / (100f + totalDefense);
 		_currentHealth -= actualDamage;
@@ -171,66 +200,54 @@ public partial class Unit
 		QueueRedraw();
 
 		if (_currentHealth <= 0)
-		{
 			Die();
-		}
 	}
 
 	private void Die()
 	{
-		GD.Print($"[MORT] {UnitType} T{TeamId} elimine (tue par T{_lastAttackerTeamId})");
-
-		// Reseau : notifier l'autre peer de la mort
-		if (IsLocalAuthority && !string.IsNullOrEmpty(NetworkId))
+		if (OwnerCamp != null && IsInstanceValid(OwnerCamp))
 		{
-			NetworkSync.Instance?.SendEntityDied(NetworkId);
+			bool mutualKill = _currentTarget != null
+				&& IsInstanceValid(_currentTarget)
+				&& _currentTarget.GetCurrentHealth() <= 0;
+			OwnerCamp.OnDefenderDied(_lastAttackerTeamId, mutualKill);
 		}
+
+		if (IsLocalAuthority && !string.IsNullOrEmpty(NetworkId))
+			NetworkSync.Instance?.SendEntityDied(NetworkId);
 
 		QueueFree();
 	}
 
 	private void OnBodyEnteredDetectionZone(Node2D body)
 	{
-		// Les healers ne combattent pas
-		if (UnitType == "Heal")
-			return;
+		if (UnitType == "Heal") return;
+		if (body is not Unit otherUnit) return;
+		if (otherUnit.GetTeamId() == TeamId || otherUnit.GetCurrentHealth() <= 0) return;
+		if (_currentTarget != null) return;
 
-		// Si on est en Idle et qu'un ennemi entre dans la zone, on le cible
-		if (body is Unit otherUnit)
+		if (_currentState == UnitState.Idle)
 		{
-			if (otherUnit.GetTeamId() != TeamId && otherUnit.GetCurrentHealth() > 0)
-			{
-				// Si on n'a pas de cible, on en prend une
-				if (_currentTarget == null && _currentState == UnitState.Idle)
-				{
-					SetNewTarget(otherUnit);
-				}
-			}
+			SetNewTarget(otherUnit);
+		}
+		else if (_currentState == UnitState.MovingToPoint)
+		{
+			// Sauvegarder la destination et engager l'ennemi croisé
+			_savedTargetPosition ??= _targetPosition;
+			SetNewTarget(otherUnit);
 		}
 	}
 
 	private void OnBodyExitedDetectionZone(Node2D body)
 	{
-		// Si notre cible sort de la zone de détection, on continue de la poursuivre
-		// (la logique de poursuite gère déjà ce cas)
+		// La logique de poursuite dans ProcessMovingToTargetState gère ce cas
 	}
 
 	private void SetNewTarget(Unit target)
 	{
 		_currentTarget = target;
-
 		float distanceToTarget = GlobalPosition.DistanceTo(target.GlobalPosition);
-
-		if (distanceToTarget <= _stats.Range)
-		{
-			// À portée d'attaque
-			ChangeState(UnitState.Attacking);
-		}
-		else
-		{
-			// Hors portée, on se déplace vers la cible
-			ChangeState(UnitState.MovingToTarget);
-		}
+		ChangeState(distanceToTarget <= _stats.Range ? UnitState.Attacking : UnitState.MovingToTarget);
 	}
 
 	private bool IsTargetValid()
@@ -250,10 +267,32 @@ public partial class Unit
 		return true;
 	}
 
+	private Unit FindNearestDefenderOfCamp(CampSimple camp)
+	{
+		var defenders = camp.GetLiveDefenders();
+		Unit nearest = null;
+		float nearestDist = float.MaxValue;
+
+		foreach (var unit in defenders)
+		{
+			if (unit == null || !IsInstanceValid(unit) || unit.GetCurrentHealth() <= 0)
+				continue;
+			if (unit.GetTeamId() == TeamId)
+				continue;
+
+			float dist = GlobalPosition.DistanceTo(unit.GlobalPosition);
+			if (dist < nearestDist)
+			{
+				nearestDist = dist;
+				nearest = unit;
+			}
+		}
+		return nearest;
+	}
+
 	private Unit FindEnemyInDetectionRange()
 	{
 		var allUnits = GetTree().GetNodesInGroup("units");
-
 		Unit closestEnemy = null;
 		float closestDistance = float.MaxValue;
 
@@ -261,17 +300,10 @@ public partial class Unit
 		{
 			if (node is Unit otherUnit)
 			{
-				// Ignorer les alliés et soi-même
-				if (otherUnit.GetTeamId() == TeamId)
-					continue;
+				if (otherUnit.GetTeamId() == TeamId) continue;
+				if (otherUnit.GetCurrentHealth() <= 0) continue;
 
-				// Ignorer les unités mortes
-				if (otherUnit.GetCurrentHealth() <= 0)
-					continue;
-
-				// Vérifier la distance de détection
 				float distance = GlobalPosition.DistanceTo(otherUnit.GlobalPosition);
-
 				if (distance <= DetectionRange && distance < closestDistance)
 				{
 					closestEnemy = otherUnit;
@@ -286,30 +318,46 @@ public partial class Unit
 	private CampSimple FindAttackableCampInRange()
 	{
 		var allCamps = GetTree().GetNodesInGroup("camps");
-		CampSimple closestCamp = null;
-		float closestDistance = float.MaxValue;
+		CampSimple bestCamp = null;
+		float bestScore = float.MaxValue;
+
+		// Région de cette unité (héritée du camp propriétaire ou assignée directement)
+		int myRegion = RegionId > 0 ? RegionId : (OwnerCamp?.RegionId ?? 0);
+		var graph = MapGenerator.TerritoryGraph;
 
 		foreach (var node in allCamps)
 		{
-			if (node is CampSimple camp)
+			if (node is not CampSimple camp) continue;
+			if (camp.GetTeamId() == TeamId) continue;
+			if (!camp.AreAllUnitsDefeated()) continue;
+
+			float distance = GlobalPosition.DistanceTo(camp.GlobalPosition);
+			if (distance > CampAttackDetectionRange) continue;
+
+			// Score de base : distance euclidienne
+			float score = distance;
+
+			// Bonus territoire : réduire le score selon la proximité de région
+			if (myRegion > 0 && graph != null)
 			{
-				// Ignorer les camps allies
-				if (camp.GetTeamId() == TeamId)
-					continue;
+				if (camp.RegionId == myRegion)
+					score -= 3000f; // Même région = priorité maximale
+				else if (camp.RegionId > 0 && TerritoryConnectivity.AreConnected(graph, myRegion, camp.RegionId))
+					score -= 1500f; // Région adjacente accessible = priorité secondaire
+			}
+			else if (myRegion > 0 && camp.RegionId == myRegion)
+			{
+				// Fallback sans graphe : même région quand même prioritaire
+				score -= 2000f;
+			}
 
-				// Le camp doit avoir ses defenseurs morts
-				if (!camp.AreAllUnitsDefeated())
-					continue;
-
-				float distance = GlobalPosition.DistanceTo(camp.GlobalPosition);
-				if (distance <= CampAttackDetectionRange && distance < closestDistance)
-				{
-					closestCamp = camp;
-					closestDistance = distance;
-				}
+			if (score < bestScore)
+			{
+				bestScore = score;
+				bestCamp = camp;
 			}
 		}
 
-		return closestCamp;
+		return bestCamp;
 	}
 }

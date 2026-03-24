@@ -4,7 +4,6 @@ public partial class Unit
 {
 	private void ProcessHealingState(double delta)
 	{
-		// Verifier si la cible de soin est encore valide et blessee
 		if (_healTarget == null || !IsInstanceValid(_healTarget) || !_healTarget.IsInsideTree()
 			|| _healTarget.GetCurrentHealth() <= 0 || _healTarget.GetCurrentHealth() >= _healTarget.GetMaxHealth())
 		{
@@ -15,7 +14,6 @@ public partial class Unit
 
 		float distanceToAlly = GlobalPosition.DistanceTo(_healTarget.GlobalPosition);
 
-		// Si l'allie est trop loin, se rapprocher
 		if (distanceToAlly > _stats.Range)
 		{
 			Vector2 direction = (_healTarget.GlobalPosition - GlobalPosition).Normalized();
@@ -24,10 +22,9 @@ public partial class Unit
 			return;
 		}
 
-		// A portee : soigner
 		Velocity = Vector2.Zero;
 		_healTimer += (float)delta;
-		QueueRedraw(); // Mettre a jour le rayon vert
+		QueueRedraw();
 
 		if (_healTimer >= HealInterval)
 		{
@@ -38,10 +35,8 @@ public partial class Unit
 
 	public void Heal(float amount)
 	{
-		float hpBefore = _currentHealth;
 		SetCurrentHealth(_currentHealth + amount);
 		QueueRedraw();
-		GD.Print($"[HEAL] {UnitType} T{TeamId} +{amount} HP | {hpBefore:F0} -> {_currentHealth:F0}/{_maxHealth:F0}");
 	}
 
 	public float GetSupportDefenseBonus()
@@ -66,7 +61,7 @@ public partial class Unit
 			}
 		}
 
-		return bonus;
+		return Mathf.Min(bonus, 40f); // cap : 4 supports max actifs
 	}
 
 	private Unit FindWoundedAllyInRange()

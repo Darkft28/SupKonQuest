@@ -16,6 +16,7 @@ public partial class MainMenu : Control
 		_langButton = GetNode<Button>("LangButton");
 
 		_langButton.Pressed += OnLangPressed;
+		_optionsButton.Pressed += OnLangPressed;
 
 		if (LocalizationManager.Instance != null)
 		{

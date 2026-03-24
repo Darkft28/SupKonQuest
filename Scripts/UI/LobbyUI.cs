@@ -2,8 +2,7 @@ using Godot;
 
 public partial class LobbyUI : Control
 {
-	// Références aux éléments UI
-	private Label _titleLabel;
+		private Label _titleLabel;
 	private Label _codeLabel;
 	private LineEdit _codeInput;
 	private Label _codeDisplayLabel;
@@ -16,17 +15,14 @@ public partial class LobbyUI : Control
 	private ItemList _playerList;
 	private Label _statusLabel;
 
-	// Références aux managers
-	private NetworkManager _networkManager;
+		private NetworkManager _networkManager;
 	private GameState _gameState;
 
 	public override void _Ready()
 	{
-		// Récupérer les managers
 		_networkManager = GetNode<NetworkManager>("/root/NetworkManager");
 		_gameState = GetNode<GameState>("/root/GameState");
 
-		// Récupérer les éléments UI
 		_titleLabel = GetNode<Label>("VBoxContainer/Title");
 		_codeLabel = GetNode<Label>("VBoxContainer/ConnectionPanel/VBoxContainer/CodeContainer/Label");
 		_codeInput = GetNode<LineEdit>("VBoxContainer/ConnectionPanel/VBoxContainer/CodeContainer/CodeInput");
@@ -40,27 +36,23 @@ public partial class LobbyUI : Control
 		_playerList = GetNode<ItemList>("VBoxContainer/LobbyPanel/VBoxContainer/PlayerList");
 		_statusLabel = GetNode<Label>("VBoxContainer/StatusLabel");
 
-		// Connecter les signaux des boutons
 		_hostButton.Pressed += OnHostPressed;
 		_joinButton.Pressed += OnJoinPressed;
 		_startButton.Pressed += OnStartPressed;
 		_backButton.Pressed += OnBackPressed;
 		_langButton.Pressed += OnLangPressed;
 
-		// Connecter les signaux du NetworkManager
 		_networkManager.PlayerConnected += OnPlayerConnected;
 		_networkManager.PlayerDisconnected += OnPlayerDisconnected;
 		_networkManager.ConnectionSucceeded += OnConnectionSucceeded;
 		_networkManager.ConnectionFailed += OnConnectionFailed;
 		_networkManager.ServerDisconnected += OnServerDisconnected;
 
-		// Connecter le signal de changement de langue
 		if (LocalizationManager.Instance != null)
 		{
 			LocalizationManager.Instance.LanguageChanged += UpdateTexts;
 		}
 
-		// État initial
 		_startButton.Visible = false;
 		_codeDisplayLabel.Text = "";
 
@@ -89,7 +81,6 @@ public partial class LobbyUI : Control
 
 	public override void _ExitTree()
 	{
-		// Déconnecter les signaux
 		if (_networkManager != null)
 		{
 			_networkManager.PlayerConnected -= OnPlayerConnected;
@@ -110,8 +101,7 @@ public partial class LobbyUI : Control
 		var error = _networkManager.HostGame();
 		if (error == Error.Ok)
 		{
-			// Afficher le code de salon en gros
-			_codeDisplayLabel.Text = _networkManager.RoomCode;
+				_codeDisplayLabel.Text = _networkManager.RoomCode;
 			_codeInput.Editable = false;
 			_codeInput.Text = _networkManager.RoomCode;
 
@@ -162,14 +152,11 @@ public partial class LobbyUI : Control
 		GetTree().ChangeSceneToFile("res://Scenes/GameModeMenu.tscn");
 	}
 
-	// --- Callbacks réseau ---
-
-	private void OnPlayerConnected(long id)
+		private void OnPlayerConnected(long id)
 	{
 		UpdatePlayerList();
 		UpdateStatus($"{LocalizationManager.Instance.GetText("player_connected")} {id}");
 
-		// Si on est le serveur, envoyer la liste des joueurs
 		if (_networkManager.IsServer)
 		{
 			_networkManager.BroadcastPlayerList();
@@ -207,8 +194,6 @@ public partial class LobbyUI : Control
 		_playerList.Clear();
 	}
 
-	// --- Helpers ---
-
 	private void UpdatePlayerList()
 	{
 		_playerList.Clear();
@@ -222,6 +207,5 @@ public partial class LobbyUI : Control
 	private void UpdateStatus(string message)
 	{
 		_statusLabel.Text = message;
-		GD.Print($"[Lobby] {message}");
 	}
 }

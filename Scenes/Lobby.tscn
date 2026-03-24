@@ -1,11 +1,31 @@
-[gd_scene load_steps=4 format=3 uid="uid://clobby123456"]
+[gd_scene load_steps=7 format=3 uid="uid://clobby123456"]
 
 [ext_resource type="Script" path="res://Scripts/UI/LobbyUI.cs" id="1_lobby"]
 [ext_resource type="Texture2D" uid="uid://b04lypslc5oeg" path="res://Assets/Menu/Texture/Menu_bg.png" id="2_bg"]
-[ext_resource type="Texture2D" uid="uid://cx4j1ibd7hv4t" path="res://Assets/Menu/Texture/Button.png" id="3_btn"]
+[ext_resource type="Texture2D" uid="uid://clbmelrr2gjaw" path="res://Assets/Menu/Texture/Button_stone.png" id="3_btn"]
 
-[sub_resource type="StyleBoxTexture" id="StyleBoxTexture_btn"]
+[sub_resource type="StyleBoxTexture" id="SBT_normal"]
 texture = ExtResource("3_btn")
+content_margin_left = 14.0
+content_margin_right = 14.0
+content_margin_top = 8.0
+content_margin_bottom = 8.0
+
+[sub_resource type="StyleBoxTexture" id="SBT_hover"]
+texture = ExtResource("3_btn")
+modulate_color = Color(1, 0.88, 0.42, 1)
+content_margin_left = 14.0
+content_margin_right = 14.0
+content_margin_top = 8.0
+content_margin_bottom = 8.0
+
+[sub_resource type="StyleBoxTexture" id="SBT_pressed"]
+texture = ExtResource("3_btn")
+modulate_color = Color(0.68, 0.48, 0.18, 1)
+content_margin_left = 14.0
+content_margin_right = 14.0
+content_margin_top = 8.0
+content_margin_bottom = 8.0
 
 [node name="LobbyUI" type="Control"]
 layout_mode = 3
@@ -82,25 +102,25 @@ size_flags_horizontal = 4
 theme_override_constants/separation = 20
 
 [node name="HostButton" type="Button" parent="VBoxContainer/ConnectionPanel/VBoxContainer/ButtonContainer"]
-custom_minimum_size = Vector2(152, 40)
+custom_minimum_size = Vector2(152, 48)
 layout_mode = 2
 size_flags_horizontal = 4
 theme_override_font_sizes/font_size = 18
-theme_override_styles/normal = SubResource("StyleBoxTexture_btn")
-theme_override_styles/hover = SubResource("StyleBoxTexture_btn")
-theme_override_styles/pressed = SubResource("StyleBoxTexture_btn")
-theme_override_styles/focus = SubResource("StyleBoxTexture_btn")
+theme_override_styles/normal = SubResource("SBT_normal")
+theme_override_styles/hover = SubResource("SBT_hover")
+theme_override_styles/pressed = SubResource("SBT_pressed")
+theme_override_styles/focus = SubResource("SBT_hover")
 text = "Créer"
 
 [node name="JoinButton" type="Button" parent="VBoxContainer/ConnectionPanel/VBoxContainer/ButtonContainer"]
-custom_minimum_size = Vector2(152, 40)
+custom_minimum_size = Vector2(152, 48)
 layout_mode = 2
 size_flags_horizontal = 4
 theme_override_font_sizes/font_size = 18
-theme_override_styles/normal = SubResource("StyleBoxTexture_btn")
-theme_override_styles/hover = SubResource("StyleBoxTexture_btn")
-theme_override_styles/pressed = SubResource("StyleBoxTexture_btn")
-theme_override_styles/focus = SubResource("StyleBoxTexture_btn")
+theme_override_styles/normal = SubResource("SBT_normal")
+theme_override_styles/hover = SubResource("SBT_hover")
+theme_override_styles/pressed = SubResource("SBT_pressed")
+theme_override_styles/focus = SubResource("SBT_hover")
 text = "Rejoindre"
 
 [node name="LobbyPanel" type="PanelContainer" parent="VBoxContainer"]
@@ -120,14 +140,14 @@ size_flags_vertical = 3
 auto_height = true
 
 [node name="StartButton" type="Button" parent="VBoxContainer/LobbyPanel/VBoxContainer"]
-custom_minimum_size = Vector2(304, 50)
+custom_minimum_size = Vector2(304, 56)
 layout_mode = 2
 size_flags_horizontal = 4
 theme_override_font_sizes/font_size = 20
-theme_override_styles/normal = SubResource("StyleBoxTexture_btn")
-theme_override_styles/hover = SubResource("StyleBoxTexture_btn")
-theme_override_styles/pressed = SubResource("StyleBoxTexture_btn")
-theme_override_styles/focus = SubResource("StyleBoxTexture_btn")
+theme_override_styles/normal = SubResource("SBT_normal")
+theme_override_styles/hover = SubResource("SBT_hover")
+theme_override_styles/pressed = SubResource("SBT_pressed")
+theme_override_styles/focus = SubResource("SBT_hover")
 text = "Lancer la partie"
 
 [node name="StatusLabel" type="Label" parent="VBoxContainer"]
@@ -137,14 +157,14 @@ text = "En attente..."
 horizontal_alignment = 1
 
 [node name="BackButton" type="Button" parent="VBoxContainer"]
-custom_minimum_size = Vector2(304, 50)
+custom_minimum_size = Vector2(304, 56)
 layout_mode = 2
 size_flags_horizontal = 4
 theme_override_font_sizes/font_size = 20
-theme_override_styles/normal = SubResource("StyleBoxTexture_btn")
-theme_override_styles/hover = SubResource("StyleBoxTexture_btn")
-theme_override_styles/pressed = SubResource("StyleBoxTexture_btn")
-theme_override_styles/focus = SubResource("StyleBoxTexture_btn")
+theme_override_styles/normal = SubResource("SBT_normal")
+theme_override_styles/hover = SubResource("SBT_hover")
+theme_override_styles/pressed = SubResource("SBT_pressed")
+theme_override_styles/focus = SubResource("SBT_hover")
 text = "Retour"
 
 [node name="LangButton" type="Button" parent="."]

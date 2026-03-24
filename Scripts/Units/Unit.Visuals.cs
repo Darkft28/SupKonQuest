@@ -2,30 +2,88 @@ using Godot;
 
 public partial class Unit
 {
+	private Texture2D _texFront;
+	private Texture2D _texBack;
+	private Texture2D _texLeft;
+	private Texture2D _texRight;
+	private bool _flipForLeft; // true si pas de texture Left (ex: AntiArmor)
+
 	private void CreateSprite()
 	{
 		_sprite = new Sprite2D();
 
-		// Mapper le type d'unité au chemin de texture (gestion des cas particuliers)
-		string texturePath = UnitType switch
-		{
-			"Heal" => "res://Assets/Units/Characters/Healer/healer_Front.png",
-			"AntiArmor" => "res://Assets/Units/Characters/Anti-armor/Anti-armor_front.png",
-			_ => $"res://Assets/Units/Characters/{UnitType}/{UnitType}_Front.png"
-		};
+		_texFront = LoadUnitTexture("Front");
+		_texBack  = LoadUnitTexture("Back");
+		_texRight = LoadUnitTexture("Right");
+		_texLeft  = LoadUnitTexture("Left");
 
-		var texture = GD.Load<Texture2D>(texturePath);
-
-		if (texture != null)
+		// AntiArmor n'a pas de texture Left : utiliser Right retournée
+		if (_texLeft == null)
 		{
-			_sprite.Texture = texture;
+			_texLeft = _texRight;
+			_flipForLeft = true;
+		}
+
+		if (_texFront != null)
+		{
+			_sprite.Texture = _texFront;
 			_sprite.Scale = new Vector2(0.255f, 0.255f);
 			AddChild(_sprite);
 		}
 		else
 		{
-			GD.PrintErr($"Impossible de charger la texture: {texturePath}");
+			GD.PrintErr($"[Unit] Texture Front introuvable pour: {UnitType}");
 		}
+	}
+
+	private Texture2D LoadUnitTexture(string direction)
+	{
+		string path = UnitType switch
+		{
+			"Heal"      => $"res://Assets/Units/Characters/Healer/healer_{direction}.png",
+			"AntiArmor" => direction == "Left"
+				? null
+				: $"res://Assets/Units/Characters/Anti-armor/Anti-armor_{direction.ToLower()}.png",
+			_ => $"res://Assets/Units/Characters/{UnitType}/{UnitType}_{direction}.png"
+		};
+
+		if (path == null) return null;
+		return GD.Load<Texture2D>(path);
+	}
+
+	public void UpdateSpriteDirection(Vector2 velocity)
+	{
+		if (_sprite == null || velocity == Vector2.Zero) return;
+
+		float ax = Mathf.Abs(velocity.X);
+		float ay = Mathf.Abs(velocity.Y);
+
+		Texture2D tex;
+		bool flip = false;
+
+		if (ay >= ax)
+		{
+			// Mouvement vertical dominant
+			tex = velocity.Y > 0 ? _texFront : _texBack;
+		}
+		else
+		{
+			// Mouvement horizontal dominant
+			if (velocity.X > 0)
+			{
+				tex = _texRight;
+			}
+			else
+			{
+				tex = _texLeft;
+				flip = _flipForLeft;
+			}
+		}
+
+		if (tex != null && _sprite.Texture != tex)
+			_sprite.Texture = tex;
+
+		_sprite.FlipH = flip;
 	}
 
 	private void CreateCollision()
@@ -35,6 +93,9 @@ public partial class Unit
 		shape.Radius = 40f;
 		collision.Shape = shape;
 		AddChild(collision);
+
+		CollisionLayer = 1u;
+		CollisionMask = 0u;
 	}
 
 	private void CreateDetectionZone()
@@ -42,7 +103,6 @@ public partial class Unit
 		_detectionZone = new Area2D();
 		_detectionZone.Name = "DetectionZone";
 
-		// Créer la forme de collision circulaire
 		var collisionShape = new CollisionShape2D();
 		var circleShape = new CircleShape2D();
 		circleShape.Radius = DetectionRange;
@@ -51,36 +111,30 @@ public partial class Unit
 		_detectionZone.AddChild(collisionShape);
 		AddChild(_detectionZone);
 
-		// Connecter les signaux pour détecter les entrées/sorties
 		_detectionZone.BodyEntered += OnBodyEnteredDetectionZone;
 		_detectionZone.BodyExited += OnBodyExitedDetectionZone;
 	}
 
 	public override void _Draw()
 	{
-		// Cercle d'aura du Support
 		if (UnitType == "Support")
 		{
 			DrawCircle(Vector2.Zero, SupportAuraRadius, AuraColor);
 			DrawArc(Vector2.Zero, SupportAuraRadius, 0, Mathf.Tau, 64, AuraBorderColor, 2f);
 		}
 
-		// Rayon de soin vert du Healer
 		if (UnitType == "Heal" && _currentState == UnitState.Healing
 			&& _healTarget != null && IsInstanceValid(_healTarget) && _healTarget.IsInsideTree())
 		{
 			Vector2 targetLocal = _healTarget.GlobalPosition - GlobalPosition;
 			Color healRayColor = new Color(0.2f, 0.9f, 0.3f, 0.6f);
 			Color healRayGlow = new Color(0.2f, 0.9f, 0.3f, 0.15f);
-			// Glow large
 			DrawLine(Vector2.Zero, targetLocal, healRayGlow, 8f);
-			// Rayon principal
 			DrawLine(Vector2.Zero, targetLocal, healRayColor, 3f);
-			// Petit cercle au point d'impact
 			DrawCircle(targetLocal, 6f, healRayColor);
 		}
 
-		// Barre de vie (seulement si blesse)
+		// Barre de vie (seulement si blessé)
 		float healthPercent = _maxHealth > 0 ? _currentHealth / _maxHealth : 0f;
 		if (healthPercent >= 1f)
 			return;

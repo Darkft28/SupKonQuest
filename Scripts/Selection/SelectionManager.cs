@@ -9,7 +9,6 @@ public partial class SelectionManager : Node2D
 	private CampSimple _selectedPort = null;
 	private List<Ship> _selectedShips = new List<Ship>();
 
-	// Rectangle de sélection
 	private Vector2 _selectionStart;
 	private bool _isSelecting = false;
 	private ColorRect _selectionRect;
@@ -18,7 +17,6 @@ public partial class SelectionManager : Node2D
 	{
 		_camera = GetParent().GetNodeOrNull<Camera2D>("Camera2D");
 
-		// Créer le rectangle de sélection visuel
 		_selectionRect = new ColorRect();
 		_selectionRect.Color = new Color(0.2f, 0.5f, 1.0f, 0.3f);
 		_selectionRect.Visible = false;
@@ -66,7 +64,6 @@ public partial class SelectionManager : Node2D
 		Vector2 start = _selectionStart;
 		Vector2 size = currentPos - start;
 
-		// Gérer les sélections dans toutes les directions
 		if (size.X < 0)
 		{
 			start.X = currentPos.X;
@@ -87,7 +84,6 @@ public partial class SelectionManager : Node2D
 		_isSelecting = false;
 		_selectionRect.Visible = false;
 
-		// Désélectionner les unités précédentes
 		foreach (var unit in _selectedUnits)
 		{
 			if (IsInstanceValid(unit))
@@ -97,7 +93,6 @@ public partial class SelectionManager : Node2D
 		}
 		_selectedUnits.Clear();
 
-		// Deselectionner les bateaux precedents
 		foreach (var ship in _selectedShips)
 		{
 			if (IsInstanceValid(ship))
@@ -107,11 +102,9 @@ public partial class SelectionManager : Node2D
 		}
 		_selectedShips.Clear();
 
-		// Désélectionner le camp et port précédents
 		DeselectCamp();
 		DeselectPort();
 
-		// Calculer le rectangle de sélection
 		Rect2 selectionArea = new Rect2(
 			Mathf.Min(_selectionStart.X, endPosition.X),
 			Mathf.Min(_selectionStart.Y, endPosition.Y),
@@ -121,10 +114,8 @@ public partial class SelectionManager : Node2D
 
 		bool isClick = selectionArea.Size.Length() < 10;
 
-		// Si c'est un clic, vérifier d'abord les ports, puis les camps
 		if (isClick)
 		{
-			// Verifier les ports en premier
 			var camps = GetTree().GetNodesInGroup("camps");
 			foreach (var node in camps)
 			{
@@ -139,7 +130,6 @@ public partial class SelectionManager : Node2D
 				}
 			}
 
-			// Verifier les camps
 			foreach (var node in camps)
 			{
 				if (node is CampSimple camp)
@@ -153,7 +143,6 @@ public partial class SelectionManager : Node2D
 			}
 		}
 
-		// Sélectionner les bateaux dans le rectangle
 		var ships = GetTree().GetNodesInGroup("ships");
 		foreach (var node in ships)
 		{
@@ -176,14 +165,9 @@ public partial class SelectionManager : Node2D
 			}
 		}
 
-		// Si des bateaux sont selectionnes, ne pas selectionner d'unites
 		if (_selectedShips.Count > 0)
-		{
-			GD.Print($"{_selectedShips.Count} bateaux selectionnes");
 			return;
-		}
 
-		// Sélectionner les unités dans le rectangle
 		var units = GetTree().GetNodesInGroup("units");
 		foreach (var node in units)
 		{
@@ -206,14 +190,12 @@ public partial class SelectionManager : Node2D
 			}
 		}
 
-		GD.Print($"{_selectedUnits.Count} unites selectionnees");
 	}
 
 	private void SelectCamp(CampSimple camp)
 	{
 		_selectedCamp = camp;
 		_selectedCamp.Modulate = new Color(1.2f, 1.2f, 0.8f, 1);
-		GD.Print($"Camp #{camp.CampId} selectionne (Equipe {camp.TeamId})");
 	}
 
 	private void DeselectCamp()
@@ -227,9 +209,9 @@ public partial class SelectionManager : Node2D
 
 	private void SelectPort(CampSimple camp)
 	{
+		if (camp.GetTeamId() != GetLocalTeamId()) return;
 		_selectedPort = camp;
-		_selectedPort.Modulate = new Color(0.8f, 1.0f, 1.2f, 1); // Bleu pour le port
-		GD.Print($"Port du camp #{camp.CampId} selectionne (Equipe {camp.TeamId})");
+		_selectedPort.Modulate = new Color(0.8f, 1.0f, 1.2f, 1);
 	}
 
 	private void DeselectPort()
@@ -249,28 +231,24 @@ public partial class SelectionManager : Node2D
 
 	private void SelectUnit(Unit unit)
 	{
-		// Reseau : ne selectionner que ses propres unites
 		if (unit.GetTeamId() != GetLocalTeamId()) return;
 
 		_selectedUnits.Add(unit);
-		unit.Modulate = new Color(1, 1, 0.5f, 1); // Jaune pour montrer la sélection
+		unit.Modulate = new Color(1, 1, 0.5f, 1);
 	}
 
 	private void SelectShip(Ship ship)
 	{
-		// Reseau : ne selectionner que ses propres bateaux
 		if (ship.GetTeamId() != GetLocalTeamId()) return;
 
 		_selectedShips.Add(ship);
-		ship.Modulate = new Color(0.5f, 1, 1, 1); // Cyan pour les bateaux
+		ship.Modulate = new Color(0.5f, 1, 1, 1);
 	}
 
 	private void HandleRightClick(Vector2 target)
 	{
-		// Si des unites terrestres sont selectionnees
 		if (_selectedUnits.Count > 0)
 		{
-			// Verifier si on clique sur un Transport allie
 			var ships = GetTree().GetNodesInGroup("ships");
 			foreach (var node in ships)
 			{
@@ -278,11 +256,9 @@ public partial class SelectionManager : Node2D
 				{
 					if (ship.GlobalPosition.DistanceTo(target) < 150)
 					{
-						// Verifier que le Transport est allie
 						int unitTeam = _selectedUnits[0].GetTeamId();
 						if (ship.GetTeamId() == unitTeam)
 						{
-							// Envoyer les unites marcher vers le Transport
 							SendUnitsToTransport(ship);
 							return;
 						}
@@ -290,15 +266,37 @@ public partial class SelectionManager : Node2D
 				}
 			}
 
-			// Sinon, deplacer les unites normalement
+			int localTeamId = _selectedUnits[0].GetTeamId();
+			CampSimple targetCamp = null;
+			float closestCampDist = 400f;
+			var allCamps = GetTree().GetNodesInGroup("camps");
+			foreach (var node in allCamps)
+			{
+				if (node is CampSimple camp && camp.GetTeamId() != localTeamId)
+				{
+					float dist = target.DistanceTo(camp.GlobalPosition);
+					if (dist < closestCampDist)
+					{
+						closestCampDist = dist;
+						targetCamp = camp;
+					}
+				}
+			}
+
+			if (targetCamp != null)
+			{
+				foreach (var unit in _selectedUnits)
+					if (IsInstanceValid(unit))
+						unit.AttackCamp(targetCamp);
+				return;
+			}
+
 			MoveSelectedUnits(target);
 			return;
 		}
 
-		// Si des bateaux sont selectionnes
 		if (_selectedShips.Count > 0)
 		{
-			// Verifier si un Transport selectionne et clic sur terre -> debarquement
 			bool hasTransportWithUnits = false;
 			foreach (var ship in _selectedShips)
 			{
@@ -311,7 +309,6 @@ public partial class SelectionManager : Node2D
 
 			if (hasTransportWithUnits)
 			{
-				// Verifier si la destination est sur terre (pas eau)
 				bool isWater = false;
 				foreach (var ship in _selectedShips)
 				{
@@ -324,7 +321,6 @@ public partial class SelectionManager : Node2D
 
 				if (!isWater)
 				{
-					// Verifier et envoyer les Transports vers la cote pour debarquement
 					foreach (var ship in _selectedShips)
 					{
 						if (IsInstanceValid(ship) && ship.GetShipType() == "Transport" && ship.GetLoadedUnitCount() > 0)
@@ -333,18 +329,13 @@ public partial class SelectionManager : Node2D
 							{
 								ship.MoveToUnload(target);
 							}
-							else
-							{
-								GD.Print($"[TRANSPORT] Debarquement refuse: trop loin ou pas sur la cote");
-							}
 						}
 					}
 					return;
 				}
 			}
 
-			// Deplacer les bateaux sur l'eau
-			MoveSelectedShips(target);
+				MoveSelectedShips(target);
 			return;
 		}
 	}
@@ -363,12 +354,7 @@ public partial class SelectionManager : Node2D
 			}
 		}
 
-		if (sent < _selectedUnits.Count)
-		{
-			GD.Print($"[TRANSPORT] Seulement {sent}/{_selectedUnits.Count} unites envoyees (capacite restante: {capacity})");
-		}
 
-		// Deselectionner les unites envoyees
 		foreach (var unit in _selectedUnits)
 		{
 			if (IsInstanceValid(unit))
@@ -401,7 +387,6 @@ public partial class SelectionManager : Node2D
 
 	public void OnUnitClicked(Unit unit)
 	{
-		// Désélectionner tout
 		foreach (var u in _selectedUnits)
 		{
 			if (IsInstanceValid(u))
@@ -423,7 +408,6 @@ public partial class SelectionManager : Node2D
 		DeselectCamp();
 		DeselectPort();
 
-		// Sélectionner l'unité cliquée
 		SelectUnit(unit);
 	}
 

@@ -1,5 +1,4 @@
 using Godot;
-using System;
 using System.Collections.Generic;
 
 public partial class NetworkManager : Node
@@ -10,26 +9,17 @@ public partial class NetworkManager : Node
 
 	private ENetMultiplayerPeer _peer;
 
-	// Signaux pour les événements réseau
 	[Signal] public delegate void PlayerConnectedEventHandler(long id);
 	[Signal] public delegate void PlayerDisconnectedEventHandler(long id);
 	[Signal] public delegate void ConnectionFailedEventHandler();
 	[Signal] public delegate void ConnectionSucceededEventHandler();
 	[Signal] public delegate void ServerDisconnectedEventHandler();
 
-	// Liste des joueurs connectés (ID -> Nom)
 	public Dictionary<long, string> Players { get; private set; } = new();
-
-	// Est-ce qu'on est le serveur ?
 	public bool IsServer => Multiplayer.IsServer();
-
-	// Est-ce qu'on est connecté ?
 	public bool IsConnected => _peer != null && _peer.GetConnectionStatus() == MultiplayerPeer.ConnectionStatus.Connected;
-
-	// Code de salon
 	public string RoomCode { get; private set; } = "";
 
-	// Decouverte UDP LAN
 	private PacketPeerUdp _discoveryPeer;
 	private bool _isSearching = false;
 	private string _searchCode = "";
@@ -42,7 +32,6 @@ public partial class NetworkManager : Node
 
 	public override void _Ready()
 	{
-		// Connexion aux signaux du Multiplayer
 		Multiplayer.PeerConnected += OnPeerConnected;
 		Multiplayer.PeerDisconnected += OnPeerDisconnected;
 		Multiplayer.ConnectedToServer += OnConnectedToServer;
@@ -52,7 +41,6 @@ public partial class NetworkManager : Node
 
 	public override void _ExitTree()
 	{
-		// Déconnexion des signaux
 		Multiplayer.PeerConnected -= OnPeerConnected;
 		Multiplayer.PeerDisconnected -= OnPeerDisconnected;
 		Multiplayer.ConnectedToServer -= OnConnectedToServer;
@@ -64,8 +52,6 @@ public partial class NetworkManager : Node
 	{
 		ProcessDiscovery(delta);
 	}
-
-	// --- Code de salon ---
 
 	private string GenerateRoomCode()
 	{
@@ -81,11 +67,6 @@ public partial class NetworkManager : Node
 		return code;
 	}
 
-	// --- Hebergement et connexion ---
-
-	/// <summary>
-	/// Crée un serveur avec un code de salon et demarre l'ecoute UDP
-	/// </summary>
 	public Error HostGame(int port = DefaultPort)
 	{
 		RoomCode = GenerateRoomCode();
@@ -102,20 +83,13 @@ public partial class NetworkManager : Node
 		}
 
 		Multiplayer.MultiplayerPeer = _peer;
-
-		// L'hôte s'ajoute lui-même à la liste des joueurs
 		Players[1] = "Hôte";
-
-		// Demarrer l'ecoute UDP pour la decouverte LAN
 		StartDiscoveryListener();
 
 		GD.Print($"Serveur demarre sur le port {port} - Code salon: {RoomCode}");
 		return Error.Ok;
 	}
 
-	/// <summary>
-	/// Rejoint une partie via IP (utilise en interne apres decouverte)
-	/// </summary>
 	public Error JoinGame(string ip, int port = DefaultPort)
 	{
 		_peer = new ENetMultiplayerPeer();
@@ -145,20 +119,15 @@ public partial class NetworkManager : Node
 		_broadcastTimer = 0f;
 
 		_discoveryPeer = new PacketPeerUdp();
-		_discoveryPeer.Bind(0); // Port aleatoire pour recevoir les reponses
+		_discoveryPeer.Bind(0);
 		_discoveryPeer.SetBroadcastEnabled(true);
 
-		// Premier broadcast immediat
 		SendDiscoveryBroadcast();
 		GD.Print($"[DISCOVERY] Recherche du salon {_searchCode} sur le reseau local...");
 	}
 
-	/// <summary>
-	/// Se déconnecter du réseau
-	/// </summary>
 	public void Disconnect()
 	{
-		// Fermer la decouverte UDP
 		StopDiscovery();
 
 		if (_peer != null)
@@ -174,8 +143,6 @@ public partial class NetworkManager : Node
 
 		GD.Print("Déconnecté du réseau");
 	}
-
-	// --- Decouverte UDP LAN ---
 
 	private void StartDiscoveryListener()
 	{
@@ -231,20 +198,17 @@ public partial class NetworkManager : Node
 			}
 		}
 
-		// Client : chercher un salon
 		if (_isSearching)
 		{
 			_searchTimer += (float)delta;
 			_broadcastTimer += (float)delta;
 
-			// Re-broadcast periodiquement
 			if (_broadcastTimer >= BroadcastInterval)
 			{
 				_broadcastTimer = 0f;
 				SendDiscoveryBroadcast();
 			}
 
-			// Verifier les reponses
 			while (_discoveryPeer.GetAvailablePacketCount() > 0)
 			{
 				byte[] packet = _discoveryPeer.GetPacket();
@@ -260,7 +224,6 @@ public partial class NetworkManager : Node
 					_isSearching = false;
 					RoomCode = _searchCode;
 
-					// Fermer le socket de recherche avant de connecter
 					_discoveryPeer.Close();
 					_discoveryPeer = null;
 
@@ -270,7 +233,6 @@ public partial class NetworkManager : Node
 				}
 			}
 
-			// Timeout
 			if (_searchTimer >= SearchTimeout)
 			{
 				_isSearching = false;
@@ -290,33 +252,40 @@ public partial class NetworkManager : Node
 		}
 	}
 
-	// --- Callbacks des événements réseau ---
-
 	private void OnPeerConnected(long id)
 	{
-		GD.Print($"Joueur {id} connecté");
+		GD.Print($"[NET] Joueur {id} connecté");
 		Players[id] = $"Joueur {id}";
 		EmitSignal(SignalName.PlayerConnected, id);
 	}
 
 	private void OnPeerDisconnected(long id)
 	{
-		GD.Print($"Joueur {id} déconnecté");
+		GD.Print($"[NET] Joueur {id} déconnecté");
 		Players.Remove(id);
 		EmitSignal(SignalName.PlayerDisconnected, id);
+
+		// Si on est en jeu, planifier le retour au menu après 5s
+		if (GetTree().CurrentScene?.Name == "Game")
+		{
+			GetTree().CreateTimer(5.0).Timeout += () =>
+			{
+				if (IsInstanceValid(this))
+					GetTree().ChangeSceneToFile("res://Scenes/MainMenu.tscn");
+			};
+		}
 	}
 
 	private void OnConnectedToServer()
 	{
-		GD.Print("Connecté au serveur!");
-		// Ajouter notre propre ID
+		GD.Print("[NET] Connecté au serveur!");
 		Players[Multiplayer.GetUniqueId()] = $"Joueur {Multiplayer.GetUniqueId()}";
 		EmitSignal(SignalName.ConnectionSucceeded);
 	}
 
 	private void OnConnectionFailed()
 	{
-		GD.PrintErr("Échec de la connexion au serveur");
+		GD.PrintErr("[NET] Échec de la connexion au serveur");
 		_peer = null;
 		Multiplayer.MultiplayerPeer = null;
 		EmitSignal(SignalName.ConnectionFailed);
@@ -324,32 +293,35 @@ public partial class NetworkManager : Node
 
 	private void OnServerDisconnected()
 	{
-		GD.Print("Déconnecté du serveur");
+		GD.Print("[NET] Déconnecté du serveur");
 		_peer = null;
 		Multiplayer.MultiplayerPeer = null;
 		Players.Clear();
 		EmitSignal(SignalName.ServerDisconnected);
+
+		// Si on est en jeu, planifier le retour au menu après 5s
+		if (GetTree().CurrentScene?.Name == "Game")
+		{
+			// Réutiliser PlayerDisconnected avec id=-1 pour signaler une déco serveur
+			EmitSignal(SignalName.PlayerDisconnected, (long)-1);
+			GetTree().CreateTimer(5.0).Timeout += () =>
+			{
+				if (IsInstanceValid(this))
+					GetTree().ChangeSceneToFile("res://Scenes/MainMenu.tscn");
+			};
+		}
 	}
 
-	// --- RPCs ---
-
-	/// <summary>
-	/// Appelé par le serveur pour envoyer la liste des joueurs à un nouveau client
-	/// </summary>
 	[Rpc(MultiplayerApi.RpcMode.Authority, CallLocal = false, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
 	public void RpcSyncPlayerList(string[] playerIds, string[] playerNames)
 	{
 		Players.Clear();
 		for (int i = 0; i < playerIds.Length; i++)
-		{
 			Players[long.Parse(playerIds[i])] = playerNames[i];
-		}
-		GD.Print($"Liste des joueurs synchronisée: {Players.Count} joueurs");
+
+		GD.Print($"[NET] Liste des joueurs synchronisée: {Players.Count} joueurs");
 	}
 
-	/// <summary>
-	/// Envoie la liste des joueurs à tous les clients
-	/// </summary>
 	public void BroadcastPlayerList()
 	{
 		if (!IsServer) return;

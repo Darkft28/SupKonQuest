@@ -1,0 +1,781 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SupKonQuest - Éditeur de Map IA 256x256</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        canvas {
+            image-rendering: pixelated;
+            cursor: crosshair;
+            background: #000;
+        }
+        .custom-scroll::-webkit-scrollbar { width: 6px; }
+        .custom-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { scrollbar-width: none; }
+        .palette-btn {
+            transition: all 0.2s;
+            border: 2px solid transparent;
+        }
+        .palette-btn.active {
+            border-color: #3b82f6;
+            transform: scale(1.05);
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+        }
+        .territory-item {
+            transition: all 0.2s;
+            border: 2px solid transparent;
+            cursor: pointer;
+        }
+        .territory-item.active {
+            border-color: #3b82f6;
+            background-color: #eff6ff;
+        }
+        #importModal {
+            display: none;
+        }
+    </style>
+</head>
+<body class="bg-slate-100 min-h-screen flex flex-col font-sans text-slate-900">
+
+    <!-- Barre d'outils supérieure -->
+    <header class="bg-white border-b p-4 shadow-sm z-10">
+        <div class="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-4">
+            <div class="flex items-center gap-4">
+                <h1 class="text-xl font-bold text-slate-800 uppercase tracking-tight">Map Editor <span class="text-purple-600 font-light">256x256</span></h1>
+                <div class="flex flex-col">
+                    <label class="text-[10px] uppercase font-bold text-slate-500 mb-1">Nom de la map</label>
+                    <input type="text" id="mapClassName" value="MyMap" class="border border-slate-300 rounded px-2 py-1 text-sm font-mono w-36 outline-none focus:border-blue-400">
+                </div>
+                <button onclick="resetMapToDefault()" class="bg-slate-800 text-white px-4 py-1.5 rounded-md text-sm hover:bg-black transition">Vider (Eau)</button>
+            </div>
+
+            <div class="flex items-center gap-4">
+                <div class="flex flex-col">
+                    <label class="text-[10px] uppercase font-bold text-slate-500 mb-1 text-center">Taille Pinceau</label>
+                    <div class="flex items-center gap-2">
+                        <input type="range" id="brushSize" min="1" max="50" value="15" class="w-32">
+                        <span id="brushSizeVal" class="text-xs font-mono w-4">15</span>
+                    </div>
+                </div>
+
+                <div class="h-10 w-px bg-slate-200"></div>
+
+                <button onclick="openImportModal()" class="bg-slate-200 text-slate-700 px-4 py-2 rounded-lg font-bold hover:bg-slate-300 transition text-sm">
+                    IMPORTER
+                </button>
+                <button onclick="saveToFile()" class="bg-emerald-600 text-white px-6 py-2 rounded-lg font-bold hover:bg-emerald-700 shadow-md transition text-sm">
+                    SAUVEGARDER
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Zone principale -->
+    <main class="flex-1 flex overflow-hidden">
+
+        <!-- Palette (Gauche) -->
+        <aside class="w-64 bg-white border-r flex flex-col p-4 custom-scroll overflow-y-auto">
+            <div class="mb-8">
+                <h2 class="text-[10px] uppercase font-bold text-slate-400 mb-4 tracking-widest border-b pb-1">Type de Terrain</h2>
+                <div class="grid grid-cols-2 gap-2" id="tilePalette"></div>
+            </div>
+
+            <div class="mb-8">
+                <h2 class="text-[10px] uppercase font-bold text-slate-400 mb-4 tracking-widest border-b pb-1">Objets & Relief</h2>
+                <div class="grid grid-cols-2 gap-2" id="objectPalette"></div>
+                <button onclick="autoPlaceCamps()" class="mt-2 w-full bg-orange-50 hover:bg-orange-100 text-orange-700 text-[10px] font-bold py-2 px-2 rounded-lg border border-orange-200 transition">
+                    Placer Camps (Auto)
+                </button>
+            </div>
+
+            <!-- Section Territoires -->
+            <div class="mb-8">
+                <h2 class="text-[10px] uppercase font-bold text-slate-400 mb-4 tracking-widest border-b pb-1">Territoires</h2>
+
+                <div class="flex gap-2 mb-3">
+                    <button onclick="addTerritory()" class="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold py-1.5 px-2 rounded-lg border border-slate-200 transition">
+                        ＋ Nouveau
+                    </button>
+                    <button onclick="clearAllTerritories()" class="bg-red-50 hover:bg-red-100 text-red-500 text-xs font-bold py-1.5 px-2 rounded-lg border border-red-100 transition">
+                        Tout effacer
+                    </button>
+                </div>
+
+                <div class="flex items-center gap-2 mb-3">
+                    <input type="checkbox" id="territoryOverlayToggle" checked onchange="toggleTerritoryOverlay(this.checked)" class="rounded">
+                    <label for="territoryOverlayToggle" class="text-[10px] font-bold text-slate-500 uppercase cursor-pointer">Afficher overlay</label>
+                </div>
+
+                <div id="territoryList" class="flex flex-col gap-1.5">
+                    <p id="territoryEmptyMsg" class="text-[10px] text-slate-400 italic">Aucun territoire. Cliquez sur "+ Nouveau".</p>
+                </div>
+            </div>
+
+        </aside>
+
+        <!-- Zone d'édition (Centre) -->
+        <div class="flex-1 overflow-auto p-12 flex justify-center items-start bg-slate-200 custom-scroll">
+            <div class="relative shadow-[0_20px_50px_rgba(0,0,0,0.2)] bg-white p-3 rounded-xl">
+                <canvas id="mapCanvas" width="256" height="256" style="width: 768px; height: 768px;"></canvas>
+                <div class="absolute top-0 right-0 m-4 pointer-events-none opacity-20 font-bold text-xs uppercase">Grille 256x256</div>
+            </div>
+        </div>
+
+        <!-- Zone d'exportation (Droite) -->
+        <aside class="w-72 bg-white border-l flex flex-col sticky top-0 h-screen">
+            <div class="p-4 border-b bg-slate-50 flex justify-between items-center">
+                <h2 class="font-bold text-slate-700 uppercase text-xs tracking-wider">Données C# (RLE)</h2>
+                <span class="text-[10px] bg-slate-200 px-2 py-0.5 rounded text-slate-500 font-mono">256x256</span>
+            </div>
+            <div class="flex-1 overflow-y-auto p-4 font-mono text-[9px] leading-relaxed no-scrollbar bg-slate-900 text-emerald-400" id="exportArea">
+                <p class="text-slate-500 italic">Exportez pour voir les données compressées (count*val).</p>
+            </div>
+            <div class="p-3 bg-slate-100 border-t flex gap-2">
+                <button onclick="copyToClipboard()" class="flex-1 bg-white border border-slate-300 py-1.5 rounded text-[10px] font-bold uppercase hover:bg-slate-200 shadow-sm transition">Copier</button>
+            </div>
+        </aside>
+    </main>
+
+    <!-- Modal d'importation -->
+    <div id="importModal" class="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col">
+            <div class="p-6 border-b flex justify-between items-center">
+                <h3 class="text-lg font-bold text-slate-800">Importer (Normal ou RLE)</h3>
+                <button onclick="closeImportModal()" class="text-slate-400 hover:text-slate-600 font-bold">FERMER</button>
+            </div>
+            <div class="p-6 space-y-4">
+                <div class="flex items-center gap-3">
+                    <button onclick="pickFileToImport()" class="cursor-pointer bg-slate-200 hover:bg-slate-300 text-slate-700 px-4 py-2 rounded-lg text-sm font-bold transition">
+                        Choisir une map
+                    </button>
+                    <span id="importFileName" class="text-xs text-slate-400 italic">Aucun fichier sélectionné</span>
+                </div>
+                <textarea id="importTextarea" class="w-full h-56 bg-slate-100 border rounded-xl p-4 font-mono text-[10px] outline-none" placeholder="// Collez ici ou choisissez un fichier .txt (format {1, 10*6, 3...})"></textarea>
+                <div id="importError" class="hidden text-red-500 text-xs font-bold bg-red-50 p-2 rounded">Erreur : Format ou taille de 65 536 tuiles incorrecte.</div>
+            </div>
+            <div class="p-6 bg-slate-50 border-t flex gap-3">
+                <button onclick="closeImportModal()" class="flex-1 px-4 py-2 text-sm font-bold text-slate-500 hover:bg-slate-200 rounded-lg transition">Annuler</button>
+                <button onclick="processImport()" class="flex-1 px-4 py-2 text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition shadow-md">Appliquer</button>
+            </div>
+        </div>
+    </div>
+
+
+    <script>
+        // CONFIGURATION
+        const MAP_SIZE = 256;
+        const IDS = { HERBE: 0, SABLE: 1, FORET: 3, NEIGE: 4, ROCHE: 5, EAU: 6, ARBRE: 100, MONTAGNE: 101, CAMP: 102 };
+
+        const PALETTE = {
+            tiles: [
+                { id: IDS.HERBE, name: "Herbe", color: "#4ade80" },
+                { id: IDS.EAU, name: "Eau", color: "#1e40af" },
+                { id: IDS.SABLE, name: "Sable", color: "#fef08a" },
+                { id: IDS.FORET, name: "Forêt", color: "#166534" },
+                { id: IDS.ROCHE, name: "Roche", color: "#64748b" },
+                { id: IDS.NEIGE, name: "Neige", color: "#f8fafc" },
+            ],
+            objects: [
+                { id: IDS.ARBRE, name: "Arbre", color: "#064e3b" },
+                { id: IDS.MONTAGNE, name: "Montagne", color: "#475569" },
+                { id: IDS.CAMP, name: "Camp", color: "#f97316", isCamp: true },
+                { id: -1, name: "Gomme", color: "#f1f5f9", isEraser: true },
+            ]
+        };
+
+        // Palette de 8 couleurs distinctes pour les territoires
+        const TERRITORY_PALETTE = [
+            "#ef4444", "#3b82f6", "#f59e0b", "#10b981",
+            "#8b5cf6", "#ec4899", "#06b6d4", "#84cc16"
+        ];
+
+        let mapData = {
+            sol: new Int32Array(MAP_SIZE * MAP_SIZE).fill(IDS.EAU),
+            objets: new Int32Array(MAP_SIZE * MAP_SIZE).fill(-1),
+            territoires: new Int32Array(MAP_SIZE * MAP_SIZE).fill(0)
+        };
+
+        let selectedBrush = { type: 'tile', id: IDS.HERBE };
+        let territoriesList = [];      // [{ id, name, color }]
+        let selectedTerritoryId = null;
+        let territoryOverlayVisible = true;
+        let nextTerritoryId = 1;
+
+        const canvas = document.getElementById('mapCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // UTILITAIRES
+        function hexToRgb(hex) {
+            return {
+                r: parseInt(hex.slice(1, 3), 16),
+                g: parseInt(hex.slice(3, 5), 16),
+                b: parseInt(hex.slice(5, 7), 16)
+            };
+        }
+
+        // COMPRESSION / DÉCOMPRESSION RLE
+        function compressRLE(arr) {
+            let result = [];
+            for (let i = 0; i < arr.length; i++) {
+                let count = 1;
+                while (i + 1 < arr.length && arr[i] === arr[i + 1]) {
+                    count++;
+                    i++;
+                }
+                result.push(count > 1 ? `${count}*${arr[i]}` : arr[i]);
+            }
+            return result.join(',');
+        }
+
+        function decompressRLE(text) {
+            const clean = text.replace(/[^{]*\{/, '').replace(/\}[^}]*/, '').replace(/\s/g, '');
+            const parts = clean.split(',');
+            let result = [];
+            parts.forEach(p => {
+                if (p.includes('*')) {
+                    const [countStr, valStr] = p.split('*');
+                    const count = parseInt(countStr);
+                    const val = parseInt(valStr);
+                    for (let j = 0; j < count; j++) result.push(val);
+                } else if (p !== "") {
+                    result.push(parseInt(p));
+                }
+            });
+            return result;
+        }
+
+        // Format C# paires : {48, 0, 55, 3, ...} → expand
+        function decompressPairs(text) {
+            const clean = text.replace(/\s/g, '');
+            const nums = clean.split(',').filter(p => p !== '').map(p => parseInt(p));
+            let result = [];
+            for (let i = 0; i + 1 < nums.length; i += 2) {
+                const count = nums[i], val = nums[i + 1];
+                for (let j = 0; j < count; j++) result.push(val);
+            }
+            return result;
+        }
+
+        // Compress pour export C# paires : [48, 0, 55, 3, ...]
+        function compressPairs(arr) {
+            let parts = [];
+            for (let i = 0; i < arr.length; i++) {
+                let count = 1;
+                while (i + 1 < arr.length && arr[i] === arr[i + 1]) { count++; i++; }
+                parts.push(count, arr[i]);
+            }
+            // Grouper par ligne de 16 valeurs (8 paires) pour lisibilité
+            let lines = [];
+            for (let i = 0; i < parts.length; i += 16) lines.push(parts.slice(i, i + 16).join(', '));
+            return lines.join(',\n        ');
+        }
+
+        // Détecter si le texte est au format paires C# (pas de '*')
+        function isPairFormat(str) {
+            return !str.includes('*');
+        }
+
+        // INITIALISATION UI
+        function initUI() {
+            const tilePalette = document.getElementById('tilePalette');
+            tilePalette.innerHTML = '';
+            PALETTE.tiles.forEach(t => {
+                const btn = document.createElement('button');
+                btn.className = `palette-btn flex flex-col items-center p-2 bg-slate-50 rounded-lg ${selectedBrush.id === t.id && selectedBrush.type === 'tile' ? 'active' : ''}`;
+                btn.onclick = () => {
+                    selectedBrush = { type: 'tile', id: t.id };
+                    document.querySelectorAll('.palette-btn').forEach(b => b.classList.remove('active'));
+                    btn.classList.add('active');
+                    // Désélectionner le territoire actif
+                    selectedTerritoryId = null;
+                    renderTerritoryList();
+                };
+                btn.innerHTML = `<div class="w-10 h-10 rounded shadow-inner mb-1" style="background-color: ${t.color}"></div><span class="text-[9px] font-bold text-slate-500 uppercase">${t.name}</span>`;
+                tilePalette.appendChild(btn);
+            });
+
+            const objectPalette = document.getElementById('objectPalette');
+            objectPalette.innerHTML = '';
+            PALETTE.objects.forEach(o => {
+                const btn = document.createElement('button');
+                btn.className = `palette-btn flex flex-col items-center p-2 bg-slate-50 rounded-lg`;
+                btn.onclick = () => {
+                    selectedBrush = { type: 'object', id: o.id };
+                    document.querySelectorAll('.palette-btn').forEach(b => b.classList.remove('active'));
+                    btn.classList.add('active');
+                    // Désélectionner le territoire actif
+                    selectedTerritoryId = null;
+                    renderTerritoryList();
+                };
+                btn.innerHTML = `<div class="w-10 h-10 rounded mb-1 border-2 border-dashed border-slate-200 flex items-center justify-center font-bold text-slate-300" style="background-color: ${o.color}">${o.isEraser ? 'G' : ''}</div><span class="text-[9px] font-bold text-slate-500 uppercase">${o.name}</span>`;
+                objectPalette.appendChild(btn);
+            });
+        }
+
+        // GESTION DES TERRITOIRES
+        function addTerritory() {
+            const name = prompt("Nom du territoire :");
+            if (!name || !name.trim()) return;
+
+            const colorIndex = (territoriesList.length) % TERRITORY_PALETTE.length;
+            const newTerritory = {
+                id: nextTerritoryId++,
+                name: name.trim(),
+                color: TERRITORY_PALETTE[colorIndex]
+            };
+            territoriesList.push(newTerritory);
+            renderTerritoryList();
+        }
+
+        function deleteTerritory(id) {
+            // Effacer les pixels de ce territoire sur la carte
+            for (let i = 0; i < mapData.territoires.length; i++) {
+                if (mapData.territoires[i] === id) mapData.territoires[i] = 0;
+            }
+            territoriesList = territoriesList.filter(t => t.id !== id);
+            if (selectedTerritoryId === id) selectedTerritoryId = null;
+            renderTerritoryList();
+            draw();
+        }
+
+        function selectTerritory(id) {
+            if (selectedTerritoryId === id) {
+                // Désélectionner si on clique à nouveau sur le même
+                selectedTerritoryId = null;
+            } else {
+                selectedTerritoryId = id;
+                // Retirer la sélection des boutons de terrain/objet
+                document.querySelectorAll('.palette-btn').forEach(b => b.classList.remove('active'));
+            }
+            renderTerritoryList();
+        }
+
+        function renderTerritoryList() {
+            const container = document.getElementById('territoryList');
+            const emptyMsg = document.getElementById('territoryEmptyMsg');
+
+            // Supprimer les items existants (mais pas le message vide)
+            container.querySelectorAll('.territory-item').forEach(el => el.remove());
+
+            // Gomme territoire (toujours visible)
+            const eraserItem = document.createElement('div');
+            eraserItem.className = `territory-item flex items-center gap-2 p-2 bg-slate-50 rounded-lg ${selectedTerritoryId === 0 ? 'active' : ''}`;
+            eraserItem.onclick = () => selectTerritory(0);
+            eraserItem.innerHTML = `
+                <span class="w-3 h-3 rounded-full inline-block flex-shrink-0 border-2 border-dashed border-slate-400 bg-white"></span>
+                <span class="text-[10px] font-bold text-slate-400 flex-1">Gomme</span>
+            `;
+            container.appendChild(eraserItem);
+
+            if (territoriesList.length === 0) {
+                emptyMsg.style.display = '';
+            } else {
+                emptyMsg.style.display = 'none';
+            }
+
+            territoriesList.forEach(t => {
+                const item = document.createElement('div');
+                item.className = `territory-item flex items-center gap-2 p-2 bg-slate-50 rounded-lg ${selectedTerritoryId === t.id ? 'active' : ''}`;
+                item.onclick = (e) => {
+                    if (!e.target.classList.contains('territory-delete-btn')) {
+                        selectTerritory(t.id);
+                    }
+                };
+                item.innerHTML = `
+                    <span class="w-3 h-3 rounded-full inline-block flex-shrink-0" style="background-color: ${t.color}"></span>
+                    <span class="text-[10px] font-bold text-slate-600 flex-1 truncate">${t.name}</span>
+                    <button class="territory-delete-btn text-slate-300 hover:text-red-400 text-xs font-bold leading-none transition flex-shrink-0" onclick="deleteTerritory(${t.id})">×</button>
+                `;
+                container.appendChild(item);
+            });
+        }
+
+        function toggleTerritoryOverlay(visible) {
+            territoryOverlayVisible = visible;
+            draw();
+        }
+
+        function clearAllTerritories() {
+            if (!confirm("Effacer toute la couche territoire ?")) return;
+            mapData.territoires.fill(0);
+            draw();
+        }
+
+        // DESSIN
+        function draw() {
+            const img = ctx.createImageData(MAP_SIZE, MAP_SIZE);
+            const pixels = img.data;
+            for (let i = 0; i < MAP_SIZE * MAP_SIZE; i++) {
+                const solId = mapData.sol[i];
+                const objId = mapData.objets[i];
+                const tile = PALETTE.tiles.find(t => t.id === solId) || { color: "#000000" };
+                const p = i * 4;
+                pixels[p]   = parseInt(tile.color.slice(1, 3), 16);
+                pixels[p+1] = parseInt(tile.color.slice(3, 5), 16);
+                pixels[p+2] = parseInt(tile.color.slice(5, 7), 16);
+                pixels[p+3] = 255;
+                if (objId !== -1) {
+                    if (objId === IDS.ARBRE)         { pixels[p] *= 0.6; pixels[p+1] *= 0.6; pixels[p+2] *= 0.6; }
+                    else if (objId === IDS.MONTAGNE) { pixels[p] = 100; pixels[p+1] = 100; pixels[p+2] = 100; }
+                    else if (objId === IDS.CAMP)     { pixels[p] = 249; pixels[p+1] = 115; pixels[p+2] = 22; }
+                }
+                // Overlay territoire (blend 40%)
+                const terr = mapData.territoires[i];
+                if (terr > 0 && territoryOverlayVisible) {
+                    const t = territoriesList.find(t => t.id === terr);
+                    if (t) {
+                        const tc = hexToRgb(t.color);
+                        pixels[p]   = Math.round(pixels[p]   * 0.6 + tc.r * 0.4);
+                        pixels[p+1] = Math.round(pixels[p+1] * 0.6 + tc.g * 0.4);
+                        pixels[p+2] = Math.round(pixels[p+2] * 0.6 + tc.b * 0.4);
+                    }
+                }
+            }
+            ctx.putImageData(img, 0, 0);
+        }
+
+        // PEINTURE
+        let isPainting = false;
+        function paint(e, isRightClick = false) {
+            const rect = canvas.getBoundingClientRect();
+            const scale = MAP_SIZE / rect.width;
+            const x = Math.floor((e.clientX - rect.left) * scale);
+            const y = Math.floor((e.clientY - rect.top) * scale);
+
+            // Mode B : placement unique de camp (clic simple, pas de drag)
+            if (selectedBrush.type === 'object' && selectedBrush.id === IDS.CAMP) {
+                const idx = y * MAP_SIZE + x;
+                if (idx >= 0 && idx < MAP_SIZE * MAP_SIZE) {
+                    mapData.objets[idx] = isRightClick ? -1 : IDS.CAMP;
+                    draw();
+                }
+                return;
+            }
+
+            const size = parseInt(document.getElementById('brushSize').value);
+            const radiusSq = (size / 2) * (size / 2);
+            for (let dy = -size; dy <= size; dy++) {
+                for (let dx = -size; dx <= size; dx++) {
+                    if (dx * dx + dy * dy > radiusSq) continue;
+                    const nx = x + dx, ny = y + dy;
+                    if (nx >= 0 && nx < MAP_SIZE && ny >= 0 && ny < MAP_SIZE) {
+                        const idx = ny * MAP_SIZE + nx;
+                        if (selectedTerritoryId !== null) {
+                            // Mode territoire (0 = gomme)
+                            mapData.territoires[idx] = (isRightClick || selectedTerritoryId === 0) ? 0 : selectedTerritoryId;
+                        } else {
+                            // Mode terrain / objet classique
+                            if (isRightClick) {
+                                mapData.objets[idx] = -1;
+                            } else {
+                                if (selectedBrush.type === 'tile') mapData.sol[idx] = selectedBrush.id;
+                                else if (selectedBrush.type === 'object') mapData.objets[idx] = selectedBrush.id;
+                            }
+                        }
+                    }
+                }
+            }
+            draw();
+        }
+
+        canvas.onmousedown = (e) => { isPainting = true; paint(e, e.button === 2); };
+        window.onmouseup = () => isPainting = false;
+        canvas.onmousemove = (e) => { if (isPainting && !(selectedBrush.type === 'object' && selectedBrush.id === IDS.CAMP)) paint(e, e.buttons === 2); };
+        canvas.oncontextmenu = (e) => e.preventDefault();
+        document.getElementById('brushSize').oninput = (e) => document.getElementById('brushSizeVal').innerText = e.target.value;
+
+        // IMPORT / EXPORT
+        function openImportModal() { document.getElementById('importModal').style.display = 'flex'; }
+        function closeImportModal() { document.getElementById('importModal').style.display = 'none'; }
+
+        function extractVarFromText(text, varName) {
+            const regex = new RegExp(`${varName}\\s*=\\s*\\{([\\s\\S]*?)\\}`, 'i');
+            const match = text.match(regex);
+            return match ? match[1] : null;
+        }
+
+        function parseTerritoireNoms(text) {
+            // Accepte TerritoireNoms (C#) ou TERRITOIRE_NOMS (ancien format)
+            const regex = /TerritoireNoms\s*=\s*\{([^}]*)\}|TERRITOIRE_NOMS\s*=\s*\{([^}]*)\}/i;
+            const match = text.match(regex);
+            if (!match) return null;
+            const inner = match[1] || match[2];
+            const names = [];
+            const nameRegex = /"([^"]*)"/g;
+            let m;
+            while ((m = nameRegex.exec(inner)) !== null) {
+                names.push(m[1]);
+            }
+            return names.length > 0 ? names : null;
+        }
+
+        function processImport() {
+            const text = document.getElementById('importTextarea').value;
+            // Accepte SOL ou SolRle, OBJETS ou ObjetsRle
+            const solString = extractVarFromText(text, 'SolRle') || extractVarFromText(text, 'SOL');
+            const objString = extractVarFromText(text, 'ObjetsRle') || extractVarFromText(text, 'OBJETS');
+            const terrString = extractVarFromText(text, 'TerritoiresRle') || extractVarFromText(text, 'TERRITOIRES');
+            const terrNames = parseTerritoireNoms(text);
+
+            // Détecte le nom de classe C# pour le champ header
+            const classMatch = text.match(/public\s+static\s+class\s+(\w+)/);
+            if (classMatch) document.getElementById('mapClassName').value = classMatch[1];
+
+            // DEBUG
+            console.log('[Import] solString found:', !!solString);
+            console.log('[Import] objString found:', !!objString);
+            console.log('[Import] terrString found:', !!terrString, terrString ? terrString.slice(0, 60) : '');
+            console.log('[Import] terrNames:', terrNames);
+
+            const decode = str => isPairFormat(str) ? decompressPairs(str) : decompressRLE(str);
+
+            if (solString) {
+                const vals = decode(solString);
+                if (vals.length === MAP_SIZE * MAP_SIZE) mapData.sol = new Int32Array(vals);
+            }
+            if (objString) {
+                const vals = decode(objString);
+                if (vals.length === MAP_SIZE * MAP_SIZE) mapData.objets = new Int32Array(vals);
+            }
+            if (terrString) {
+                const vals = decode(terrString);
+                console.log('[Import] territoire decoded length:', vals.length, '(attendu:', MAP_SIZE * MAP_SIZE, ')');
+                if (vals.length === MAP_SIZE * MAP_SIZE) {
+                    mapData.territoires = new Int32Array(vals);
+                    // Reconstruire la liste des territoires depuis les noms
+                    if (terrNames && terrNames.length > 0) {
+                        territoriesList = [];
+                        nextTerritoryId = 1;
+                        terrNames.forEach((name, index) => {
+                            const colorIndex = index % TERRITORY_PALETTE.length;
+                            territoriesList.push({
+                                id: index + 1,
+                                name: name,
+                                color: TERRITORY_PALETTE[colorIndex]
+                            });
+                        });
+                        nextTerritoryId = terrNames.length + 1;
+                    }
+                    renderTerritoryList();
+                }
+            }
+            draw();
+            exportMap();
+            closeImportModal();
+        }
+
+        function buildCSharpContent() {
+            const className = document.getElementById('mapClassName').value.trim() || 'MyMap';
+            const sol = compressPairs(mapData.sol);
+            const objets = compressPairs(mapData.objets);
+            const hasTerritory = mapData.territoires.some(v => v > 0) || territoriesList.length > 0;
+            const sortedNames = [...territoriesList].sort((a, b) => a.id - b.id).map(t => `"${t.name}"`);
+            let content = `namespace SupKonQuest.Map.Presets;\n\n`;
+            content += `// Carte prédéfinie 256x256 — données RLE en paires {count, tileId}\n`;
+            content += `public static class ${className}\n{\n`;
+            content += `    public static readonly int[] SolRle = {\n        ${sol}\n    };\n\n`;
+            content += `    public static readonly int[] ObjetsRle = {\n        ${objets}\n    };\n`;
+            if (hasTerritory) {
+                const nomsStr = sortedNames.join(', ');
+                const terr = compressPairs(mapData.territoires);
+                content += `\n    public static readonly string[] TerritoireNoms = { ${nomsStr} };\n`;
+                content += `\n    public static readonly int[] TerritoiresRle = {\n        ${terr}\n    };\n`;
+            }
+            content += `}\n`;
+            return content;
+        }
+
+        function exportMap() {
+            const area = document.getElementById('exportArea');
+            const content = buildCSharpContent();
+            // Coloration syntaxique simple
+            const highlighted = content
+                .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+                .replace(/(namespace|public|static|class|readonly)/g, '<span class="text-purple-400">$1</span>')
+                .replace(/(SolRle|ObjetsRle|TerritoireNoms|TerritoiresRle)/g, '<span class="text-blue-300">$1</span>')
+                .replace(/(\/\/[^\n]*)/g, '<span class="text-slate-400">$1</span>');
+            area.innerHTML = `<pre class="text-emerald-400 text-[9px] leading-relaxed">${highlighted}</pre>`;
+        }
+
+        async function saveToFile() {
+            exportMap();
+            const className = document.getElementById('mapClassName').value.trim() || 'MyMap';
+            const content = buildCSharpContent();
+            try {
+                if (window.showSaveFilePicker) {
+                    const fileHandle = await window.showSaveFilePicker({
+                        suggestedName: `${className}.cs`,
+                        types: [{ description: 'Classe C#', accept: { 'text/plain': ['.cs'] } }],
+                        ...(lastFileHandle ? { startIn: lastFileHandle } : {})
+                    });
+                    lastFileHandle = fileHandle;
+                    saveHandleToIDB(fileHandle);
+                    const writable = await fileHandle.createWritable();
+                    await writable.write(content);
+                    await writable.close();
+                } else {
+                    const blob = new Blob([content], { type: 'text/plain' });
+                    const a = document.createElement('a');
+                    a.href = URL.createObjectURL(blob);
+                    a.download = `${className}.cs`;
+                    a.click();
+                }
+            } catch (e) {
+                if (e.name !== 'AbortError') console.error('Erreur sauvegarde:', e);
+            }
+        }
+
+        let lastFileHandle = null;
+
+        // Persistance du répertoire dans IndexedDB (survit aux rechargements de page)
+        function openHandleDB() {
+            return new Promise((resolve, reject) => {
+                const req = indexedDB.open('MapEditorDB', 1);
+                req.onupgradeneeded = e => e.target.result.createObjectStore('handles');
+                req.onsuccess = e => resolve(e.target.result);
+                req.onerror = () => reject(req.error);
+            });
+        }
+        async function saveHandleToIDB(handle) {
+            try {
+                const db = await openHandleDB();
+                const tx = db.transaction('handles', 'readwrite');
+                tx.objectStore('handles').put(handle, 'lastFile');
+            } catch(e) {}
+        }
+        async function loadHandleFromIDB() {
+            try {
+                const db = await openHandleDB();
+                return await new Promise(resolve => {
+                    const req = db.transaction('handles').objectStore('handles').get('lastFile');
+                    req.onsuccess = () => resolve(req.result ?? null);
+                    req.onerror = () => resolve(null);
+                });
+            } catch(e) { return null; }
+        }
+        // Restaurer le dernier répertoire au chargement de la page
+        (async () => { lastFileHandle = await loadHandleFromIDB(); })();
+
+        async function pickFileToImport() {
+            if (!window.showOpenFilePicker) {
+                // Fallback navigateur sans support API moderne
+                const input = document.createElement('input');
+                input.type = 'file'; input.accept = '.txt,.cs';
+                input.onchange = (e) => loadFromFile(e);
+                input.click();
+                return;
+            }
+            try {
+                const [handle] = await window.showOpenFilePicker({
+                    types: [{ description: 'Fichiers Map (.txt, .cs)', accept: { 'text/plain': ['.txt', '.cs'] } }],
+                    ...(lastFileHandle ? { startIn: lastFileHandle } : {})
+                });
+                lastFileHandle = handle;
+                saveHandleToIDB(handle);
+                const file = await handle.getFile();
+                document.getElementById('importFileName').textContent = file.name;
+                const text = await file.text();
+                document.getElementById('importTextarea').value = text;
+            } catch (e) {
+                if (e.name !== 'AbortError') console.error('Erreur ouverture:', e);
+            }
+        }
+
+        function loadFromFile(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            document.getElementById('importFileName').textContent = file.name;
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                document.getElementById('importTextarea').value = e.target.result;
+            };
+            reader.readAsText(file);
+        }
+
+        function copyToClipboard() {
+            const text = document.getElementById('exportArea').innerText;
+            const el = document.createElement('textarea');
+            el.value = text; document.body.appendChild(el); el.select();
+            document.execCommand('copy'); document.body.removeChild(el);
+        }
+
+        // PLACEMENT AUTOMATIQUE DES CAMPS
+        function isNearWater(x, y, radius) {
+            for (let dy = -radius; dy <= radius; dy++) {
+                for (let dx = -radius; dx <= radius; dx++) {
+                    if (dx*dx + dy*dy > radius*radius) continue;
+                    const nx = x + dx, ny = y + dy;
+                    if (nx < 0 || nx >= MAP_SIZE || ny < 0 || ny >= MAP_SIZE) continue;
+                    if (mapData.sol[ny * MAP_SIZE + nx] === IDS.EAU) return true;
+                }
+            }
+            return false;
+        }
+
+        function autoPlaceCamps() {
+            const MIN_DIST = 27;      // ~3500px / 128px tilesize (identique à CampPlacer.cs)
+            const WATER_RADIUS = 4;   // identique à CampPlacer.IsNearTilemapWater
+            const EDGE_MARGIN = 15;   // identique à CampPlacer.EdgeMargin
+            const MIN_DIST_SQ = MIN_DIST * MIN_DIST;
+
+            // Effacer les camps existants
+            for (let i = 0; i < mapData.objets.length; i++) {
+                if (mapData.objets[i] === IDS.CAMP || mapData.objets[i] === IDS.CAMP_UP)
+                    mapData.objets[i] = -1;
+            }
+
+            // Collecter les tuiles candidates : herbe, sans objet, loin de l'eau, hors marge
+            const candidates = [];
+            for (let y = EDGE_MARGIN; y < MAP_SIZE - EDGE_MARGIN; y++) {
+                for (let x = EDGE_MARGIN; x < MAP_SIZE - EDGE_MARGIN; x++) {
+                    const idx = y * MAP_SIZE + x;
+                    if (mapData.sol[idx] !== IDS.HERBE) continue;
+                    if (mapData.objets[idx] !== -1) continue;
+                    if (isNearWater(x, y, WATER_RADIUS)) continue;
+                    candidates.push({ x, y });
+                }
+            }
+
+            // Mélange Fisher-Yates pour IDs aléatoires
+            for (let i = candidates.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [candidates[i], candidates[j]] = [candidates[j], candidates[i]];
+            }
+
+            // Placer les camps en respectant la distance minimale
+            const placed = [];
+            for (const c of candidates) {
+                let tooClose = false;
+                for (const p of placed) {
+                    const dx = c.x - p.x, dy = c.y - p.y;
+                    if (dx*dx + dy*dy < MIN_DIST_SQ) { tooClose = true; break; }
+                }
+                if (tooClose) continue;
+                mapData.objets[c.y * MAP_SIZE + c.x] = IDS.CAMP;
+                placed.push(c);
+            }
+
+            draw();
+            exportMap();
+            alert(`${placed.length} camp(s) placé(s) automatiquement.`);
+        }
+
+        function resetMapToDefault() {
+            const name = prompt("Nom de la nouvelle map :", "MaMap");
+            if (name === null) return;
+            document.getElementById('mapClassName').value = name.trim() || 'MaMap';
+            mapData.sol.fill(IDS.EAU);
+            mapData.objets.fill(-1);
+            mapData.territoires.fill(0);
+            draw();
+        }
+
+        initUI();
+        renderTerritoryList();
+        draw();
+    </script>
+</body>
+</html>
