@@ -13,6 +13,8 @@ public partial class GameState : Node
 
 	// Mode test : temps x3 via Engine.TimeScale
 	public bool FastMode { get; set; } = false;
+	public bool IsAIMode { get; set; } = false;
+	public string AILevel { get; set; } = "Easy"; // "Easy", "Medium", "Hard"
 
 	public MapSizePreset MapSize { get; set; } = MapSizePreset.Medium;
 	public int MaxCamps { get; set; } = 6;
@@ -26,7 +28,7 @@ public partial class GameState : Node
 
 	public override void _Ready()
 	{
-		_networkManager = GetNode<NetworkManager>("/root/NetworkManager");
+		_networkManager = GetNodeOrNull<NetworkManager>("/root/NetworkManager");
 	}
 
 	public int GenerateSeed()

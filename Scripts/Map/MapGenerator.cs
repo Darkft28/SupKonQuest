@@ -155,6 +155,7 @@ public partial class MapGenerator : Node
 		{
 			GameManager.Instance.OnMapGenerationComplete();
 		}
+		CallDeferred(nameof(InitAIController));
 
 		// Mettre à jour les limites de la caméra avec la vraie taille de map
 		if (_camera is SupKonQuest.CameraController cam)
@@ -309,6 +310,23 @@ public partial class MapGenerator : Node
 		MoveChild(_territoryManager, 1); // après Sol pour le Z-order
 		_territoryManager.SetSolLayer(_tileMapSol);
 		_territoryManager.Initialize();
+	}
+
+	private void InitAIController()
+	{
+		var gameState = GetNodeOrNull<GameState>("/root/GameState");
+		if (gameState == null || !gameState.IsAIMode) return;
+
+		// Supprimer l'ancien AIController si présent
+		var oldAI = GetNodeOrNull<AIController>("AIController");
+		if (oldAI != null) { RemoveChild(oldAI); oldAI.QueueFree(); }
+
+		var ai = new AIController();
+		ai.Name = "AIController";
+		ai.AILevel = gameState.AILevel;
+		AddChild(ai);
+
+		GD.Print($"[IA] AIController créé — niveau : {gameState.AILevel}");
 	}
 
 	private void ReadMapSettings()
