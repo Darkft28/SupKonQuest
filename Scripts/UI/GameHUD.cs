@@ -8,13 +8,15 @@ public partial class GameHUD : Control
 	private SelectionManager _selectionManager;
 	private Dictionary<string, TextureButton> _unitButtons = new Dictionary<string, TextureButton>();
 	private Dictionary<string, TextureButton> _shipButtons = new Dictionary<string, TextureButton>();
+	private Dictionary<string, Label> _lockLabels = new Dictionary<string, Label>();
 	private HBoxContainer _unitsContainer;
 	private HBoxContainer _shipsContainer;
 	private Button _territoryButton;
 	private HBoxContainer _brushSizeContainer;
 	private Button _portButton;
+	private Label _tierInfoLabel;
 
-		private Panel _disconnectPanel;
+	private Panel _disconnectPanel;
 	private Label _disconnectLabel;
 
 		private static readonly string[] UnitTypes = new[]
@@ -43,6 +45,8 @@ public partial class GameHUD : Control
 
 		ConnectUnitButtons();
 		ConnectShipButtons();
+		CreateLockLabels();
+		CreateTierInfoLabel();
 		CreateQuitButton();
 		CreateTerritoryButton();
 		CreatePortButton();
@@ -237,6 +241,48 @@ public partial class GameHUD : Control
 	}
 
 
+	private void CreateLockLabels()
+	{
+		foreach (string unitType in UnitTypes)
+		{
+			if (!_unitButtons.TryGetValue(unitType, out var btn)) continue;
+
+			var lbl = new Label();
+			lbl.Text = "";
+			lbl.HorizontalAlignment = HorizontalAlignment.Center;
+			lbl.VerticalAlignment = VerticalAlignment.Center;
+			lbl.AddThemeFontSizeOverride("font_size", 14);
+			lbl.Modulate = new Color(1f, 0.85f, 0.2f, 1f);
+			lbl.MouseFilter = Control.MouseFilterEnum.Ignore;
+
+			// Positionné au centre du bouton
+			lbl.SetAnchorsPreset(Control.LayoutPreset.FullRect);
+			btn.AddChild(lbl);
+			_lockLabels[unitType] = lbl;
+		}
+	}
+
+	private void CreateTierInfoLabel()
+	{
+		_tierInfoLabel = new Label();
+		_tierInfoLabel.HorizontalAlignment = HorizontalAlignment.Center;
+		_tierInfoLabel.AddThemeFontSizeOverride("font_size", 13);
+		_tierInfoLabel.Modulate = new Color(1f, 0.9f, 0.5f, 1f);
+		_tierInfoLabel.AutowrapMode = TextServer.AutowrapMode.WordSmart;
+		_tierInfoLabel.Visible = false;
+
+		// Ancré juste au-dessus du NinePatchRect (barre d'unités)
+		_tierInfoLabel.AnchorLeft   = 0f;
+		_tierInfoLabel.AnchorTop    = 1f;
+		_tierInfoLabel.AnchorRight  = 1f;
+		_tierInfoLabel.AnchorBottom = 1f;
+		_tierInfoLabel.OffsetLeft   = 10f;
+		_tierInfoLabel.OffsetTop    = -145f;
+		_tierInfoLabel.OffsetRight  = -10f;
+		_tierInfoLabel.OffsetBottom = -115f;
+		AddChild(_tierInfoLabel);
+	}
+
 	private void ConnectUnitButtons()
 	{
 		foreach (string unitType in UnitTypes)
@@ -331,21 +377,60 @@ public partial class GameHUD : Control
 
 		var selectedCamp = _selectionManager.GetSelectedCamp();
 
-		if (selectedCamp == null || !IsInstanceValid(selectedCamp)) return;
-		if (selectedCamp.GetTeamId() != GetLocalTeamId()) return;
+		if (selectedCamp == null || !IsInstanceValid(selectedCamp))
+		{
+			if (_tierInfoLabel != null) _tierInfoLabel.Visible = false;
+			return;
+		}
+		if (selectedCamp.GetTeamId() != GetLocalTeamId())
+		{
+			if (_tierInfoLabel != null) _tierInfoLabel.Visible = false;
+			return;
+		}
 
 		bool queueFull = selectedCamp.GetQueueCount() >= selectedCamp.GetMaxQueueSize();
+		int unlockedTier = GameManager.Instance?.GetUnlockedTier(GetLocalTeamId()) ?? 1;
+
+		// Barre d'info palier
+		if (_tierInfoLabel != null)
+		{
+			_tierInfoLabel.Visible = true;
+			if (unlockedTier >= 3)
+			{
+				_tierInfoLabel.Text = "Palier 3/3 — Toutes les unités débloquées ✓";
+			}
+			else if (unlockedTier == 2)
+			{
+				string regionDesc = GetTier3RegionDescription(GetLocalTeamId());
+				_tierInfoLabel.Text = $"Palier 2/3 — Débloquez le palier 3 : {regionDesc} + 1 camp ailleurs + un port";
+			}
+			else
+			{
+				_tierInfoLabel.Text = "Palier 1/3 — Débloquez le palier 2 : possédez 2 camps";
+			}
+		}
 
 		foreach (string unitType in UnitTypes)
 		{
 			if (!_unitButtons.TryGetValue(unitType, out var btn)) continue;
 
-			bool canBuy = !queueFull && selectedCamp.CanBuyUnit(unitType);
+			int requiredTier = GameManager.GetUnitTier(unitType);
+			bool locked = unlockedTier < requiredTier;
+			bool canBuy = !locked && !queueFull && selectedCamp.CanBuyUnit(unitType);
 
 			btn.Disabled = !canBuy;
-			btn.Modulate = canBuy ? new Color(1f, 1f, 1f, 1f) : new Color(0.5f, 0.5f, 0.5f, 0.8f);
+			btn.Modulate = locked
+				? new Color(0.35f, 0.35f, 0.35f, 0.55f)
+				: canBuy ? new Color(1f, 1f, 1f, 1f) : new Color(0.5f, 0.5f, 0.5f, 0.8f);
 
-			if (queueFull)
+			if (_lockLabels.TryGetValue(unitType, out var lbl))
+				lbl.Text = locked ? $"🔒 P{requiredTier}" : "";
+
+			if (locked)
+				btn.TooltipText = requiredTier == 2
+					? "🔒 Palier 2 : possédez 2 camps"
+					: "🔒 Palier 3 : capturez tous les camps de votre région de départ";
+			else if (queueFull)
 				btn.TooltipText = "File de production pleine !";
 			else if (!selectedCamp.CanBuyUnit(unitType))
 				btn.TooltipText = $"Or insuffisant ({UnitStats.GetStats(unitType).Price}g requis)";
@@ -363,16 +448,24 @@ public partial class GameHUD : Control
 		if (selectedPort == null || !IsInstanceValid(selectedPort)) return;
 		if (selectedPort.GetTeamId() != GetLocalTeamId()) return;
 
+		int unlockedTier = GameManager.Instance?.GetUnlockedTier(GetLocalTeamId()) ?? 1;
+
 		foreach (string shipType in ShipTypes)
 		{
 			if (!_shipButtons.TryGetValue(shipType, out var btn)) continue;
 
-			bool canBuy = selectedPort.CanBuyShip(shipType);
+			int requiredTier = GameManager.GetShipTier(shipType);
+			bool locked = unlockedTier < requiredTier;
+			bool canBuy = !locked && selectedPort.CanBuyShip(shipType);
 
 			btn.Disabled = !canBuy;
-			btn.Modulate = canBuy ? new Color(1f, 1f, 1f, 1f) : new Color(0.5f, 0.5f, 0.5f, 0.8f);
+			btn.Modulate = locked
+				? new Color(0.35f, 0.35f, 0.35f, 0.55f)
+				: canBuy ? new Color(1f, 1f, 1f, 1f) : new Color(0.5f, 0.5f, 0.5f, 0.8f);
 
-			if (!canBuy)
+			if (locked)
+				btn.TooltipText = "🔒 Capturez toute votre région de départ + construisez un port";
+			else if (!canBuy)
 			{
 				int queueCount = selectedPort.GetShipQueueCount();
 				int maxQueue = selectedPort.GetMaxShipQueueSize();
@@ -382,10 +475,26 @@ public partial class GameHUD : Control
 					btn.TooltipText = $"Or insuffisant ({ShipStats.GetStats(shipType).Price}g requis)";
 			}
 			else
-			{
 				btn.TooltipText = "";
-			}
 		}
+	}
+
+	private string GetTier3RegionDescription(int teamId)
+	{
+		if (GameManager.Instance == null) return "contrôlez tous les camps de votre région de départ";
+
+		int homeRegion = GameManager.Instance.GetHomeRegion(teamId);
+		if (homeRegion < 0) return "contrôlez tous les camps de votre région de départ";
+
+		var allCamps = GameManager.Instance.GetAllCamps();
+		var homeCamps = allCamps.FindAll(c => c.RegionId == homeRegion);
+		int total = homeCamps.Count;
+		int owned = homeCamps.FindAll(c => c.GetTeamId() == teamId).Count;
+
+		if (owned == total && total >= 2)
+			return $"région de départ complète ✓ ({owned}/{total})";
+
+		return $"contrôlez les {total} camps de votre région de départ ({owned}/{total})";
 	}
 
 	private void FindSelectionManager()

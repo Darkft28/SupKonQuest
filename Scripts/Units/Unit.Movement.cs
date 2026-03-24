@@ -278,7 +278,7 @@ public partial class Unit
 			_navTargetDirty = false;
 		}
 
-		if (_navAgent.IsNavigationFinished())
+		if (!_navAgent.IsTargetReachable() || _navAgent.IsNavigationFinished())
 		{
 			Velocity = Vector2.Zero;
 			return;

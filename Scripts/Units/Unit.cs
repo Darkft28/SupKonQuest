@@ -288,7 +288,12 @@ public partial class Unit : CharacterBody2D
 		if (isMulti && !IsLocalAuthority)
 		{
 			if (_networkTargetPosition.HasValue)
+			{
+				Vector2 moveDir = _networkTargetPosition.Value - GlobalPosition;
+				if (moveDir.Length() > 2f)
+					UpdateSpriteDirection(moveDir);
 				GlobalPosition = GlobalPosition.Lerp(_networkTargetPosition.Value, 10f * (float)delta);
+			}
 			return;
 		}
 
@@ -322,5 +327,7 @@ public partial class Unit : CharacterBody2D
 				ProcessAttackingCampState(delta);
 				break;
 		}
+
+		UpdateSpriteDirection(Velocity);
 	}
 }

@@ -11,11 +11,10 @@ public partial class GameModeMenu : Control
 	// Popup paramètres
 	private ColorRect _overlay;
 	private Label _popupTitle;
-	private VBoxContainer _difficultySection;
-	private bool _pendingIsIA = false;
-	private AIController.Difficulty _selectedDifficulty = AIController.Difficulty.Medium;
 	private GameState.MapType _selectedMapType = GameState.MapType.Irridium;
 	private CheckBox _fastModeCheckBox;
+	private bool _isIAMode = false;
+	private string _selectedAILevel = "Medium";
 
 	public override void _Ready()
 	{
@@ -25,9 +24,10 @@ public partial class GameModeMenu : Control
 		_backButton = GetNode<Button>("Background/MarginContainer/VBoxContainer/BackButton");
 		_langButton = GetNode<Button>("LangButton");
 
-		_soloButton.Pressed += () => ShowSettingsPopup(true);
+		_soloButton.Pressed += () => { _isIAMode = false; if (_popupTitle != null) _popupTitle.Text = "Paramètres — Solo"; ShowSettingsPopup(); };
 		_multiButton.Pressed += OnMultiPressed;
-		_iaButton.Visible = false; // fusionné avec Solo
+		_iaButton.Visible = true;
+		_iaButton.Pressed += OnIAPressed;
 		_backButton.Pressed += OnBackPressed;
 		_langButton.Pressed += OnLangPressed;
 
@@ -70,6 +70,7 @@ public partial class GameModeMenu : Control
 
 		// Titre
 		_popupTitle = new Label();
+		_popupTitle.Text = "Paramètres — Solo";
 		_popupTitle.HorizontalAlignment = HorizontalAlignment.Center;
 		_popupTitle.AddThemeFontSizeOverride("font_size", 22);
 		vbox.AddChild(_popupTitle);
@@ -102,46 +103,39 @@ public partial class GameModeMenu : Control
 			mapHBox.AddChild(btn);
 		}
 
-		// Difficulté (mode IA uniquement)
-		_difficultySection = new VBoxContainer();
-		_difficultySection.AddThemeConstantOverride("separation", 8);
-		vbox.AddChild(_difficultySection);
-
-		var diffLabel = new Label();
-		diffLabel.Text = "Difficulté de l'IA";
-		_difficultySection.AddChild(diffLabel);
-
-		var diffHBox = new HBoxContainer();
-		diffHBox.AddThemeConstantOverride("separation", 8);
-		_difficultySection.AddChild(diffHBox);
-
-		var diffGroup = new ButtonGroup();
-		string[] diffNames = { "Facile", "Moyen", "Difficile" };
-		AIController.Difficulty[] diffValues = {
-			AIController.Difficulty.Easy,
-			AIController.Difficulty.Medium,
-			AIController.Difficulty.Hard
-		};
-		for (int i = 0; i < 3; i++)
-		{
-			var btn = new Button();
-			btn.Text = diffNames[i];
-			btn.ToggleMode = true;
-			btn.ButtonGroup = diffGroup;
-			btn.ButtonPressed = (diffValues[i] == _selectedDifficulty);
-			btn.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-			UIStyle.ApplyStone(btn);
-			var captured = diffValues[i];
-			btn.Pressed += () => _selectedDifficulty = captured;
-			diffHBox.AddChild(btn);
-		}
-
 		vbox.AddChild(new HSeparator());
 
 		// Mode test : vitesse x3
 		_fastModeCheckBox = new CheckBox();
 		_fastModeCheckBox.Text = "⚡ Vitesse x3 (test)";
 		vbox.AddChild(_fastModeCheckBox);
+
+		vbox.AddChild(new HSeparator());
+
+		// Niveau de difficulté IA (affiché conditionnellement - on le crée mais on le rendra visible/invisible)
+		var iaLevelLabel = new Label();
+		iaLevelLabel.Text = "Niveau IA";
+		vbox.AddChild(iaLevelLabel);
+
+		var iaHBox = new HBoxContainer();
+		iaHBox.AddThemeConstantOverride("separation", 8);
+		vbox.AddChild(iaHBox);
+
+		var iaGroup = new ButtonGroup();
+		var levels = new[] { "Easy", "Medium", "Hard" };
+		foreach (var level in levels)
+		{
+			var btn = new Button();
+			btn.Text = level;
+			btn.ToggleMode = true;
+			btn.ButtonGroup = iaGroup;
+			btn.ButtonPressed = (level == _selectedAILevel);
+			btn.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+			UIStyle.ApplyStone(btn);
+			var captured = level;
+			btn.Pressed += () => { _selectedAILevel = captured; };
+			iaHBox.AddChild(btn);
+		}
 
 		vbox.AddChild(new HSeparator());
 
@@ -165,11 +159,8 @@ public partial class GameModeMenu : Control
 		actionsHBox.AddChild(launchBtn);
 	}
 
-	private void ShowSettingsPopup(bool isIA)
+	private void ShowSettingsPopup()
 	{
-		_pendingIsIA = isIA;
-		_popupTitle.Text = "Paramètres — Solo";
-		_difficultySection.Visible = true;
 		_overlay.Visible = true;
 	}
 
@@ -180,17 +171,27 @@ public partial class GameModeMenu : Control
 		if (gameState != null)
 		{
 			gameState.LocalTeamId = 1;
-			gameState.IsAIMode = _pendingIsIA;
 			gameState.IsFreeForAll = true;
-			gameState.AILevel = _selectedDifficulty;
 			gameState.SelectedMapType = _selectedMapType;
 			gameState.FastMode = _fastModeCheckBox.ButtonPressed;
+			gameState.IsAIMode = _isIAMode;
+			gameState.AILevel = _selectedAILevel;
+			// En mode IA : IsFreeForAll doit être false (solo vs IA team 2)
+			if (_isIAMode)
+				gameState.IsFreeForAll = false;
 		}
 		Engine.TimeScale = _fastModeCheckBox.ButtonPressed ? 3.0 : 1.0;
 		GetTree().ChangeSceneToFile("res://Scenes/Game.tscn");
 	}
 
 	// ── Navigation ───────────────────────────────────────────────────────────
+
+	private void OnIAPressed()
+	{
+		_isIAMode = true;
+		if (_popupTitle != null) _popupTitle.Text = "Paramètres — Contre IA";
+		ShowSettingsPopup();
+	}
 
 	private void OnMultiPressed()
 	{

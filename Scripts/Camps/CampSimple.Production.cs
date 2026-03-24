@@ -59,6 +59,7 @@ public partial class CampSimple
 	private const int IdSolEau = 6;
 	private const int IdObjetArbreSpawn = 100;
 	private const int IdObjetMontagneSpawn = 101;
+	private const float SpawnRadius = 525f;
 
 	private bool IsSpawnBlocked(Vector2 worldPos)
 	{
@@ -108,7 +109,7 @@ public partial class CampSimple
 		var unit = unitScene.Instantiate<Unit>();
 
 		float spawnAngle = (float)GD.RandRange(0, Mathf.Tau);
-		unit.GlobalPosition = FindClearSpawnPosition(spawnAngle, 525f);
+		unit.GlobalPosition = FindClearSpawnPosition(spawnAngle, SpawnRadius);
 		unit.UnitType = unitType;
 		unit.TeamId = TeamId;
 		unit.IsNeutralCampUnit = false;
@@ -143,7 +144,7 @@ public partial class CampSimple
 			var unit = unitScene.Instantiate<Unit>();
 
 			float angle = (i * Mathf.Tau) / UnitTypes.Length;
-			unit.GlobalPosition = FindClearSpawnPosition(angle, 525f);
+			unit.GlobalPosition = FindClearSpawnPosition(angle, SpawnRadius);
 			unit.UnitType = UnitTypes[i];
 			unit.TeamId = TeamId;
 			unit.IsNeutralCampUnit = IsNeutralCamp;
@@ -175,6 +176,9 @@ public partial class CampSimple
 
 		int totalInQueue = _productionQueue.Count + (_currentProduction != null ? 1 : 0);
 		if (totalInQueue >= MaxQueueSize)
+			return false;
+
+		if (GameManager.Instance.GetUnlockedTier(TeamId) < GameManager.GetUnitTier(unitType))
 			return false;
 
 		var stats = UnitStats.GetStats(unitType);

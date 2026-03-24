@@ -13,8 +13,6 @@ public partial class MapGenerator : Node
 	private Node2D _objectsContainer;
 	private SelectionManager _selectionManager;
 	private TerritoryManager _territoryManager;
-	private List<AIController> _aiControllers = new List<AIController>();
-
 	// Grille de territoires (256×256) décodée depuis le RLE de la map preset
 	private int[,] _territoryGrid;
 	private string[] _territoireNoms;
@@ -82,8 +80,6 @@ public partial class MapGenerator : Node
 
 			ReadMapSettings();
 			GenererMap();
-			InitAIControllers();
-
 			CallDeferred(nameof(InitTerritory));
 		}
 		else if (_tileMapSol.GetUsedCells().Count == 0)
@@ -159,6 +155,7 @@ public partial class MapGenerator : Node
 		{
 			GameManager.Instance.OnMapGenerationComplete();
 		}
+		CallDeferred(nameof(InitAIController));
 
 		// Mettre à jour les limites de la caméra avec la vraie taille de map
 		if (_camera is SupKonQuest.CameraController cam)
@@ -315,6 +312,23 @@ public partial class MapGenerator : Node
 		_territoryManager.Initialize();
 	}
 
+	private void InitAIController()
+	{
+		var gameState = GetNodeOrNull<GameState>("/root/GameState");
+		if (gameState == null || !gameState.IsAIMode) return;
+
+		// Supprimer l'ancien AIController si présent
+		var oldAI = GetNodeOrNull<AIController>("AIController");
+		if (oldAI != null) { RemoveChild(oldAI); oldAI.QueueFree(); }
+
+		var ai = new AIController();
+		ai.Name = "AIController";
+		ai.AILevel = gameState.AILevel;
+		AddChild(ai);
+
+		GD.Print($"[IA] AIController créé — niveau : {gameState.AILevel}");
+	}
+
 	private void ReadMapSettings()
 	{
 		_mapWidth = _mapHeight = 256;
@@ -456,47 +470,6 @@ public partial class MapGenerator : Node
 		return hasLand;
 	}
 
-	private void InitAIControllers()
-	{
-		// Supprimer les anciens contrôleurs
-		foreach (var ai in _aiControllers)
-		{
-			if (ai != null && IsInstanceValid(ai))
-			{
-				RemoveChild(ai);
-				ai.QueueFree();
-			}
-		}
-		_aiControllers.Clear();
-
-		var gameState = GetNodeOrNull<GameState>("/root/GameState");
-		if (gameState == null || !gameState.IsAIMode) return;
-
-		if (gameState.IsFreeForAll)
-		{
-			var botTeams = GameManager.Instance?.GetBotTeamIds()
-				?? new System.Collections.Generic.List<int>();
-			foreach (int teamId in botTeams)
-			{
-				var ai = new AIController();
-				ai.Name = $"AIController_Team{teamId}";
-				ai.AITeamId = teamId;
-				ai.Level = gameState.AILevel;
-				AddChild(ai);
-				_aiControllers.Add(ai);
-			}
-		}
-		else
-		{
-			var ai = new AIController();
-			ai.Name = "AIController";
-			ai.AITeamId = 2;
-			ai.Level = gameState.AILevel;
-			AddChild(ai);
-			_aiControllers.Add(ai);
-		}
-	}
-
 	public override void _Input(InputEvent @event)
 	{
 		if (@event.IsActionPressed("ui_accept"))
@@ -510,7 +483,6 @@ public partial class MapGenerator : Node
 
 			ReadMapSettings();
 			GenererMap();
-			InitAIControllers();
 			CallDeferred(nameof(InitTerritory)); // différé comme dans _Ready(), pour que les camps aient leur _Ready()
 		}
 	}

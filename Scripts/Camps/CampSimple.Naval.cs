@@ -72,6 +72,8 @@ public partial class CampSimple
 		int totalInQueue = _shipProductionQueue.Count + (_currentShipProduction != null ? 1 : 0);
 		if (totalInQueue >= MaxShipQueueSize) return false;
 
+		if (GameManager.Instance.GetUnlockedTier(TeamId) < GameManager.GetShipTier(shipType)) return false;
+
 		var stats = ShipStats.GetStats(shipType);
 		return GameManager.Instance.CanAfford(TeamId, stats.Price);
 	}
