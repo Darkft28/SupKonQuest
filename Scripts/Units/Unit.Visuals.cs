@@ -2,29 +2,88 @@ using Godot;
 
 public partial class Unit
 {
+	private Texture2D _texFront;
+	private Texture2D _texBack;
+	private Texture2D _texLeft;
+	private Texture2D _texRight;
+	private bool _flipForLeft; // true si pas de texture Left (ex: AntiArmor)
+
 	private void CreateSprite()
 	{
 		_sprite = new Sprite2D();
 
-		string texturePath = UnitType switch
-		{
-			"Heal" => "res://Assets/Units/Characters/Healer/healer_Front.png",
-			"AntiArmor" => "res://Assets/Units/Characters/Anti-armor/Anti-armor_front.png",
-			_ => $"res://Assets/Units/Characters/{UnitType}/{UnitType}_Front.png"
-		};
+		_texFront = LoadUnitTexture("Front");
+		_texBack  = LoadUnitTexture("Back");
+		_texRight = LoadUnitTexture("Right");
+		_texLeft  = LoadUnitTexture("Left");
 
-		var texture = GD.Load<Texture2D>(texturePath);
-
-		if (texture != null)
+		// AntiArmor n'a pas de texture Left : utiliser Right retournée
+		if (_texLeft == null)
 		{
-			_sprite.Texture = texture;
+			_texLeft = _texRight;
+			_flipForLeft = true;
+		}
+
+		if (_texFront != null)
+		{
+			_sprite.Texture = _texFront;
 			_sprite.Scale = new Vector2(0.255f, 0.255f);
 			AddChild(_sprite);
 		}
 		else
 		{
-			GD.PrintErr($"Impossible de charger la texture: {texturePath}");
+			GD.PrintErr($"[Unit] Texture Front introuvable pour: {UnitType}");
 		}
+	}
+
+	private Texture2D LoadUnitTexture(string direction)
+	{
+		string path = UnitType switch
+		{
+			"Heal"      => $"res://Assets/Units/Characters/Healer/healer_{direction}.png",
+			"AntiArmor" => direction == "Left"
+				? null
+				: $"res://Assets/Units/Characters/Anti-armor/Anti-armor_{direction.ToLower()}.png",
+			_ => $"res://Assets/Units/Characters/{UnitType}/{UnitType}_{direction}.png"
+		};
+
+		if (path == null) return null;
+		return GD.Load<Texture2D>(path);
+	}
+
+	public void UpdateSpriteDirection(Vector2 velocity)
+	{
+		if (_sprite == null || velocity == Vector2.Zero) return;
+
+		float ax = Mathf.Abs(velocity.X);
+		float ay = Mathf.Abs(velocity.Y);
+
+		Texture2D tex;
+		bool flip = false;
+
+		if (ay >= ax)
+		{
+			// Mouvement vertical dominant
+			tex = velocity.Y > 0 ? _texFront : _texBack;
+		}
+		else
+		{
+			// Mouvement horizontal dominant
+			if (velocity.X > 0)
+			{
+				tex = _texRight;
+			}
+			else
+			{
+				tex = _texLeft;
+				flip = _flipForLeft;
+			}
+		}
+
+		if (tex != null && _sprite.Texture != tex)
+			_sprite.Texture = tex;
+
+		_sprite.FlipH = flip;
 	}
 
 	private void CreateCollision()
@@ -35,8 +94,6 @@ public partial class Unit
 		collision.Shape = shape;
 		AddChild(collision);
 
-		// Les unités restent visibles sur la layer 1 (pour les Area2D de détection),
-		// mais ne se bloquent plus physiquement entre elles ni avec les camps
 		CollisionLayer = 1u;
 		CollisionMask = 0u;
 	}
