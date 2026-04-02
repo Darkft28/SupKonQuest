@@ -2,31 +2,70 @@ using Godot;
 
 public partial class CampSimple
 {
+	private Node2D _campUiRoot;
+
+	private void EnsureCampUi()
+	{
+		_campUiRoot = GetNodeOrNull<Node2D>("CampUI");
+		if (_campUiRoot == null)
+		{
+			var campUiScene = GD.Load<PackedScene>("res://Scenes/CampUI.tscn");
+			_campUiRoot = campUiScene?.Instantiate<Node2D>();
+			if (_campUiRoot == null)
+			{
+				_campUiRoot = new Node2D();
+				_campUiRoot.Name = "CampUI";
+			}
+			AddChild(_campUiRoot);
+		}
+
+		_campIdLabel = _campUiRoot.GetNodeOrNull<Label>("CampIdLabel");
+		_healthBarBackground = _campUiRoot.GetNodeOrNull<ColorRect>("HealthBarBackground");
+		_healthBarForeground = _campUiRoot.GetNodeOrNull<ColorRect>("HealthBarForeground");
+	}
+
 	private void CreateCampIdLabel()
 	{
-		_campIdLabel = new Label();
+		EnsureCampUi();
+		if (_campIdLabel == null)
+		{
+			_campIdLabel = new Label();
+			_campIdLabel.Name = "CampIdLabel";
+			_campUiRoot?.AddChild(_campIdLabel);
+		}
+
 		_campIdLabel.Text = $"#{CampId}";
 		_campIdLabel.Position = new Vector2(-20, -130);
 		_campIdLabel.AddThemeFontSizeOverride("font_size", 20);
 		_campIdLabel.AddThemeColorOverride("font_color", GetTeamColor());
 		_campIdLabel.AddThemeColorOverride("font_outline_color", new Color(0, 0, 0, 1));
 		_campIdLabel.AddThemeConstantOverride("outline_size", 3);
-		AddChild(_campIdLabel);
 	}
 
 	private void CreateHealthBar()
 	{
-		_healthBarBackground = new ColorRect();
+		EnsureCampUi();
+		if (_healthBarBackground == null)
+		{
+			_healthBarBackground = new ColorRect();
+			_healthBarBackground.Name = "HealthBarBackground";
+			_campUiRoot?.AddChild(_healthBarBackground);
+		}
+
 		_healthBarBackground.Size = new Vector2(HealthBarWidth, HealthBarHeight);
 		_healthBarBackground.Position = new Vector2(-HealthBarWidth / 2, -100);
 		_healthBarBackground.Color = new Color(0, 0, 0, 0.8f);
-		AddChild(_healthBarBackground);
 
-		_healthBarForeground = new ColorRect();
+		if (_healthBarForeground == null)
+		{
+			_healthBarForeground = new ColorRect();
+			_healthBarForeground.Name = "HealthBarForeground";
+			_campUiRoot?.AddChild(_healthBarForeground);
+		}
+
 		_healthBarForeground.Size = new Vector2(HealthBarWidth, HealthBarHeight);
 		_healthBarForeground.Position = new Vector2(-HealthBarWidth / 2, -100);
 		_healthBarForeground.Color = GetTeamColor();
-		AddChild(_healthBarForeground);
 	}
 
 	private void UpdateHealthBar()

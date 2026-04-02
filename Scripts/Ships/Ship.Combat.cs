@@ -2,6 +2,8 @@ using Godot;
 
 public partial class Ship
 {
+	private static readonly PackedScene ShipProjectileScene = GD.Load<PackedScene>("res://Scenes/ShipProjectile.tscn");
+
 	private void ProcessAttackingState(double delta)
 	{
 		if (!IsTargetValid())
@@ -38,7 +40,7 @@ public partial class Ship
 
 	private void SpawnProjectile(Ship target)
 	{
-		var projectile = new ShipProjectile();
+		var projectile = ShipProjectileScene?.Instantiate<ShipProjectile>() ?? new ShipProjectile();
 		GetTree().CurrentScene.AddChild(projectile);
 		projectile.Initialize(GlobalPosition, target, _stats.Attack, TeamId, 300f);
 	}

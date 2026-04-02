@@ -31,7 +31,14 @@ public partial class ShipProjectile : Node2D
 
 	private void CreateSprite()
 	{
-		_sprite = new Sprite2D();
+		_sprite = GetNodeOrNull<Sprite2D>("Sprite2D");
+		if (_sprite == null)
+		{
+			_sprite = new Sprite2D();
+			_sprite.Name = "Sprite2D";
+			AddChild(_sprite);
+		}
+
 		string texturePath = "res://Assets/Units/Characters/Mortar/Mortar_Ammo.png";
 		_sprite.Scale = new Vector2(0.2f, 0.2f);
 
@@ -40,7 +47,6 @@ public partial class ShipProjectile : Node2D
 		{
 			_sprite.Texture = texture;
 		}
-		AddChild(_sprite);
 	}
 
 	public override void _Process(double delta)

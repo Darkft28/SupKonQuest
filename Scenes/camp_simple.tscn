@@ -2,6 +2,7 @@
 
 [ext_resource type="Texture2D" uid="uid://leh64h2iw5ag" path="res://Assets/Objects/Camps.png" id="1_0eod8"]
 [ext_resource type="Script" uid="uid://b57i42jahy20f" path="res://Scripts/Camps/CampSimple.cs" id="1_brwug"]
+[ext_resource type="PackedScene" path="res://Scenes/CampUI.tscn" id="2_campui"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_brwug"]
 size = Vector2(393, 390)
@@ -12,6 +13,8 @@ script = ExtResource("1_brwug")
 
 [node name="Sprite2D" type="Sprite2D" parent="."]
 texture = ExtResource("1_0eod8")
+
+[node name="CampUI" parent="." instance=ExtResource("2_campui")]
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="."]
 position = Vector2(-0.5, 0)
