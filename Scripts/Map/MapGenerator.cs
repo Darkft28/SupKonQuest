@@ -148,7 +148,11 @@ public partial class MapGenerator : Node
 	private static void ClearContainerChildren(Node container)
 	{
 		foreach (Node child in container.GetChildren())
-			child.QueueFree();
+		{
+			// Use Free() to remove nodes immediately from the scene tree and groups,
+			// ensuring they are not visible to subsequent logic in the same frame.
+			child.Free();
+		}
 	}
 
 	private void SpawnPresetObjectSprites(int halfWidth, int halfHeight)
