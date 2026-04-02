@@ -154,12 +154,21 @@ public partial class TerritoryManager : Node2D
 				{
 					var gameState = GetNodeOrNull<GameState>("/root/GameState");
 					int localTeamId = gameState?.LocalTeamId ?? 1;
-					int tx = Mathf.RoundToInt(worldPos.X / TileSize) + HalfWidth;
-					int ty = Mathf.RoundToInt(worldPos.Y / TileSize) + HalfHeight;
+
+					// Même conversion que CampSimple.PlacePortAt pour éviter les décalages terre/eau.
+					Vector2I clickedTile = _solLayer != null
+						? _solLayer.LocalToMap(_solLayer.ToLocal(worldPos))
+						: new Vector2I(Mathf.RoundToInt(worldPos.X / TileSize), Mathf.RoundToInt(worldPos.Y / TileSize));
+
+					int tx = clickedTile.X + HalfWidth;
+					int ty = clickedTile.Y + HalfHeight;
+					bool isWaterTile = _solLayer != null && _solLayer.GetCellSourceId(clickedTile) == 6;
 					bool tileOwned = tx >= 0 && tx < MapWidth && ty >= 0 && ty < MapHeight
 						&& _territoryMap[tx, ty] == localTeamId;
 
-					if (!tileOwned)
+					if (isWaterTile)
+						GD.Print("[PORT] Cliquez sur une tuile de territoire (terre) adjacente à l'eau.");
+					else if (!tileOwned)
 						GD.Print("[PORT] Cette tuile ne vous appartient pas.");
 					else if (!_pendingPortCamp.PlacePortAt(worldPos))
 						GD.Print("[PORT] Aucune eau ici — choisissez un emplacement près de l'eau.");

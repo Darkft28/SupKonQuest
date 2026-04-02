@@ -12,3 +12,4 @@
 # IDE
 .idea/
 *.sln.DotSettings.user
+.vscode/

@@ -437,6 +437,106 @@ offset_top = 541.0
 offset_right = 279.0
 offset_bottom = 568.0
 
+[node name="QuitButton" type="Button" parent="."]
+layout_mode = 1
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -120.0
+offset_top = 10.0
+offset_right = -10.0
+offset_bottom = 45.0
+grow_horizontal = 0
+theme_override_font_sizes/font_size = 18
+text = "✕ Menu"
+
+[node name="TerritoryButton" type="Button" parent="."]
+layout_mode = 1
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -340.0
+offset_top = 10.0
+offset_right = -130.0
+offset_bottom = 45.0
+grow_horizontal = 0
+theme_override_font_sizes/font_size = 15
+toggle_mode = true
+text = "🗺 Territoire"
+
+[node name="BrushSizeContainer" type="HBoxContainer" parent="."]
+visible = false
+layout_mode = 1
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -340.0
+offset_top = 50.0
+offset_right = -130.0
+offset_bottom = 85.0
+grow_horizontal = 0
+
+[node name="Brush1Button" type="Button" parent="BrushSizeContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "1×1"
+
+[node name="Brush3Button" type="Button" parent="BrushSizeContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "3×3"
+
+[node name="Brush5Button" type="Button" parent="BrushSizeContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "5×5"
+
+[node name="PortButton" type="Button" parent="."]
+visible = false
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -80.0
+offset_top = -110.0
+offset_right = 80.0
+offset_bottom = -75.0
+grow_horizontal = 2
+grow_vertical = 0
+theme_override_font_sizes/font_size = 16
+text = "⚓ Port"
+
+[node name="DisconnectPanel" type="Panel" parent="."]
+visible = false
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="DisconnectLabel" type="Label" parent="DisconnectPanel"]
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -280.0
+offset_top = -80.0
+offset_right = 280.0
+offset_bottom = 80.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_font_sizes/font_size = 28
+modulate = Color(1, 0.3, 0.3, 1)
+text = "Adversaire déconnecté\nRetour au menu dans 5s..."
+horizontal_alignment = 1
+vertical_alignment = 1
+
 [node name="HBoxContainer" type="HBoxContainer" parent="GoldPanel"]
 layout_mode = 1
 anchors_preset = 15

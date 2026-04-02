@@ -10,7 +10,13 @@ public partial class Unit
 
 	private void CreateSprite()
 	{
-		_sprite = new Sprite2D();
+		_sprite = GetNodeOrNull<Sprite2D>("Sprite2D");
+		if (_sprite == null)
+		{
+			_sprite = new Sprite2D();
+			_sprite.Name = "Sprite2D";
+			AddChild(_sprite);
+		}
 
 		_texFront = LoadUnitTexture("Front");
 		_texBack  = LoadUnitTexture("Back");
@@ -28,7 +34,6 @@ public partial class Unit
 		{
 			_sprite.Texture = _texFront;
 			_sprite.Scale = new Vector2(0.255f, 0.255f);
-			AddChild(_sprite);
 		}
 		else
 		{
@@ -88,11 +93,17 @@ public partial class Unit
 
 	private void CreateCollision()
 	{
-		var collision = new CollisionShape2D();
-		var shape = new CircleShape2D();
+		var collision = GetNodeOrNull<CollisionShape2D>("CollisionShape2D");
+		if (collision == null)
+		{
+			collision = new CollisionShape2D();
+			collision.Name = "CollisionShape2D";
+			AddChild(collision);
+		}
+
+		var shape = collision.Shape as CircleShape2D ?? new CircleShape2D();
 		shape.Radius = 40f;
 		collision.Shape = shape;
-		AddChild(collision);
 
 		CollisionLayer = 1u;
 		CollisionMask = 0u;
@@ -100,16 +111,25 @@ public partial class Unit
 
 	private void CreateDetectionZone()
 	{
-		_detectionZone = new Area2D();
-		_detectionZone.Name = "DetectionZone";
+		_detectionZone = GetNodeOrNull<Area2D>("DetectionZone");
+		if (_detectionZone == null)
+		{
+			_detectionZone = new Area2D();
+			_detectionZone.Name = "DetectionZone";
+			AddChild(_detectionZone);
+		}
 
-		var collisionShape = new CollisionShape2D();
-		var circleShape = new CircleShape2D();
+		var collisionShape = _detectionZone.GetNodeOrNull<CollisionShape2D>("CollisionShape2D");
+		if (collisionShape == null)
+		{
+			collisionShape = new CollisionShape2D();
+			collisionShape.Name = "CollisionShape2D";
+			_detectionZone.AddChild(collisionShape);
+		}
+
+		var circleShape = collisionShape.Shape as CircleShape2D ?? new CircleShape2D();
 		circleShape.Radius = DetectionRange;
 		collisionShape.Shape = circleShape;
-
-		_detectionZone.AddChild(collisionShape);
-		AddChild(_detectionZone);
 
 		_detectionZone.BodyEntered += OnBodyEnteredDetectionZone;
 	}

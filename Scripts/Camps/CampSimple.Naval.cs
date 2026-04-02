@@ -2,6 +2,16 @@ using Godot;
 
 public partial class CampSimple
 {
+	private static readonly PackedScene PortScene = GD.Load<PackedScene>("res://Scenes/Port.tscn");
+
+	private Sprite2D CreatePortVisual()
+	{
+		var port = PortScene?.Instantiate<Sprite2D>() ?? new Sprite2D();
+		if (port.Texture == null)
+			port.Texture = GD.Load<Texture2D>("res://Assets/Objects/Port.png");
+		return port;
+	}
+
 	public void SetTileMapSol(TileMapLayer tileMapSol)
 	{
 		_tileMapSol = tileMapSol;
@@ -243,20 +253,30 @@ public partial class CampSimple
 		if (_tileMapSol == null) return false;
 
 		Vector2I clickedTile = _tileMapSol.LocalToMap(_tileMapSol.ToLocal(worldPos));
+		if (_tileMapSol.GetCellSourceId(clickedTile) == 6)
+			return false;
 
 		// Compter les tuiles d'eau dans chaque direction cardinale
 		Vector2I[] directions = { new Vector2I(0, -1), new Vector2I(0, 1), new Vector2I(1, 0), new Vector2I(-1, 0) };
-		string[] dirNames   = { "Nord", "Sud", "Est", "Ouest" };
 		float[]  rotations  = { -Mathf.Pi / 2f, Mathf.Pi / 2f, 0f, 0f };
 		bool[]   flips      = { false, false, false, true };
 
 		int bestWaterCount = 0;
 		int bestDir = -1;
+		bool hasAdjacentWater = false;
 
 		for (int d = 0; d < directions.Length; d++)
 		{
-			int waterCount = 0;
 			Vector2I dir = directions[d];
+
+			// Le port manuel doit être posé depuis une tuile côtière : eau immédiate obligatoire.
+			Vector2I immediateWaterTile = clickedTile + dir;
+			if (_tileMapSol.GetCellSourceId(immediateWaterTile) != 6)
+				continue;
+
+			hasAdjacentWater = true;
+
+			int waterCount = 0;
 
 			for (int dist = 1; dist <= 8; dist++)
 				for (int offset = -2; offset <= 2; offset++)
@@ -276,20 +296,23 @@ public partial class CampSimple
 			}
 		}
 
-		if (bestWaterCount < 1 || bestDir < 0)
+		if (!hasAdjacentWater || bestWaterCount < 1 || bestDir < 0)
 			return false;
 
-		// Le clic est le bout terrestre du port : décaler le centre du sprite vers l'eau
+		// Le clic est interprété comme la tuile terrestre côtière : ancrer depuis le centre de tuile
+		// pour éviter les placements erratiques quand on clique à l'intérieur d'un camp.
+		Vector2 shorelineTileCenter = _tileMapSol.ToGlobal(_tileMapSol.MapToLocal(clickedTile));
+
+		// Décaler le centre du sprite vers l'eau
 		// halfLen en world space = longueur_texture * scale_sprite * scale_camp / 2
 		const float PortLongAxis = 1256f;
 		const float PortScale    = 0.07f;
 		float halfLen = PortLongAxis * PortScale * Scale.X / 2f;
 		Vector2 waterDir2D = new Vector2(directions[bestDir].X, directions[bestDir].Y);
-		Vector2 spriteCenter = worldPos + waterDir2D * halfLen;
+		Vector2 spriteCenter = shorelineTileCenter + waterDir2D * halfLen;
 
 		HasPort = true;
-		_portSprite = new Sprite2D();
-		_portSprite.Texture  = GD.Load<Texture2D>("res://Assets/Objects/Port.png");
+		_portSprite = CreatePortVisual();
 		_portSprite.Scale = new Vector2(PortScale, PortScale);
 		_portSprite.Rotation = rotations[bestDir];
 		_portSprite.FlipH    = flips[bestDir];
@@ -405,7 +428,7 @@ public partial class CampSimple
 			waterDist = 3;
 
 		HasPort = true;
-		_portSprite = new Sprite2D();
+		_portSprite = CreatePortVisual();
 
 		// 3) Calculer la position du port
 		// Côte = bord entre dernière tuile terre et première tuile eau
@@ -418,27 +441,22 @@ public partial class CampSimple
 		// Décalage du centre vers l'eau pour avoir 20% terre / 80% eau
 		float shift = (1f - 2f * LandOverlap) * halfLen;
 
-		string texturePath;
 		Vector2 portPosition;
 
 		switch (bestDirectionIndex)
 		{
 			case 0: // Nord - eau vers Y négatif
-				texturePath = "res://Assets/Objects/Port.png";
 				_portSprite.Rotation = -Mathf.Pi / 2f;
 				portPosition = new Vector2(0, -(coastLocalDist + shift));
 				break;
 			case 1: // Sud - eau vers Y positif
-				texturePath = "res://Assets/Objects/Port.png";
 				_portSprite.Rotation = Mathf.Pi / 2f;
 				portPosition = new Vector2(0, coastLocalDist + shift);
 				break;
 			case 2: // Est - eau vers X positif
-				texturePath = "res://Assets/Objects/Port.png";
 				portPosition = new Vector2(coastLocalDist + shift, 0);
 				break;
 			case 3: // Ouest - eau vers X négatif
-				texturePath = "res://Assets/Objects/Port.png";
 				_portSprite.FlipH = true;
 				portPosition = new Vector2(-(coastLocalDist + shift), 0);
 				break;
@@ -446,7 +464,6 @@ public partial class CampSimple
 				return;
 		}
 
-		_portSprite.Texture = GD.Load<Texture2D>(texturePath);
 		_portSprite.Position = portPosition;
 		_portSprite.Scale = new Vector2(PortScale, PortScale);
 		AddChild(_portSprite);

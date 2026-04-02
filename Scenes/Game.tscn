@@ -9,9 +9,11 @@
 [ext_resource type="Texture2D" uid="uid://judykwpu4206" path="res://Assets/Map/Water.png" id="7_u2kfw"]
 [ext_resource type="Texture2D" uid="uid://wi7gangnsyx7" path="res://Assets/Objects/Tree.png" id="8_m6kus"]
 [ext_resource type="Texture2D" uid="uid://cr56to0mrkoap" path="res://Assets/Objects/montagne.png" id="9_m6kus"]
+[ext_resource type="Script" path="res://Scripts/Selection/SelectionManager.cs" id="10_selection"]
 [ext_resource type="Script" uid="uid://fsbeo8ta1qfu" path="res://Scripts/Camera/CameraController.cs" id="9_wckam"]
 [ext_resource type="Texture2D" uid="uid://leh64h2iw5ag" path="res://Assets/Objects/Camps.png" id="10_m6kus"]
 [ext_resource type="Texture2D" uid="uid://dadcmn6ktuuy2" path="res://Assets/Objects/Camps_UP.png" id="11_jbi0w"]
+[ext_resource type="Script" path="res://Scripts/Network/NetworkSync.cs" id="12_netsync"]
 [ext_resource type="PackedScene" uid="uid://do8135h5uk8sg" path="res://Scenes/GameHUD.tscn" id="13_3cx6b"]
 
 [sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_kqipd"]
@@ -86,7 +88,7 @@ texture = ExtResource("7_u2kfw")
 texture_region_size = Vector2i(128, 128)
 0:0/next_alternative_id = 4
 0:0/0 = 0
-0:0/0/physics_layer_0/polygon_0/points = PackedVector2Array(-64, -64, 64, -64, 64, 64, -64, 64)
+0:0/0/physics_layer_0/polygon_0/points = PackedVector2Array(-56, -56, 56, -56, 56, 56, -56, 56)
 0:0/1 = 1
 0:0/1/flip_h = true
 0:0/2 = 2
@@ -149,6 +151,14 @@ tile_set = SubResource("TileSet_wckam")
 [node name="Camera2D" type="Camera2D" parent="."]
 zoom = Vector2(0.25, 0.25)
 script = ExtResource("9_wckam")
+
+[node name="Units" type="Node2D" parent="."]
+
+[node name="SelectionManager" type="Node2D" parent="."]
+script = ExtResource("10_selection")
+
+[node name="NetworkSync" type="Node" parent="."]
+script = ExtResource("12_netsync")
 
 [node name="CanvasLayer" type="CanvasLayer" parent="."]
 

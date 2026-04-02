@@ -2,6 +2,8 @@ using Godot;
 
 public partial class Unit
 {
+	private static readonly PackedScene ProjectileScene = GD.Load<PackedScene>("res://Scenes/Projectile.tscn");
+
 	private void ProcessAttackingState(double delta)
 	{
 		if (!IsTargetValid())
@@ -176,7 +178,7 @@ public partial class Unit
 
 	private void SpawnProjectile(Unit target)
 	{
-		var projectile = new Projectile();
+		var projectile = ProjectileScene?.Instantiate<Projectile>() ?? new Projectile();
 		GetTree().CurrentScene.AddChild(projectile);
 
 		var type = UnitType == "Mortar" ? Projectile.ProjectileType.Cannonball : Projectile.ProjectileType.Arrow;

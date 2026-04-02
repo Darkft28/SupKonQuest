@@ -1,0 +1,8 @@
+[gd_scene load_steps=2 format=3 uid="uid://bwgfo0t1u2rgs"]
+
+[ext_resource type="Script" uid="uid://e5mxkcdsv5d7" path="res://Scripts/Ships/ShipProjectile.cs" id="1_vjhil"]
+
+[node name="ShipProjectile" type="Node2D"]
+script = ExtResource("1_vjhil")
+
+[node name="Sprite2D" type="Sprite2D" parent="."]

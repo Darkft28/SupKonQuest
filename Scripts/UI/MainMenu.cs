@@ -26,6 +26,16 @@ public partial class MainMenu : Control
 		UpdateTexts();
 	}
 
+	public void OnPlayPressed()
+	{
+		GetTree().ChangeSceneToFile("res://Scenes/GameModeMenu.tscn");
+	}
+
+	public void OnQuitPressed()
+	{
+		GetTree().Quit();
+	}
+
 	private void UpdateTexts()
 	{
 		if (LocalizationManager.Instance == null) return;

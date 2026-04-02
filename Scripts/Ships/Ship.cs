@@ -102,14 +102,20 @@ public partial class Ship : CharacterBody2D
 			NetworkEntityRegistry.Register(NetworkId, this);
 		}
 
-		// Créer le NavigationAgent2D pour le pathfinding maritime (couche 2 = eau)
-		_navAgent = new NavigationAgent2D();
+		// NavigationAgent2D pré-instancié dans la scène (fallback runtime si manquant)
+		_navAgent = GetNodeOrNull<NavigationAgent2D>("NavigationAgent2D");
+		if (_navAgent == null)
+		{
+			_navAgent = new NavigationAgent2D();
+			_navAgent.Name = "NavigationAgent2D";
+			AddChild(_navAgent);
+		}
+
 		_navAgent.PathDesiredDistance = 15f;
 		_navAgent.TargetDesiredDistance = ArrivalDistance;
 		_navAgent.AvoidanceEnabled = false;
 		_navAgent.NavigationLayers = 2u;
 		_navAgent.Radius = 60f; // marge autour des côtes
-		AddChild(_navAgent);
 
 		_currentState = ShipState.Idle;
 

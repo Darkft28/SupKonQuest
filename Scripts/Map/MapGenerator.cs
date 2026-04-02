@@ -40,19 +40,11 @@ public partial class MapGenerator : Node
 
 		_unitsContainer = GetNodeOrNull<Node2D>("Units");
 		if (_unitsContainer == null && !Engine.IsEditorHint())
-		{
-			_unitsContainer = new Node2D();
-			_unitsContainer.Name = "Units";
-			AddChild(_unitsContainer);
-		}
+			GD.PrintErr("[MAP] Noeud 'Units' manquant dans Game.tscn");
 
 		_selectionManager = GetNodeOrNull<SelectionManager>("SelectionManager");
 		if (_selectionManager == null && !Engine.IsEditorHint())
-		{
-			_selectionManager = new SelectionManager();
-			_selectionManager.Name = "SelectionManager";
-			AddChild(_selectionManager);
-		}
+			GD.PrintErr("[MAP] Noeud 'SelectionManager' manquant dans Game.tscn");
 
 		if (_camera != null)
 		{
@@ -72,11 +64,7 @@ public partial class MapGenerator : Node
 		if (!Engine.IsEditorHint())
 		{
 			if (GetNodeOrNull<NetworkSync>("NetworkSync") == null)
-			{
-				var networkSync = new NetworkSync();
-				networkSync.Name = "NetworkSync";
-				AddChild(networkSync);
-			}
+				GD.PrintErr("[MAP] Noeud 'NetworkSync' manquant dans Game.tscn");
 
 			GenererMap();
 			CallDeferred(nameof(InitTerritory));
@@ -100,15 +88,13 @@ public partial class MapGenerator : Node
 		_tileMapObjets.Clear();
 		_tileMapObjets.Visible = true;
 
-		// Detruire et recreer les conteneurs pour un reset complet
-		if (_unitsContainer != null)
+		// Reset complet du contenu sans recréer les noeuds pré-instanciés dans la scène.
+		if (_unitsContainer == null)
 		{
-			RemoveChild(_unitsContainer);
-			_unitsContainer.QueueFree();
+			GD.PrintErr("[MAP] Noeud 'Units' manquant, génération annulée.");
+			return;
 		}
-		_unitsContainer = new Node2D();
-		_unitsContainer.Name = "Units";
-		AddChild(_unitsContainer);
+		ClearContainerChildren(_unitsContainer);
 
 		if (_objectsContainer != null)
 		{
@@ -157,6 +143,16 @@ public partial class MapGenerator : Node
 
 		// Zoom intro vers la base du joueur local
 		TriggerIntroZoom();
+	}
+
+	private static void ClearContainerChildren(Node container)
+	{
+		foreach (Node child in container.GetChildren())
+		{
+			// Use Free() to remove nodes immediately from the scene tree and groups,
+			// ensuring they are not visible to subsequent logic in the same frame.
+			child.Free();
+		}
 	}
 
 	private void SpawnPresetObjectSprites(int halfWidth, int halfHeight)
@@ -257,7 +253,7 @@ public partial class MapGenerator : Node
 
 				if (tileId != skipId && !(skipCamps && tileId == 102))
 				{
-					int alt = addVariants ? TerrainGenerator.PickAlt(originX + x, originY + y) : 0;
+					int alt = addVariants ? TerrainGenerator.PickAlt(originX + x, originY + y, tileId) : 0;
 					layer.SetCell(new Vector2I(originX + x, originY + y), tileId, Vector2I.Zero, alt);
 				}
 				x++;
