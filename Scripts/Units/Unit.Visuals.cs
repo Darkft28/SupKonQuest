@@ -112,7 +112,6 @@ public partial class Unit
 		AddChild(_detectionZone);
 
 		_detectionZone.BodyEntered += OnBodyEnteredDetectionZone;
-		_detectionZone.BodyExited += OnBodyExitedDetectionZone;
 	}
 
 	public override void _Draw()

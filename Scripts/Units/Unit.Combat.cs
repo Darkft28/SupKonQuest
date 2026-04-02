@@ -238,11 +238,6 @@ public partial class Unit
 		}
 	}
 
-	private void OnBodyExitedDetectionZone(Node2D body)
-	{
-		// La logique de poursuite dans ProcessMovingToTargetState gère ce cas
-	}
-
 	private void SetNewTarget(Unit target)
 	{
 		_currentTarget = target;

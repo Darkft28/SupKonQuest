@@ -98,19 +98,6 @@ theme_override_styles/pressed = SubResource("SBT_pressed")
 theme_override_styles/focus = SubResource("SBT_hover")
 text = "Multijoueur"
 
-[node name="IAButton" type="Button" parent="Background/MarginContainer/VBoxContainer"]
-visible = false
-custom_minimum_size = Vector2(304, 64)
-layout_mode = 2
-size_flags_horizontal = 4
-size_flags_vertical = 4
-theme_override_font_sizes/font_size = 24
-theme_override_styles/normal = SubResource("SBT_normal")
-theme_override_styles/hover = SubResource("SBT_hover")
-theme_override_styles/pressed = SubResource("SBT_pressed")
-theme_override_styles/focus = SubResource("SBT_hover")
-text = "Contre IA"
-
 [node name="BackButton" type="Button" parent="Background/MarginContainer/VBoxContainer"]
 custom_minimum_size = Vector2(304, 64)
 layout_mode = 2

@@ -78,13 +78,8 @@ public partial class MapGenerator : Node
 				AddChild(networkSync);
 			}
 
-			ReadMapSettings();
 			GenererMap();
 			CallDeferred(nameof(InitTerritory));
-		}
-		else if (_tileMapSol.GetUsedCells().Count == 0)
-		{
-			GenererMap();
 		}
 	}
 
@@ -133,7 +128,7 @@ public partial class MapGenerator : Node
 		_seededRandom = new Random(baseSeed + 2000);
 		float[] armAngles;
 		var presetCampPositions = new System.Collections.Generic.List<Vector2I>();
-		armAngles = ApplyPresetMap(gsMap.SelectedMapType, halfWidth, halfHeight, out presetCampPositions);
+		armAngles = ApplyPresetMap(gsMap?.SelectedMapType ?? GameState.MapType.Irridium, halfWidth, halfHeight, out presetCampPositions);
 		SpawnPresetObjectSprites(halfWidth, halfHeight);
 
 		// Construire les meshes de navigation (terrestre pour unités, maritime pour bateaux)
@@ -155,7 +150,6 @@ public partial class MapGenerator : Node
 		{
 			GameManager.Instance.OnMapGenerationComplete();
 		}
-		CallDeferred(nameof(InitAIController));
 
 		// Mettre à jour les limites de la caméra avec la vraie taille de map
 		if (_camera is SupKonQuest.CameraController cam)
@@ -312,28 +306,6 @@ public partial class MapGenerator : Node
 		_territoryManager.Initialize();
 	}
 
-	private void InitAIController()
-	{
-		var gameState = GetNodeOrNull<GameState>("/root/GameState");
-		if (gameState == null || !gameState.IsAIMode) return;
-
-		// Supprimer l'ancien AIController si présent
-		var oldAI = GetNodeOrNull<AIController>("AIController");
-		if (oldAI != null) { RemoveChild(oldAI); oldAI.QueueFree(); }
-
-		var ai = new AIController();
-		ai.Name = "AIController";
-		ai.AILevel = gameState.AILevel;
-		AddChild(ai);
-
-		GD.Print($"[IA] AIController créé — niveau : {gameState.AILevel}");
-	}
-
-	private void ReadMapSettings()
-	{
-		_mapWidth = _mapHeight = 256;
-	}
-
 	// Helper commun : construit un NavigationPolygon à partir d'un prédicat de marchabilité
 	private NavigationPolygon BuildNavPolygon(
 		int groupSize, int halfWidth, int halfHeight,
@@ -481,7 +453,6 @@ public partial class MapGenerator : Node
 				_territoryManager = null;
 			}
 
-			ReadMapSettings();
 			GenererMap();
 			CallDeferred(nameof(InitTerritory)); // différé comme dans _Ready(), pour que les camps aient leur _Ready()
 		}
