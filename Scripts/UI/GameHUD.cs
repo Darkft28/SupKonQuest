@@ -11,6 +11,7 @@ public partial class GameHUD : Control
 	private Dictionary<string, Label> _lockLabels = new Dictionary<string, Label>();
 	private HBoxContainer _unitsContainer;
 	private HBoxContainer _shipsContainer;
+	private Button _quitButton;
 	private Button _territoryButton;
 	private HBoxContainer _brushSizeContainer;
 	private Button _portButton;
@@ -47,11 +48,7 @@ public partial class GameHUD : Control
 		ConnectShipButtons();
 		CreateLockLabels();
 		CreateTierInfoLabel();
-		CreateQuitButton();
-		CreateTerritoryButton();
-		CreatePortButton();
-
-		CreateDisconnectOverlay();
+		BindSceneHudControls();
 
 		var networkManager = GetNodeOrNull<NetworkManager>("/root/NetworkManager");
 		if (networkManager != null)
@@ -60,6 +57,45 @@ public partial class GameHUD : Control
 			networkManager.ServerDisconnected += OnServerDisconnectedHUD;
 		}
 
+	}
+
+	private void BindSceneHudControls()
+	{
+		_quitButton = GetNode<Button>("QuitButton");
+		_territoryButton = GetNode<Button>("TerritoryButton");
+		_brushSizeContainer = GetNode<HBoxContainer>("BrushSizeContainer");
+		_portButton = GetNode<Button>("PortButton");
+		_disconnectPanel = GetNode<Panel>("DisconnectPanel");
+		_disconnectLabel = GetNode<Label>("DisconnectPanel/DisconnectLabel");
+
+		_quitButton.Text = "✕ Menu";
+		UIStyle.ApplyStone(_quitButton);
+		_quitButton.Pressed += OnQuitButtonPressed;
+
+		_territoryButton.Text = $"🗺 Territoire ({TerritoryManager.TileCost}g/tuile)";
+		_territoryButton.ToggleMode = true;
+		UIStyle.ApplyStone(_territoryButton);
+		_territoryButton.Toggled += OnTerritoryButtonToggled;
+
+		var brush1 = _brushSizeContainer.GetNode<Button>("Brush1Button");
+		var brush3 = _brushSizeContainer.GetNode<Button>("Brush3Button");
+		var brush5 = _brushSizeContainer.GetNode<Button>("Brush5Button");
+		UIStyle.ApplyStone(brush1);
+		UIStyle.ApplyStone(brush3);
+		UIStyle.ApplyStone(brush5);
+		brush1.Pressed += () => OnBrushSizeButtonPressed(1);
+		brush3.Pressed += () => OnBrushSizeButtonPressed(3);
+		brush5.Pressed += () => OnBrushSizeButtonPressed(5);
+
+		_portButton.Text = $"⚓ Port ({CampSimple.PortCost}g)";
+		UIStyle.ApplyStone(_portButton);
+		_portButton.Pressed += OnPortButtonPressed;
+		_portButton.Visible = false;
+
+		var style = new StyleBoxFlat();
+		style.BgColor = new Color(0f, 0f, 0f, 0.6f);
+		_disconnectPanel.AddThemeStyleboxOverride("panel", style);
+		_disconnectPanel.Visible = false;
 	}
 
 	private void UpdatePriceLabels()
@@ -92,125 +128,31 @@ public partial class GameHUD : Control
 
 	}
 
-	private void CreateQuitButton()
+	private void OnQuitButtonPressed()
 	{
-		var btn = new Button();
-		btn.Text = "✕ Menu";
-		btn.AddThemeFontSizeOverride("font_size", 18);
-		UIStyle.ApplyStone(btn);
-		btn.AnchorLeft   = 1f;
-		btn.AnchorTop    = 0f;
-		btn.AnchorRight  = 1f;
-		btn.AnchorBottom = 0f;
-		btn.OffsetLeft   = -120f;
-		btn.OffsetTop    = 10f;
-		btn.OffsetRight  = -10f;
-		btn.OffsetBottom = 45f;
-		btn.Pressed += () =>
-		{
-			TerritoryManager.Instance?.SetBuyMode(false);
-			TerritoryManager.Instance?.CancelPortPlacement();
-			GetTree().Paused = false;
-			GetTree().ChangeSceneToFile("res://Scenes/MainMenu.tscn");
-		};
-		AddChild(btn);
+		TerritoryManager.Instance?.SetBuyMode(false);
+		TerritoryManager.Instance?.CancelPortPlacement();
+		GetTree().Paused = false;
+		GetTree().ChangeSceneToFile("res://Scenes/MainMenu.tscn");
 	}
 
-	private void CreateTerritoryButton()
+	private void OnTerritoryButtonToggled(bool pressed)
 	{
-		_territoryButton = new Button();
-		_territoryButton.Text = $"🗺 Territoire ({TerritoryManager.TileCost}g/tuile)";
-		_territoryButton.AddThemeFontSizeOverride("font_size", 15);
-		_territoryButton.ToggleMode = true;
-		UIStyle.ApplyStone(_territoryButton);
-		_territoryButton.AnchorLeft   = 1f;
-		_territoryButton.AnchorTop    = 0f;
-		_territoryButton.AnchorRight  = 1f;
-		_territoryButton.AnchorBottom = 0f;
-		_territoryButton.OffsetLeft   = -340f;
-		_territoryButton.OffsetTop    = 10f;
-		_territoryButton.OffsetRight  = -130f;
-		_territoryButton.OffsetBottom = 45f;
-		_territoryButton.Toggled += (pressed) =>
-		{
-			TerritoryManager.Instance?.SetBuyMode(pressed);
-			_brushSizeContainer.Visible = pressed;
-		};
-		AddChild(_territoryButton);
-
-		_brushSizeContainer = new HBoxContainer();
-		_brushSizeContainer.AnchorLeft   = 1f;
-		_brushSizeContainer.AnchorTop    = 0f;
-		_brushSizeContainer.AnchorRight  = 1f;
-		_brushSizeContainer.AnchorBottom = 0f;
-		_brushSizeContainer.OffsetLeft   = -340f;
-		_brushSizeContainer.OffsetTop    = 50f;
-		_brushSizeContainer.OffsetRight  = -130f;
-		_brushSizeContainer.OffsetBottom = 85f;
-		_brushSizeContainer.Visible = false;
-		AddChild(_brushSizeContainer);
-
-		foreach (var (label, size) in new[] { ("1×1", 1), ("3×3", 3), ("5×5", 5) })
-		{
-			int s = size; string l = label;
-			var sizeBtn = new Button();
-			sizeBtn.Text = l;
-			sizeBtn.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-			UIStyle.ApplyStone(sizeBtn);
-			sizeBtn.Pressed += () => TerritoryManager.Instance?.SetBrushSize(s);
-			_brushSizeContainer.AddChild(sizeBtn);
-		}
+		TerritoryManager.Instance?.SetBuyMode(pressed);
+		_brushSizeContainer.Visible = pressed;
 	}
 
-	private void CreatePortButton()
+	private void OnBrushSizeButtonPressed(int size)
 	{
-		_portButton = new Button();
-		_portButton.Text = $"⚓ Port ({CampSimple.PortCost}g)";
-		_portButton.AddThemeFontSizeOverride("font_size", 16);
-		UIStyle.ApplyStone(_portButton);
-		_portButton.AnchorLeft   = 0.5f;
-		_portButton.AnchorTop    = 1f;
-		_portButton.AnchorRight  = 0.5f;
-		_portButton.AnchorBottom = 1f;
-		_portButton.OffsetLeft   = -80f;
-		_portButton.OffsetTop    = -110f;
-		_portButton.OffsetRight  = 80f;
-		_portButton.OffsetBottom = -75f;
-		_portButton.Visible = false;
-		_portButton.Pressed += () =>
-		{
-			var camp = _selectionManager?.GetSelectedCamp();
-			if (camp == null || !IsInstanceValid(camp)) return;
-			if (camp.BuyPort())
-				TerritoryManager.Instance?.StartPortPlacement(camp);
-		};
-		AddChild(_portButton);
+		TerritoryManager.Instance?.SetBrushSize(size);
 	}
 
-	private void CreateDisconnectOverlay()
+	private void OnPortButtonPressed()
 	{
-		_disconnectPanel = new Panel();
-		_disconnectPanel.SetAnchorsPreset(LayoutPreset.FullRect);
-		_disconnectPanel.MouseFilter = MouseFilterEnum.Ignore;
-
-		var style = new StyleBoxFlat();
-		style.BgColor = new Color(0f, 0f, 0f, 0.6f);
-		_disconnectPanel.AddThemeStyleboxOverride("panel", style);
-
-		_disconnectLabel = new Label();
-		_disconnectLabel.SetAnchorsPreset(LayoutPreset.Center);
-		_disconnectLabel.GrowHorizontal = GrowDirection.Both;
-		_disconnectLabel.GrowVertical = GrowDirection.Both;
-		_disconnectLabel.HorizontalAlignment = HorizontalAlignment.Center;
-		_disconnectLabel.VerticalAlignment = VerticalAlignment.Center;
-		_disconnectLabel.AddThemeFontSizeOverride("font_size", 28);
-		_disconnectLabel.Modulate = new Color(1f, 0.3f, 0.3f, 1f);
-		_disconnectLabel.Text = "Adversaire déconnecté\nRetour au menu dans 5s...";
-
-		_disconnectPanel.AddChild(_disconnectLabel);
-
-		AddChild(_disconnectPanel);
-		_disconnectPanel.Visible = false;
+		var camp = _selectionManager?.GetSelectedCamp();
+		if (camp == null || !IsInstanceValid(camp)) return;
+		if (camp.BuyPort())
+			TerritoryManager.Instance?.StartPortPlacement(camp);
 	}
 
 	private void OnPlayerDisconnected(long id)

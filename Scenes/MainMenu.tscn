@@ -2,9 +2,7 @@
 
 [ext_resource type="Texture2D" uid="uid://b04lypslc5oeg" path="res://Assets/Menu/Texture/Menu_bg.png" id="1_0fbet"]
 [ext_resource type="Texture2D" uid="uid://j0eqoi64tmqd" path="res://Assets/Menu/Texture/Title_stone.png" id="2_62e2m"]
-[ext_resource type="Script" uid="uid://da4avmuek04c0" path="res://Scripts/UI/ButtonPlay.cs" id="4_iy58a"]
 [ext_resource type="Texture2D" uid="uid://clbmelrr2gjaw" path="res://Assets/Menu/Texture/Button_stone.png" id="5_cmrfp"]
-[ext_resource type="Script" uid="uid://cp4uowk8v5pn5" path="res://Scripts/UI/Button3Quit.cs" id="6_fj5cn"]
 [ext_resource type="Script" uid="uid://o7wkq34odbuj" path="res://Scripts/UI/MainMenu.cs" id="8_mainmenu"]
 
 [sub_resource type="StyleBoxTexture" id="SBT_normal"]
@@ -87,7 +85,6 @@ theme_override_styles/hover = SubResource("SBT_hover")
 theme_override_styles/pressed = SubResource("SBT_pressed")
 theme_override_styles/focus = SubResource("SBT_hover")
 text = "Jouer"
-script = ExtResource("4_iy58a")
 
 [node name="Button2" type="Button" parent="TextureRect/MarginContainer/VBoxContainer"]
 custom_minimum_size = Vector2(304, 64)
@@ -112,7 +109,6 @@ theme_override_styles/hover = SubResource("SBT_hover")
 theme_override_styles/pressed = SubResource("SBT_pressed")
 theme_override_styles/focus = SubResource("SBT_hover")
 text = "Quitter"
-script = ExtResource("6_fj5cn")
 
 [node name="LangButton" type="Button" parent="."]
 layout_mode = 1
@@ -130,5 +126,5 @@ grow_vertical = 0
 theme_override_font_sizes/font_size = 16
 text = "FR"
 
-[connection signal="pressed" from="TextureRect/MarginContainer/VBoxContainer/Button" to="TextureRect/MarginContainer/VBoxContainer/Button" method="OnPlayPressed"]
-[connection signal="pressed" from="TextureRect/MarginContainer/VBoxContainer/Button3" to="TextureRect/MarginContainer/VBoxContainer/Button3" method="OnButtonPressed"]
+[connection signal="pressed" from="TextureRect/MarginContainer/VBoxContainer/Button" to="." method="OnPlayPressed"]
+[connection signal="pressed" from="TextureRect/MarginContainer/VBoxContainer/Button3" to="." method="OnQuitPressed"]

@@ -1,6 +1,7 @@
 # Godot 4+ specific ignores
 .godot/
 /android/
+/addons/
 
 # Documentation et fichiers de configuration personnels
 .claude/
@@ -12,3 +13,4 @@
 # IDE
 .idea/
 *.sln.DotSettings.user
+.vscode/

@@ -198,14 +198,20 @@ public partial class Unit : CharacterBody2D
 		// Stagger la recherche ennemis : offset aléatoire pour éviter les pics CPU
 		_aiSearchTimer = GD.Randf() * EnemySearchInterval;
 
-		// NavigationAgent2D pour le pathfinding (couche 1 = terrestre)
-		_navAgent = new NavigationAgent2D();
+		// NavigationAgent2D pré-instancié dans la scène (fallback runtime si manquant)
+		_navAgent = GetNodeOrNull<NavigationAgent2D>("NavigationAgent2D");
+		if (_navAgent == null)
+		{
+			_navAgent = new NavigationAgent2D();
+			_navAgent.Name = "NavigationAgent2D";
+			AddChild(_navAgent);
+		}
+
 		_navAgent.PathDesiredDistance = 10f;
 		_navAgent.TargetDesiredDistance = ArrivalDistance;
 		_navAgent.AvoidanceEnabled = true;
 		_navAgent.NavigationLayers = 1u;
 		_navAgent.Radius = 40f; // rayon collision unité
-		AddChild(_navAgent);
 
 		_currentState = UnitState.Idle;
 	}
