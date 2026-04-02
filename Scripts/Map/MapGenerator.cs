@@ -249,7 +249,7 @@ public partial class MapGenerator : Node
 
 				if (tileId != skipId && !(skipCamps && tileId == 102))
 				{
-					int alt = addVariants ? TerrainGenerator.PickAlt(originX + x, originY + y) : 0;
+					int alt = addVariants ? TerrainGenerator.PickAlt(originX + x, originY + y, tileId) : 0;
 					layer.SetCell(new Vector2I(originX + x, originY + y), tileId, Vector2I.Zero, alt);
 				}
 				x++;

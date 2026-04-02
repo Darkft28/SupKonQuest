@@ -26,4 +26,4 @@ path_desired_distance = 10.0
 target_desired_distance = 20.0
 avoidance_enabled = true
 radius = 40.0
-navigation_layers = 1
+debug_path_custom_color = Color(1, 0, 0, 1)
