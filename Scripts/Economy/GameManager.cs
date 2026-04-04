@@ -365,11 +365,11 @@ public partial class GameManager : Node
 		int gold = GetGold(teamId);
 		if (gold < Tier2GoldThreshold) return 1;
 
-		// Tier 3 : contrôle tous les camps de sa home region (≥2 camps dans la région)
+		// Tier 3 : contrôle tous les camps de sa région d'origine (nombre calculé dynamiquement)
 		if (!_homeRegions.TryGetValue(teamId, out int homeRegion)) return 2;
 
 		var homeCamps = _allCamps.FindAll(c => c.RegionId == homeRegion);
-		if (homeCamps.Count < 2) return 2;
+		if (homeCamps.Count == 0) return 2;
 
 		if (homeCamps.TrueForAll(c => c.GetTeamId() == teamId)) return 3;
 

@@ -299,6 +299,7 @@ public partial class MapGenerator : Node
 		AddChild(_territoryManager);
 		MoveChild(_territoryManager, 1); // après Sol pour le Z-order
 		_territoryManager.SetSolLayer(_tileMapSol);
+		_territoryManager.SetTerritoryGrid(_territoryGrid);
 		_territoryManager.Initialize();
 	}
 
