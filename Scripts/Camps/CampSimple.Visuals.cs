@@ -34,7 +34,7 @@ public partial class CampSimple
 			_campUiRoot?.AddChild(_campIdLabel);
 		}
 
-		_campIdLabel.Text = $"#{CampId}";
+		_campIdLabel.Text = GetCampLabel();
 		_campIdLabel.Position = new Vector2(-20, -130);
 		_campIdLabel.AddThemeFontSizeOverride("font_size", 20);
 		_campIdLabel.AddThemeColorOverride("font_color", GetTeamColor());
@@ -122,6 +122,18 @@ public partial class CampSimple
 		new Color(0.2f, 0.8f, 0.4f, 1f), // Jade
 		new Color(0.8f, 0.4f, 0.6f, 1f), // Mauve
 	};
+
+	public void RefreshCampLabel()
+	{
+		if (_campIdLabel != null)
+			_campIdLabel.Text = GetCampLabel();
+	}
+
+	private string GetCampLabel()
+	{
+		bool isBoss = AIController.BossTeamIds.Contains(TeamId);
+		return isBoss ? $"#{CampId} boss" : $"#{CampId}";
+	}
 
 	private Color GetTeamColor()
 	{

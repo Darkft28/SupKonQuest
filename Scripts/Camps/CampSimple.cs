@@ -182,6 +182,7 @@ public partial class CampSimple : Area2D
 
 		if (_campIdLabel != null)
 		{
+			_campIdLabel.Text = GetCampLabel();
 			_campIdLabel.AddThemeColorOverride("font_color", GetTeamColor());
 		}
 
