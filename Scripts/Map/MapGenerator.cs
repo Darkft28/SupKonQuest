@@ -453,16 +453,76 @@ public partial class MapGenerator : Node
 				old.QueueFree();
 		}
 
-		// Créer une IA pour chaque équipe bot (toutes les équipes sauf le joueur local)
 		var botTeams = GameManager.Instance?.GetBotTeamIds() ?? new System.Collections.Generic.List<int>();
+		int playerRegion = GameManager.Instance?.GetHomeRegion(1) ?? -1;
+
+		AIController.BossTeamIds.Clear();
+
+		// Difficulté boss = un cran au-dessus de la sélection du joueur
+		AIController.Difficulty bossLevel = gameState.AILevel switch
+		{
+			AIController.Difficulty.Easy   => AIController.Difficulty.Medium,
+			AIController.Difficulty.Medium => AIController.Difficulty.Hard,
+			_                              => AIController.Difficulty.Hard
+		};
+
+		// 1 boss par région non-joueur : le bot le plus éloigné du joueur dans chaque région
+		var playerCamp = GameManager.Instance?.GetAllCamps()?.Find(c => c.GetTeamId() == 1);
+		var allCamps   = GameManager.Instance?.GetAllCamps();
+
+		// Regrouper les bots par région
+		var botsByRegion = new System.Collections.Generic.Dictionary<int, System.Collections.Generic.List<int>>();
 		foreach (int teamId in botTeams)
 		{
+			int region = GameManager.Instance?.GetHomeRegion(teamId) ?? -1;
+			if (!botsByRegion.ContainsKey(region))
+				botsByRegion[region] = new System.Collections.Generic.List<int>();
+			botsByRegion[region].Add(teamId);
+		}
+
+		// Pour chaque région non-joueur : boss = bot le plus éloigné du joueur
+		foreach (var (region, teams) in botsByRegion)
+		{
+			if (region == playerRegion) continue;
+
+			int bossInRegion = -1;
+			float maxDist = float.MinValue;
+			foreach (int teamId in teams)
+			{
+				var botCamp = allCamps?.Find(c => c.GetTeamId() == teamId);
+				float dist = playerCamp != null && botCamp != null
+					? playerCamp.GlobalPosition.DistanceTo(botCamp.GlobalPosition)
+					: 0f;
+				if (dist > maxDist) { maxDist = dist; bossInRegion = teamId; }
+			}
+			if (bossInRegion != -1)
+				AIController.BossTeamIds.Add(bossInRegion);
+		}
+
+		foreach (int teamId in botTeams)
+		{
+			bool isBoss = AIController.BossTeamIds.Contains(teamId);
 			var ai = new AIController();
 			ai.Name = $"AIController_team{teamId}";
 			AddChild(ai);
-			ai.Initialize(gameState.AILevel, teamId);
+			ai.Initialize(isBoss ? bossLevel : AIController.Difficulty.Easy, teamId);
 		}
-		GD.Print($"[MAP] {botTeams.Count} AIController(s) créés — difficulté : {gameState.AILevel}");
+
+		GD.Print($"[MAP] {botTeams.Count} AIController(s) — {AIController.BossTeamIds.Count} boss ({bossLevel}), reste Easy");
+		GD.Print($"[IA DEBUG] Région joueur (team 1) : {playerRegion}");
+		foreach (int teamId in botTeams)
+		{
+			int region = GameManager.Instance?.GetHomeRegion(teamId) ?? -1;
+			bool isBoss = AIController.BossTeamIds.Contains(teamId);
+			GD.Print($"[IA DEBUG]   Team {teamId} → région {region} → {(isBoss ? $"BOSS ({bossLevel})" : "Easy")}");
+		}
+
+		// Rafraîchir les labels des camps maintenant que BossTeamIds est rempli
+		foreach (var node in GetTree().GetNodesInGroup("camps"))
+		{
+			if (node is CampSimple camp)
+				camp.RefreshCampLabel();
+		}
 	}
 
 	public override void _Input(InputEvent @event)
