@@ -357,11 +357,13 @@ public partial class GameManager : Node
 		return _homeRegions.TryGetValue(teamId, out int r) ? r : -1;
 	}
 
+	private const int Tier2GoldThreshold = 1500;
+
 	public int GetUnlockedTier(int teamId)
 	{
-		var ownedCamps = _allCamps.FindAll(c => c.GetTeamId() == teamId);
-
-		if (ownedCamps.Count < 2) return 1;
+		// Tier 2 : avoir accumulé 1500 or
+		int gold = GetGold(teamId);
+		if (gold < Tier2GoldThreshold) return 1;
 
 		// Tier 3 : contrôle tous les camps de sa home region (≥2 camps dans la région)
 		if (!_homeRegions.TryGetValue(teamId, out int homeRegion)) return 2;
