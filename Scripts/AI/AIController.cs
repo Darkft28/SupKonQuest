@@ -33,6 +33,8 @@ public partial class AIController : Node
 	private static readonly int[]   Tier2SaveThreshold = { 0, 900, 700 };
 	// % d'unités gardées en défense (du total disponible)
 	private static readonly float[] DefenseRatio     = { 0f,  0.25f, 0.3f };
+	// % de chance de passer un tick entier sans rien faire (simule l'inattention)
+	private static readonly float[] SkipTickChance   = { 0.35f, 0.10f, 0f  };
 
 	// ── Composition d'armée cible (ratio par type) ────────────────────────────
 	// Easy : spam Infantry, jamais de soutien
@@ -65,6 +67,9 @@ public partial class AIController : Node
 			// Heal, AntiArmor, Tank ajoutés dynamiquement selon tier
 		}
 	};
+
+	// Équipes boss connues (pour affichage visuel dans CampSimple)
+	public static readonly HashSet<int> BossTeamIds = new HashSet<int>();
 
 	// ── État interne ──────────────────────────────────────────────────────────
 
@@ -125,6 +130,13 @@ public partial class AIController : Node
 
 	private void RunTick()
 	{
+		// Inattention simulée : chance de ne rien faire ce tick
+		if (SkipTickChance[_diffIdx] > 0f && _rng.NextDouble() < SkipTickChance[_diffIdx])
+		{
+			GD.Print($"[IA] Équipe {_teamId} — tick ignoré (inattention)");
+			return;
+		}
+
 		int    tier = GetCurrentTier();
 		int    gold = GetGold();
 
