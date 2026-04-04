@@ -276,10 +276,18 @@ public partial class Unit
 			_navAgent.TargetPosition = targetPos;
 			_lastNavTargetPos = targetPos;
 			_navTargetDirty = false;
+			_navPathCooldown = 3; // attendre 3 frames que le chemin soit calculé
+		}
+
+		if (_navPathCooldown > 0)
+		{
+			_navPathCooldown--;
+			return; // chemin pas encore prêt
 		}
 
 		if (!_navAgent.IsTargetReachable() || _navAgent.IsNavigationFinished())
 		{
+			_navPathCooldown = 60; // cible inatteignable : ne pas re-tester pendant ~1s
 			Velocity = Vector2.Zero;
 			return;
 		}
