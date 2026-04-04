@@ -74,10 +74,6 @@ public partial class CampSimple
 		if (IsNeutralCamp)
 			return;
 
-		// La tourelle ne tire que quand tous les défenseurs sont morts
-		if (!AreAllUnitsDefeated())
-			return;
-
 		if (!IsLocallyOwned())
 			return;
 
@@ -120,10 +116,6 @@ public partial class CampSimple
 
 	public bool TakeDamage(float damage, int attackerTeamId)
 	{
-		// Attaquable seulement si toutes les unités défendantes sont mortes
-		if (!AreAllUnitsDefeated())
-			return false;
-
 		if (!IsLocallyOwned())
 		{
 			NetworkSync.Instance?.SendCampDamage(CampId, damage, attackerTeamId);
