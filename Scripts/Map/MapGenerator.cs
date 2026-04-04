@@ -1,6 +1,7 @@
 ﻿using Godot;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using SupKonQuest.Map.Presets;
 
 [Tool]
@@ -68,6 +69,7 @@ public partial class MapGenerator : Node
 
 			GenererMap();
 			CallDeferred(nameof(InitTerritory));
+			CallDeferred(nameof(InitAIController));
 		}
 	}
 
@@ -439,6 +441,30 @@ public partial class MapGenerator : Node
 		return hasLand;
 	}
 
+	private void InitAIController()
+	{
+		var gameState = GetNodeOrNull<GameState>("/root/GameState");
+		if (gameState == null || !gameState.IsAIMode) return;
+
+		// Supprimer les anciens AIControllers
+		for (int i = GetChildCount() - 1; i >= 0; i--)
+		{
+			if (GetChild(i) is AIController old)
+				old.QueueFree();
+		}
+
+		// Créer une IA pour chaque équipe bot (toutes les équipes sauf le joueur local)
+		var botTeams = GameManager.Instance?.GetBotTeamIds() ?? new System.Collections.Generic.List<int>();
+		foreach (int teamId in botTeams)
+		{
+			var ai = new AIController();
+			ai.Name = $"AIController_team{teamId}";
+			AddChild(ai);
+			ai.Initialize(gameState.AILevel, teamId);
+		}
+		GD.Print($"[MAP] {botTeams.Count} AIController(s) créés — difficulté : {gameState.AILevel}");
+	}
+
 	public override void _Input(InputEvent @event)
 	{
 		if (@event.IsActionPressed("ui_accept"))
@@ -451,7 +477,8 @@ public partial class MapGenerator : Node
 			}
 
 			GenererMap();
-			CallDeferred(nameof(InitTerritory)); // différé comme dans _Ready(), pour que les camps aient leur _Ready()
+			CallDeferred(nameof(InitTerritory));
+			CallDeferred(nameof(InitAIController));
 		}
 	}
 }
