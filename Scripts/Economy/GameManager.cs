@@ -26,6 +26,9 @@ public partial class GameManager : Node
 
 	private List<CampSimple> _allCamps = new List<CampSimple>();
 
+	// Équipes ayant acheté le palier 2
+	private HashSet<int> _tier2Unlocked = new HashSet<int>();
+
 	private const int NumberOfPlayers = 2;
 
 	private VictoryManager _victoryManager;
@@ -47,6 +50,7 @@ public partial class GameManager : Node
 		_teamGold.Clear();
 		_homeRegions.Clear();
 		_allCamps.Clear();
+		_tier2Unlocked.Clear();
 
 		var campNodes = GetTree().GetNodesInGroup("camps");
 		foreach (var node in campNodes)
@@ -357,13 +361,27 @@ public partial class GameManager : Node
 		return _homeRegions.TryGetValue(teamId, out int r) ? r : -1;
 	}
 
-	private const int Tier2GoldThreshold = 1500;
+	public const int Tier2Cost = 1500;
+
+	/// <summary>
+	/// Tente d'acheter le palier 2 pour une équipe (coûte Tier2Cost or).
+	/// Retourne true si l'achat a réussi.
+	/// </summary>
+	public bool UnlockTier2(int teamId)
+	{
+		if (_tier2Unlocked.Contains(teamId)) return false; // déjà acheté
+		if (!CanAfford(teamId, Tier2Cost)) return false;
+
+		SpendGold(teamId, Tier2Cost);
+		_tier2Unlocked.Add(teamId);
+		GD.Print($"[TIER] Équipe {teamId} a débloqué le palier 2 !");
+		return true;
+	}
 
 	public int GetUnlockedTier(int teamId)
 	{
-		// Tier 2 : avoir accumulé 1500 or
-		int gold = GetGold(teamId);
-		if (gold < Tier2GoldThreshold) return 1;
+		// Tier 2 : achat manuel effectué
+		if (!_tier2Unlocked.Contains(teamId)) return 1;
 
 		// Tier 3 : contrôle tous les camps de sa région d'origine (nombre calculé dynamiquement)
 		if (!_homeRegions.TryGetValue(teamId, out int homeRegion)) return 2;
