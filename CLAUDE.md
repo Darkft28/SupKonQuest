@@ -100,14 +100,17 @@ Ship tiers: Transport = Tier 1, Fregate + Destroyer = Tier 3.
 - All network state changes use RPCs with Authority mode
 - Production queue system with async unit spawning
 
-## Known Bugs (from audit 2026-03-05)
+## Known Bugs (from audit 2026-04-05)
 
-- **OnDefenderDied() never called** (HIGH): Unit death does not signal the owning camp. Mutual-kill tracking (`_lastAttackerTeamId`) never triggered. Fix: call camp callback from `Unit.Combat.Die()`.
 - **Support aura stacking unlimited** (MEDIUM): 10 Support units = +100 defense bonus, can make units unkillable. Fix: cap bonus at +40-50 in `Unit.Healing.GetSupportDefenseBonus()`.
 - **HUD price mismatch** (HIGH): GameHUD.tscn displays wrong prices for AntiArmor (90 vs 120), Heavy (120 vs 150), Mortar (110 vs 130), Tank (150 vs 200). Fix: sync .tscn with UnitStats.cs values.
-- **No gold refund on camp capture mid-production** (MEDIUM): Gold spent on queued units is lost if camp is captured. Fix: refund queue cost in SetTeam().
 - **No multiplayer reconnection** (HIGH): Disconnect = end of game with no recovery path.
 - **Gold desync risk in multiplayer** (MEDIUM): No RPC gold sync; diverges over time if a peer misses passive income ticks.
+
+## Fixed Bugs (for reference)
+
+- **OnDefenderDied() never called** — Corrigé : `Unit.Combat.Die()` appelle `OwnerCamp.OnDefenderDied()` (Unit.Combat.cs:215).
+- **No gold refund on camp capture mid-production** — Corrigé : `CampSimple.SetTeam()` appelle `RefundProductionQueue()` et `RefundShipProductionQueue()` (CampSimple.cs:166-174).
 
 ## Code Conventions
 
