@@ -32,9 +32,13 @@ public partial class AIController : Node
 	// Seuil d'or pour commencer à économiser vers tier 2 (garde en réserve)
 	private static readonly int[]   Tier2SaveThreshold = { 0, 900, 700 };
 	// % d'unités gardées en défense (du total disponible)
-	private static readonly float[] DefenseRatio     = { 0f,  0.25f, 0.3f };
+	private static readonly float[] DefenseRatio     = { 0f,  0.15f, 0.20f };
 	// % de chance de passer un tick entier sans rien faire (simule l'inattention)
 	private static readonly float[] SkipTickChance   = { 0.35f, 0.10f, 0f  };
+	// Nombre minimum d'unités arrivées au point de ralliement avant d'attaquer
+	private static readonly int[]   MinRallyUnits    = { 1,   4,    6   };
+	// Rayon pour considérer une unité comme "arrivée" au point de ralliement
+	private static readonly float[] RallyArrivalRadius = { 0f, 600f, 500f };
 
 	// ── Composition d'armée cible (ratio par type) ────────────────────────────
 	// Easy : spam Infantry, jamais de soutien
@@ -113,7 +117,9 @@ public partial class AIController : Node
 			if (_reactionTimer <= 0f)
 			{
 				_reactionPending = false;
-				if (_pendingTarget != null && IsInstanceValid(_pendingTarget))
+				// Vérifier que la cible est toujours ennemie (peut avoir été capturée pendant le délai)
+				if (_pendingTarget != null && IsInstanceValid(_pendingTarget)
+					&& _pendingTarget.GetTeamId() != _teamId)
 					SendUnitsTo(_pendingTarget, _pendingAttackers);
 				_pendingTarget   = null;
 				_pendingAttackers = null;
@@ -172,7 +178,18 @@ public partial class AIController : Node
 		}
 
 		int totalUnits = GetAIUnits().Count;
-		if (totalUnits >= MaxUnits[_diffIdx]) return;
+		int maxUnits   = GetMaxUnits();
+
+		// Plafond normal atteint → autoriser quand même si la composition est déséquilibrée
+		// (ex : tier 3 vient de se débloquer mais l'armée est pleine d'Infantry tier 1)
+		if (totalUnits >= maxUnits)
+		{
+			if (!NeedsRebalancing(tier))
+				return;
+			// Rééquilibrage autorisé jusqu'à 130% du plafond max
+			if (totalUnits >= (int)(maxUnits * 1.3f))
+				return;
+		}
 
 		string unitType = PickUnitToBuy(tier);
 		if (unitType == null) return;
@@ -200,14 +217,34 @@ public partial class AIController : Node
 		// Construire la composition cible selon le tier actuel
 		var composition = new Dictionary<string, float>(TargetComposition[_diffIdx]);
 
+		// Tier 2 : ajouter Heal + AntiArmor (Medium et Hard)
 		if (_diffIdx >= 1 && tier >= 2)
 		{
-			composition["Heal"]      = 0.15f;
-			composition["AntiArmor"] = 0.10f;
+			composition["Heal"]      = 0.12f;
+			composition["AntiArmor"] = 0.08f;
+			// Réduire Infantry/Range pour faire de la place
+			if (composition.ContainsKey("Infantry")) composition["Infantry"] -= 0.08f;
+			if (composition.ContainsKey("Range"))    composition["Range"]    -= 0.07f;
 		}
-		if (_diffIdx >= 2 && tier >= 3)
+
+		// Tier 3 : intégrer Mortar, Heavy (Medium+Hard) et Tank (Hard uniquement, rare)
+		if (tier >= 3)
 		{
-			composition["Tank"] = 0.15f;
+			if (_diffIdx >= 1) // Medium + Hard
+			{
+				composition["Mortar"] = 0.07f;
+				composition["Heavy"]  = 0.05f;
+				if (composition.ContainsKey("Infantry")) composition["Infantry"] -= 0.06f;
+				if (composition.ContainsKey("Range"))    composition["Range"]    -= 0.06f;
+			}
+			if (_diffIdx >= 2) // Hard uniquement — Tank rare (coûteux, lent à produire)
+			{
+				composition["Tank"] = 0.04f;
+				if (composition.ContainsKey("Infantry")) composition["Infantry"] -= 0.04f;
+			}
+			// Plancher à 0.05 pour éviter les ratios négatifs
+			foreach (var key in composition.Keys.ToList())
+				if (composition[key] < 0.05f) composition[key] = 0.05f;
 		}
 
 		// Filtrer les unités autorisées par le tier actuel
@@ -217,19 +254,14 @@ public partial class AIController : Node
 
 		if (allowed.Count == 0) return "Infantry";
 
-		// Hard : adapter la composition si l'ennemi a beaucoup de Heavy
-		if (_diffIdx == 2)
+		// Hard : contre-composition si l'ennemi spam les Heavy
+		if (_diffIdx == 2 && tier >= 2 && allowed.Contains("AntiArmor"))
 		{
 			int enemyHeavyCount = GetTree().GetNodesInGroup("units")
 				.OfType<Unit>()
 				.Count(u => u.GetTeamId() == 1 && u.GetUnitType() == "Heavy");
-
-			if (enemyHeavyCount >= 3 && tier >= 2 && allowed.Contains("AntiArmor"))
+			if (enemyHeavyCount >= 3)
 				return "AntiArmor";
-
-			// Débloquer Tank dès que tier 3 accessible
-			if (tier >= 3 && allowed.Contains("Tank"))
-				return "Tank";
 		}
 
 		// Calculer la composition actuelle
@@ -269,44 +301,96 @@ public partial class AIController : Node
 	{
 		if (_gameTimer < FirstAttackDelay[_diffIdx]) return;
 
-		var idleUnits = GetIdleAIUnits();
-		if (idleUnits.Count == 0) return;
-
 		bool forceAttack = _lastAttackTimer >= ForcedAttackDelay[_diffIdx];
 
-		// ── Défense réactive (Medium/Hard uniquement) ─────────────────────────
-		if (_diffIdx > 0)
+		// ── Catégoriser les unités idle (Medium/Hard) ─────────────────────────
+		// rallied  = déjà au point de rassemblement → protégées, ne pas toucher
+		// enRoute  = idle mais pas encore au rally  → disponibles pour défense ou envoi au rally
+		List<Unit> rallied = new List<Unit>();
+		List<Unit> enRoute;
+
+		if (_diffIdx > 0 && !forceAttack)
 		{
-			var threatenedCamp = FindThreatenedAICamp();
-			if (threatenedCamp != null && !forceAttack)
-			{
-				int defCount = Mathf.Max(1, Mathf.RoundToInt(idleUnits.Count * DefenseRatio[_diffIdx]));
-				var defenders = idleUnits.Take(defCount).ToList();
-				foreach (var unit in defenders)
-					unit.MoveTo(threatenedCamp.GlobalPosition + RandomOffset(180f));
-				idleUnits = idleUnits.Skip(defCount).ToList();
-				GD.Print($"[IA] Défense réactive : {defCount} unités vers camp #{threatenedCamp.CampId}");
-			}
+			Vector2 rallyPos = GetHomePosition();
+			float   arrivalR = RallyArrivalRadius[_diffIdx];
+			var idle = GetIdleAIUnits();
+			rallied = idle.Where(u => u.GlobalPosition.DistanceTo(rallyPos) <= arrivalR).ToList();
+			enRoute = idle.Where(u => u.GlobalPosition.DistanceTo(rallyPos) >  arrivalR).ToList();
+		}
+		else
+		{
+			enRoute = GetIdleAIUnits();
 		}
 
-		if (idleUnits.Count == 0) return;
+		// ── Défense réactive (Medium/Hard) ────────────────────────────────────
+		// N'utilise QUE les unités en route (enRoute), jamais celles déjà au rally.
+		if (_diffIdx > 0 && !forceAttack)
+		{
+			var threatenedCamp = FindThreatenedAICamp();
+			if (threatenedCamp != null && enRoute.Count > 0)
+			{
+				int defCount = Mathf.Max(1, Mathf.RoundToInt(enRoute.Count * DefenseRatio[_diffIdx]));
+				var defenders = enRoute.Take(defCount).ToList();
+				foreach (var unit in defenders)
+					unit.MoveTo(threatenedCamp.GlobalPosition + RandomOffset(180f));
+				enRoute = enRoute.Skip(defCount).ToList();
+				GD.Print($"[IA team {_teamId}] Défense réactive : {defCount} unités vers camp #{threatenedCamp.CampId}");
+			}
+		}
+		// Easy : pas de défense réactive (DefenseRatio[0] = 0f)
 
-		// ── Choix de la cible ─────────────────────────────────────────────────
+		// ── Regroupement (Medium/Hard) ────────────────────────────────────────
+		if (_diffIdx > 0 && !forceAttack)
+		{
+			Vector2 rallyPos = GetHomePosition();
+			// Envoyer les unités en route vers le rally
+			foreach (var unit in enRoute)
+				unit.MoveTo(rallyPos + RandomOffset(280f));
+
+			// Seuil adaptatif : min(MinRallyUnits, 60% de l'armée totale)
+			int totalArmy = GetAIUnits().Count;
+			int minRally  = Mathf.Min(MinRallyUnits[_diffIdx], Mathf.Max(2, (int)(totalArmy * 0.6f)));
+
+			if (rallied.Count < minRally)
+			{
+				GD.Print($"[IA team {_teamId}] Ralliement : {rallied.Count}/{minRally}");
+				return;
+			}
+
+			// Seuil atteint → attaquer avec les unités arrivées
+			var target2 = ChooseTarget(tier, false);
+			if (target2 == null) return;
+
+			if (ReactionDelay[_diffIdx] > 0f)
+			{
+				_reactionPending  = true;
+				_reactionTimer    = ReactionDelay[_diffIdx];
+				_pendingTarget    = target2;
+				_pendingAttackers = rallied;
+			}
+			else
+			{
+				SendUnitsTo(target2, rallied);
+			}
+			return;
+		}
+
+		// ── Easy / ForceAttack : attaque directe ──────────────────────────────
+		if (enRoute.Count == 0) return;
+
 		var target = ChooseTarget(tier, forceAttack);
 		if (target == null) return;
 
-		// ── Délai de réaction ─────────────────────────────────────────────────
 		if (!forceAttack && ReactionDelay[_diffIdx] > 0f)
 		{
 			_reactionPending  = true;
 			_reactionTimer    = ReactionDelay[_diffIdx];
 			_pendingTarget    = target;
-			_pendingAttackers = idleUnits;
+			_pendingAttackers = enRoute;
 		}
 		else
 		{
-			SendUnitsTo(target, idleUnits);
-			_lastAttackTimer = 0f;
+			SendUnitsTo(target, enRoute);
 		}
 	}
 
@@ -391,18 +475,18 @@ public partial class AIController : Node
 
 	private CampSimple FindThreatenedAICamp()
 	{
-		// Tri par HP croissant : camp le plus endommagé d'abord
+		// Seuils stricts : ne défendre que si le camp est vraiment en danger
+		// HP < 40% OU ennemi à moins de 500px (littéralement dans le camp)
 		return GetAICamps()
 			.Where(c =>
 			{
 				float hpRatio = c.GetCurrentHealth() / c.MaxHealth;
-				if (hpRatio < 0.75f) return true;
+				if (hpRatio < 0.40f) return true;
 
-				// Ennemi proche
 				return GetTree().GetNodesInGroup("units")
 					.OfType<Unit>()
-					.Any(u => u.GetTeamId() == 1
-					       && u.GlobalPosition.DistanceTo(c.GlobalPosition) < 850f);
+					.Any(u => u.GetTeamId() != _teamId
+					       && u.GlobalPosition.DistanceTo(c.GlobalPosition) < 500f);
 			})
 			.OrderBy(c => c.GetCurrentHealth())
 			.FirstOrDefault();
@@ -412,6 +496,44 @@ public partial class AIController : Node
 
 	private int GetCurrentTier()
 		=> GameManager.Instance?.GetUnlockedTier(_teamId) ?? 1;
+
+	// Plafond dynamique : minimum entre le cap de difficulté et le cap global par camp
+	// Les deux doivent être cohérents pour éviter des ticks gaspillés à tenter d'acheter
+	// quand CanBuyUnit() bloquerait de toute façon.
+	private int GetMaxUnits()
+	{
+		int extraCamps = Mathf.Max(0, GetAICamps().Count - 1);
+		int diffCap    = MaxUnits[_diffIdx] + extraCamps * 4;
+		int globalCap  = GameManager.Instance?.GetMaxUnitsForTeam(_teamId) ?? diffCap;
+		return Mathf.Min(diffCap, globalCap);
+	}
+
+	// Vrai si un type d'unité du tier actuel est significativement sous-représenté (>15% d'écart)
+	private bool NeedsRebalancing(int tier)
+	{
+		var allUnits = GetAIUnits();
+		if (allUnits.Count == 0) return false;
+
+		var composition = new Dictionary<string, float>(TargetComposition[_diffIdx]);
+		if (_diffIdx >= 1 && tier >= 2) { composition["Heal"] = 0.12f; composition["AntiArmor"] = 0.08f; }
+		if (tier >= 3 && _diffIdx >= 1) { composition["Mortar"] = 0.07f; composition["Heavy"] = 0.05f; }
+		if (tier >= 3 && _diffIdx >= 2) { composition["Tank"] = 0.04f; }
+
+		var counts = new Dictionary<string, int>();
+		foreach (var key in composition.Keys) counts[key] = 0;
+		foreach (var u in allUnits)
+			if (counts.ContainsKey(u.GetUnitType())) counts[u.GetUnitType()]++;
+
+		int total = allUnits.Count;
+		foreach (var (type, targetRatio) in composition)
+		{
+			if (GameManager.GetUnitTier(type) > tier) continue;
+			float currentRatio = counts.TryGetValue(type, out int c) ? c / (float)total : 0f;
+			if (targetRatio - currentRatio > 0.15f)
+				return true; // ce type manque de plus de 15%
+		}
+		return false;
+	}
 
 	private int GetGold()
 		=> GameManager.Instance?.GetGold(_teamId) ?? 0;
@@ -441,6 +563,19 @@ public partial class AIController : Node
 		}
 		var camps = GetAICamps();
 		return camps.Count > 0 ? camps[0].GlobalPosition : Vector2.Zero;
+	}
+
+	// Retourne le centroïde de tous les camps possédés.
+	// Contrairement au camp natal fixe, ce point avance quand l'IA capture de nouveaux camps,
+	// évitant de rappeler les unités vers l'arrière après chaque capture.
+	private Vector2 GetHomePosition()
+	{
+		var camps = GetAICamps();
+		if (camps.Count == 0) return GetAICenter();
+
+		Vector2 sum = Vector2.Zero;
+		foreach (var c in camps) sum += c.GlobalPosition;
+		return sum / camps.Count;
 	}
 
 	private Vector2 RandomOffset(float radius = 200f)
