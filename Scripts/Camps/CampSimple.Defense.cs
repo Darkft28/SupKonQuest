@@ -161,6 +161,7 @@ public partial class CampSimple
 		if (_campIdLabel != null)
 		{
 			_campIdLabel.AddThemeColorOverride("font_color", GetTeamColor());
+			RefreshCampLabel(); // texte boss/normal selon la nouvelle équipe
 		}
 
 		if (GameManager.Instance != null)
@@ -182,6 +183,26 @@ public partial class CampSimple
 		// Appel direct garanti — ne dépend pas de la connexion signal
 		TerritoryManager.Instance?.RefreshTerritory(newTeamId);
 		GD.Print($"[TERRITOIRE] Camp #{CampId} capturé : Team {oldTeamId} → {newTeamId}");
+
+		// Si l'ancienne équipe n'a plus aucun camp → toutes ses unités meurent
+		if (oldTeamId > 0)
+		{
+			bool hasAnyCamp = false;
+			foreach (var camp in GameManager.Instance?.GetAllCamps() ?? new System.Collections.Generic.List<CampSimple>())
+			{
+				if (camp.GetTeamId() == oldTeamId) { hasAnyCamp = true; break; }
+			}
+
+			if (!hasAnyCamp)
+			{
+				GD.Print($"[ELIMINATION] Team {oldTeamId} n'a plus de camp → toutes ses unités meurent");
+				foreach (var node in GetTree().GetNodesInGroup("units"))
+				{
+					if (node is Unit unit && unit.GetTeamId() == oldTeamId && IsInstanceValid(unit))
+						unit.TakeDamage(999999f);
+				}
+			}
+		}
 	}
 
 	private void SpawnBonusUnits()
