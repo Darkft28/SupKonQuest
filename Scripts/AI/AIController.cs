@@ -400,7 +400,15 @@ public partial class AIController : Node
 		foreach (var unit in units)
 		{
 			if (!IsInstanceValid(unit)) continue;
-			unit.MoveTo(target.GlobalPosition + RandomOffset(220f));
+
+			// AttackCamp : toutes les unités naviguent vers le même camp cible,
+			// empruntant le même couloir nav. Deux armées adverses qui s'attaquent
+			// mutuellement se croisent sur le même chemin et combattent via _opportunisticTarget.
+			// Les Heal suivent en MoveTo (AttackCamp les ignore).
+			if (unit.GetUnitType() == "Heal")
+				unit.MoveTo(target.GlobalPosition + RandomOffset(350f));
+			else
+				unit.AttackCamp(target);
 		}
 		_lastAttackTimer = 0f;
 		GD.Print($"[IA] {units.Count} unités → camp #{target.CampId} (team {target.GetTeamId()})");
