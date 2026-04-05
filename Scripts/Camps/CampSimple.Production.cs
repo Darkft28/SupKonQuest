@@ -171,7 +171,8 @@ public partial class CampSimple
 		if (GameManager.Instance == null)
 			return false;
 
-		if (GetLiveUnitCount() >= MaxLiveUnitsPerCamp)
+		// Limite globale : total d'unités de cette équipe sur toute la carte
+		if (GameManager.Instance.GetTeamUnitCount(TeamId) >= GameManager.Instance.GetMaxUnitsForTeam(TeamId))
 			return false;
 
 		int totalInQueue = _productionQueue.Count + (_currentProduction != null ? 1 : 0);

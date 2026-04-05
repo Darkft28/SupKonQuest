@@ -249,6 +249,31 @@ public partial class GameManager : Node
 		return _allCamps;
 	}
 
+	// ── Limite globale d'unités par équipe ───────────────────────────────────
+	// 10 unités par camp contrôlé. Toutes les unités de l'équipe comptent,
+	// peu importe quel camp les a produites.
+	public const int MaxUnitsPerCamp = 10;
+
+	public int GetTeamUnitCount(int teamId)
+	{
+		int count = 0;
+		var nodes = GetTree().GetNodesInGroup("units");
+		foreach (var node in nodes)
+		{
+			if (node is Unit u && u.GetTeamId() == teamId && u.GetCurrentHealth() > 0)
+				count++;
+		}
+		return count;
+	}
+
+	public int GetMaxUnitsForTeam(int teamId)
+	{
+		int camps = 0;
+		foreach (var c in _allCamps)
+			if (c.GetTeamId() == teamId) camps++;
+		return Mathf.Max(1, camps) * MaxUnitsPerCamp;
+	}
+
 	public void InitializeTeam(int teamId)
 	{
 		if (teamId <= 0)
