@@ -28,10 +28,12 @@ public partial class MapGenerator : Node
 	private const int TileSize = 128;
 
 	private int? _networkSeed = null;
+	private CanvasLayer _loadingOverlay;
+	private Label _loadingStatusLabel;
 
 	private Random _seededRandom;
 
-	public override void _Ready()
+	public override async void _Ready()
 	{
 		_tileMapSol = GetNode<TileMapLayer>("Sol");
 		_tileMapObjets = GetNode<TileMapLayer>("Objets");
@@ -57,9 +59,7 @@ public partial class MapGenerator : Node
 		{
 			var gameState = GetNodeOrNull<GameState>("/root/GameState");
 			if (gameState != null && gameState.MapSeed != 0)
-			{
 				_networkSeed = gameState.MapSeed;
-			}
 		}
 
 		if (!Engine.IsEditorHint())
@@ -67,9 +67,83 @@ public partial class MapGenerator : Node
 			if (GetNodeOrNull<NetworkSync>("NetworkSync") == null)
 				GD.PrintErr("[MAP] Noeud 'NetworkSync' manquant dans Game.tscn");
 
-			GenererMap();
-			CallDeferred(nameof(InitTerritory));
-			CallDeferred(nameof(InitAIController));
+			await LancerAvecChargement();
+		}
+	}
+
+	// Lance la génération de map + attend la synchronisation nav avant de démarrer l'IA
+	private async System.Threading.Tasks.Task LancerAvecChargement()
+	{
+		ShowLoadingScreen("Génération de la carte...");
+
+		// Laisser un frame pour que l'overlay s'affiche avant le travail lourd
+		await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+
+		GenererMap();
+
+		// Le NavigationServer2D traite les régions de nav de façon asynchrone.
+		// Il faut attendre qu'il ait synchronisé le navmesh avant que les unités
+		// puissent calculer des chemins — sinon deux IA entre les mêmes points
+		// peuvent obtenir des chemins différents selon qui calcule en premier.
+		SetLoadingStatus("Pré-calcul des chemins...");
+		for (int i = 0; i < 5; i++)
+			await ToSignal(GetTree(), SceneTree.SignalName.PhysicsFrame);
+
+		HideLoadingScreen();
+
+		InitTerritory();
+		InitAIController();
+	}
+
+	private void ShowLoadingScreen(string status)
+	{
+		_loadingOverlay = new CanvasLayer();
+		_loadingOverlay.Layer = 128; // au-dessus de tout
+		AddChild(_loadingOverlay);
+
+		// Fond opaque
+		var bg = new ColorRect();
+		bg.Color = new Color(0.06f, 0.07f, 0.1f, 1f);
+		bg.SetAnchorsPreset(Control.LayoutPreset.FullRect);
+		bg.MouseFilter = Control.MouseFilterEnum.Stop; // bloque tous les clics joueur
+		_loadingOverlay.AddChild(bg);
+
+		// Conteneur centré
+		var vbox = new VBoxContainer();
+		vbox.SetAnchorsPreset(Control.LayoutPreset.Center);
+		vbox.GrowHorizontal = Control.GrowDirection.Both;
+		vbox.GrowVertical = Control.GrowDirection.Both;
+		vbox.AddThemeConstantOverride("separation", 16);
+		_loadingOverlay.AddChild(vbox);
+
+		var title = new Label();
+		title.Text = "SupKonQuest";
+		title.HorizontalAlignment = HorizontalAlignment.Center;
+		title.AddThemeFontSizeOverride("font_size", 36);
+		title.Modulate = new Color(1f, 0.85f, 0.4f);
+		vbox.AddChild(title);
+
+		_loadingStatusLabel = new Label();
+		_loadingStatusLabel.Text = status;
+		_loadingStatusLabel.HorizontalAlignment = HorizontalAlignment.Center;
+		_loadingStatusLabel.AddThemeFontSizeOverride("font_size", 18);
+		_loadingStatusLabel.Modulate = new Color(0.75f, 0.85f, 1f);
+		vbox.AddChild(_loadingStatusLabel);
+	}
+
+	private void SetLoadingStatus(string status)
+	{
+		if (_loadingStatusLabel != null && IsInstanceValid(_loadingStatusLabel))
+			_loadingStatusLabel.Text = status;
+	}
+
+	private void HideLoadingScreen()
+	{
+		if (_loadingOverlay != null && IsInstanceValid(_loadingOverlay))
+		{
+			_loadingOverlay.QueueFree();
+			_loadingOverlay = null;
+			_loadingStatusLabel = null;
 		}
 	}
 
@@ -525,7 +599,7 @@ public partial class MapGenerator : Node
 		}
 	}
 
-	public override void _Input(InputEvent @event)
+	public override async void _Input(InputEvent @event)
 	{
 		if (@event.IsActionPressed("ui_accept"))
 		{
@@ -536,9 +610,7 @@ public partial class MapGenerator : Node
 				_territoryManager = null;
 			}
 
-			GenererMap();
-			CallDeferred(nameof(InitTerritory));
-			CallDeferred(nameof(InitAIController));
+			await LancerAvecChargement();
 		}
 	}
 }
