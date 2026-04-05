@@ -6,5 +6,9 @@
   </PropertyGroup>
   <ItemGroup>
     <Content Include="Scripts\Map\Presets\mapsGen 2proj\Index.html" />
+    <Content Include="TODO.md" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="NakamaClient" Version="3.21.2" />
   </ItemGroup>
 </Project>

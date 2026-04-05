@@ -2,8 +2,11 @@ using Godot;
 
 public partial class GameState : Node
 {
+	public enum PlayMode { Offline, Online }
 	public enum MapSizePreset { Small, Medium, Large }
 	public enum MapType { Irridium, Alabasta }
+
+	public PlayMode CurrentPlayMode { get; private set; } = PlayMode.Offline;
 
 	// Seed de la map pour génération identique sur tous les peers (déterminisme réseau)
 	public int MapSeed { get; private set; }
@@ -18,15 +21,22 @@ public partial class GameState : Node
 	public int MaxCamps { get; set; } = 6;
 	public bool IsFreeForAll { get; set; } = false;
 	public MapType SelectedMapType { get; set; } = MapType.Irridium;
+	public string NakamaUserId { get; private set; } = "";
+	public string PlayerDisplayName { get; private set; } = "";
+	public string MatchId { get; private set; } = "";
+	public string MatchmakerTicket { get; private set; } = "";
+	public bool IsOnline => CurrentPlayMode == PlayMode.Online;
 
 	[Signal] public delegate void GameStartingEventHandler(int seed);
 	[Signal] public delegate void PlayerListUpdatedEventHandler();
 
 	private NetworkManager _networkManager;
+	private NakamaService _nakamaService;
 
 	public override void _Ready()
 	{
 		_networkManager = GetNodeOrNull<NetworkManager>("/root/NetworkManager");
+		_nakamaService = GetNodeOrNull<NakamaService>("/root/NakamaService");
 	}
 
 	public int GenerateSeed()
@@ -40,21 +50,76 @@ public partial class GameState : Node
 		MapSeed = seed;
 	}
 
+	public void ConfigureOfflineGame(MapType mapType, bool fastMode)
+	{
+		CurrentPlayMode = PlayMode.Offline;
+		LocalTeamId = 1;
+		SelectedMapType = mapType;
+		FastMode = fastMode;
+		MapSeed = 0;
+		MatchId = "";
+		MatchmakerTicket = "";
+		NakamaUserId = "";
+		PlayerDisplayName = "";
+	}
+
+	public void ConfigureOnlineLobby(string displayName = "")
+	{
+		CurrentPlayMode = PlayMode.Online;
+		LocalTeamId = 1;
+		SelectedMapType = MapType.Irridium;
+		FastMode = false;
+		IsFreeForAll = false;
+		MatchId = "";
+		MatchmakerTicket = "";
+		MapSeed = 0;
+		PlayerDisplayName = displayName;
+	}
+
+	public void ConfigureOnlineMatch(string matchId, int localTeamId, int seed, string nakamaUserId, string displayName)
+	{
+		CurrentPlayMode = PlayMode.Online;
+		LocalTeamId = localTeamId;
+		MatchId = matchId;
+		MapSeed = seed;
+		NakamaUserId = nakamaUserId;
+		PlayerDisplayName = displayName;
+	}
+
+	public void SetMatchmakerTicket(string ticket)
+	{
+		MatchmakerTicket = ticket;
+	}
+
+	public void ClearOnlineSession()
+	{
+		CurrentPlayMode = PlayMode.Offline;
+		LocalTeamId = 1;
+		MatchId = "";
+		MatchmakerTicket = "";
+		NakamaUserId = "";
+		PlayerDisplayName = "";
+	}
+
 	/// <summary>
 	/// Appelé par l'hôte pour lancer la partie.
 	/// Envoie la seed à tous les clients puis charge la scène de jeu.
 	/// </summary>
 	public void StartGame()
 	{
-		if (!_networkManager.IsServer)
-		{
-			GD.PrintErr("Seul le serveur peut lancer la partie!");
-			return;
-		}
+		StartOfflineGame(SelectedMapType, FastMode);
+	}
 
-		LocalTeamId = 1;
+	public void StartOfflineGame(MapType mapType, bool fastMode)
+	{
+		ConfigureOfflineGame(mapType, fastMode);
 		GenerateSeed();
-		Rpc(nameof(RpcReceiveSeedAndStart), MapSeed, (int)SelectedMapType);
+		LoadGameScene();
+	}
+
+	public void StartOnlineGameFromMatch(string matchId, int localTeamId, int seed, string nakamaUserId, string displayName)
+	{
+		ConfigureOnlineMatch(matchId, localTeamId, seed, nakamaUserId, displayName);
 		LoadGameScene();
 	}
 
@@ -85,11 +150,13 @@ public partial class GameState : Node
 
 	public void ReturnToMainMenu()
 	{
+		_nakamaService?.Disconnect();
 		_networkManager?.Disconnect();
-		LocalTeamId = 1;
+		ClearOnlineSession();
 		MapSeed = 0;
 		IsFreeForAll = false;
 		FastMode = false;
+		SelectedMapType = MapType.Irridium;
 		Engine.TimeScale = 1.0;
 		GetTree().ChangeSceneToFile("res://Scenes/MainMenu.tscn");
 	}

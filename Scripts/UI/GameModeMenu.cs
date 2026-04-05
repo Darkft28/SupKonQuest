@@ -136,19 +136,19 @@ public partial class GameModeMenu : Control
 		var gameState = GetNodeOrNull<GameState>("/root/GameState");
 		if (gameState != null)
 		{
-			gameState.LocalTeamId = 1;
+			gameState.ConfigureOfflineGame(_selectedMapType, _fastModeCheckBox.ButtonPressed);
 			gameState.IsFreeForAll = true;
-			gameState.SelectedMapType = _selectedMapType;
-			gameState.FastMode = _fastModeCheckBox.ButtonPressed;
 		}
 		Engine.TimeScale = _fastModeCheckBox.ButtonPressed ? 3.0 : 1.0;
-		GetTree().ChangeSceneToFile("res://Scenes/Game.tscn");
+		gameState?.StartOfflineGame(_selectedMapType, _fastModeCheckBox.ButtonPressed);
 	}
 
 	// ── Navigation ───────────────────────────────────────────────────────────
 
 	private void OnMultiPressed()
 	{
+		var gameState = GetNodeOrNull<GameState>("/root/GameState");
+		gameState?.ConfigureOnlineLobby();
 		GetTree().ChangeSceneToFile("res://Scenes/Lobby.tscn");
 	}
 

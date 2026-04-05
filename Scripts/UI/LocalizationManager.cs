@@ -124,6 +124,56 @@ public partial class LocalizationManager : Node
 			{ Language.EN, "Room not found on network" },
 			{ Language.ES, "Sala no encontrada en la red" }
 		}},
+		{ "nickname", new Dictionary<Language, string> {
+			{ Language.FR, "Pseudo :" },
+			{ Language.EN, "Nickname:" },
+			{ Language.ES, "Apodo:" }
+		}},
+		{ "guest_auth", new Dictionary<Language, string> {
+			{ Language.FR, "Connexion invité" },
+			{ Language.EN, "Guest login" },
+			{ Language.ES, "Inicio invitado" }
+		}},
+		{ "save_nickname", new Dictionary<Language, string> {
+			{ Language.FR, "Valider le pseudo" },
+			{ Language.EN, "Save nickname" },
+			{ Language.ES, "Guardar apodo" }
+		}},
+		{ "find_match", new Dictionary<Language, string> {
+			{ Language.FR, "Trouver une partie" },
+			{ Language.EN, "Find match" },
+			{ Language.ES, "Buscar partida" }
+		}},
+		{ "authenticating", new Dictionary<Language, string> {
+			{ Language.FR, "Connexion en cours..." },
+			{ Language.EN, "Connecting..." },
+			{ Language.ES, "Conectando..." }
+		}},
+		{ "guest_connected", new Dictionary<Language, string> {
+			{ Language.FR, "Invité connecté" },
+			{ Language.EN, "Guest connected" },
+			{ Language.ES, "Invitado conectado" }
+		}},
+		{ "matchmaking_started", new Dictionary<Language, string> {
+			{ Language.FR, "Recherche d'une partie..." },
+			{ Language.EN, "Searching for a match..." },
+			{ Language.ES, "Buscando partida..." }
+		}},
+		{ "match_found", new Dictionary<Language, string> {
+			{ Language.FR, "Partie trouvée !" },
+			{ Language.EN, "Match found!" },
+			{ Language.ES, "¡Partida encontrada!" }
+		}},
+		{ "match_joined", new Dictionary<Language, string> {
+			{ Language.FR, "Connexion au match..." },
+			{ Language.EN, "Joining match..." },
+			{ Language.ES, "Uniéndose a la partida..." }
+		}},
+		{ "username_taken", new Dictionary<Language, string> {
+			{ Language.FR, "Pseudo déjà utilisé" },
+			{ Language.EN, "Nickname already taken" },
+			{ Language.ES, "Apodo ya usado" }
+		}},
 		{ "only_host_start", new Dictionary<Language, string> {
 			{ Language.FR, "Seul l'hôte peut lancer la partie" },
 			{ Language.EN, "Only the host can start the game" },

@@ -17,7 +17,7 @@ public partial class NetworkManager : Node
 
 	public Dictionary<long, string> Players { get; private set; } = new();
 	public bool IsServer => Multiplayer.IsServer();
-	public bool IsConnected => _peer != null && _peer.GetConnectionStatus() == MultiplayerPeer.ConnectionStatus.Connected;
+	public new bool IsConnected => _peer != null && _peer.GetConnectionStatus() == MultiplayerPeer.ConnectionStatus.Connected;
 	public string RoomCode { get; private set; } = "";
 
 	private PacketPeerUdp _discoveryPeer;
