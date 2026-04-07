@@ -325,7 +325,7 @@ public partial class NakamaService : Node
 		for (int i = 0; i < orderedPresences.Count; i++)
 		{
 			if (orderedPresences[i].UserId == _userId)
-				return i == 0 ? 1 : 2;
+				return i + 1;
 		}
 
 		return 1;
