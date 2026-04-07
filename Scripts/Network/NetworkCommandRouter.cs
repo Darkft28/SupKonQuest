@@ -16,6 +16,11 @@ public static class NetworkCommandRouter
 		PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
 	};
 
+	private static readonly JsonSerializerOptions RelayJsonReadOptions = new()
+	{
+		PropertyNameCaseInsensitive = true,
+	};
+
 	private static int _sequence;
 
 	[Serializable]
@@ -139,7 +144,7 @@ public static class NetworkCommandRouter
 		{
 			case OpcodeBuyUnit:
 			{
-				var command = JsonSerializer.Deserialize<BuyUnitCommand>(payload);
+				var command = JsonSerializer.Deserialize<BuyUnitCommand>(payload, RelayJsonReadOptions);
 				if (command == null)
 				{
 					GD.PrintErr("[RELAY] BuyUnit deserialize failed.");
@@ -158,7 +163,7 @@ public static class NetworkCommandRouter
 			}
 			case OpcodeMoveUnits:
 			{
-				var command = JsonSerializer.Deserialize<MoveUnitsCommand>(payload);
+				var command = JsonSerializer.Deserialize<MoveUnitsCommand>(payload, RelayJsonReadOptions);
 				if (command == null)
 				{
 					GD.PrintErr("[RELAY] MoveUnits deserialize failed.");
@@ -177,7 +182,7 @@ public static class NetworkCommandRouter
 			}
 			case OpcodeAttackCamp:
 			{
-				var command = JsonSerializer.Deserialize<AttackCampCommand>(payload);
+				var command = JsonSerializer.Deserialize<AttackCampCommand>(payload, RelayJsonReadOptions);
 				if (command == null)
 				{
 					GD.PrintErr("[RELAY] AttackCamp deserialize failed.");
@@ -196,7 +201,7 @@ public static class NetworkCommandRouter
 			}
 			case OpcodeGoldSnapshot:
 			{
-				var command = JsonSerializer.Deserialize<GoldSnapshotCommand>(payload);
+				var command = JsonSerializer.Deserialize<GoldSnapshotCommand>(payload, RelayJsonReadOptions);
 				if (command == null)
 				{
 					GD.PrintErr("[RELAY] GoldSnapshot deserialize failed.");
