@@ -25,7 +25,7 @@ public partial class NakamaService : Node
 	private const string ConfigPortPath = "nakama/port";
 	private const string ConfigServerKeyPath = "nakama/server_key";
 	private const string DefaultScheme = "http";
-	private const string DefaultHost = "127.0.0.1";
+	private const string DefaultHost = "5.22.215.153";
 	private const int DefaultPort = 7350;
 	private const string DefaultServerKey = "defaultkey";
 
