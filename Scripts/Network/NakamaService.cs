@@ -43,6 +43,7 @@ public partial class NakamaService : Node
 	private string _displayName = "";
 	private string _matchId = "";
 	private string _matchmakerTicket = "";
+	private string _localSessionId = "";
 	private readonly Dictionary<string, string> _matchPlayers = new();
 
 	public bool IsAuthenticated => _session != null && !_session.IsExpired;
@@ -215,6 +216,7 @@ public partial class NakamaService : Node
 		_client = null;
 		_matchId = "";
 		_matchmakerTicket = "";
+		_localSessionId = "";
 		_userId = "";
 		_displayName = "";
 		_matchPlayers.Clear();
@@ -273,16 +275,17 @@ public partial class NakamaService : Node
 			IMatch match = await _socket.JoinMatchAsync(matched);
 			_matchId = match.Id;
 			_matchmakerTicket = "";
-			RefreshMatchPlayers(match);
+			_localSessionId = matched?.Self?.Presence?.SessionId ?? "";
+			RefreshMatchPlayers(match, matched);
 			LogMatchPresences(match);
 
-			if (HasDuplicateLocalUserId(match, out int duplicateSessions))
+			if (HasDuplicateLocalUserId(match, matched, out int duplicateSessions))
 			{
 				await AbortMatchForDuplicateIdentityAsync($"join snapshot ({duplicateSessions} matching presences)");
 				return;
 			}
 
-			int localTeamId = ResolveLocalTeamId(match);
+			int localTeamId = ResolveLocalTeamId(match, matched);
 			int seed = GenerateSeedFromMatchId(match.Id);
 			GD.Print($"[NAKAMA] Match joined: {_matchId} | team={localTeamId} | seed={seed}");
 			CallDeferred(nameof(DeferredEmitMatchJoined), _matchId, localTeamId, seed);
@@ -305,7 +308,16 @@ public partial class NakamaService : Node
 		foreach (var joined in matchPresence.Joins)
 		{
 			_matchPlayers[joined.UserId] = string.IsNullOrWhiteSpace(joined.Username) ? joined.UserId : joined.Username;
-			if (joined.UserId == _userId)
+			if (joined.UserId != _userId)
+				continue;
+
+			if (string.IsNullOrWhiteSpace(_localSessionId))
+			{
+				_localSessionId = joined.SessionId;
+				continue;
+			}
+
+			if (!string.Equals(joined.SessionId, _localSessionId, StringComparison.Ordinal))
 			{
 				duplicateIdentityDetected = true;
 			}
@@ -329,20 +341,68 @@ public partial class NakamaService : Node
 		NetworkCommandRouter.HandleIncomingRelayCommand((long)matchState.OpCode, payload);
 	}
 
-	private void RefreshMatchPlayers(IMatch match)
+	private void RefreshMatchPlayers(IMatch match, IMatchmakerMatched matched = null)
 	{
 		_matchPlayers.Clear();
+
+		bool addedFromMatch = false;
 		foreach (var presence in match.Presences.OrderBy(p => p.UserId))
 		{
+			addedFromMatch = true;
 			_matchPlayers[presence.UserId] = string.IsNullOrWhiteSpace(presence.Username)
 				? presence.UserId
 				: presence.Username;
 		}
+
+		if (!addedFromMatch && matched != null)
+		{
+			if (matched.Self?.Presence != null)
+			{
+				var selfPresence = matched.Self.Presence;
+				_matchPlayers[selfPresence.UserId] = string.IsNullOrWhiteSpace(selfPresence.Username)
+					? selfPresence.UserId
+					: selfPresence.Username;
+			}
+
+			foreach (var user in matched.Users)
+			{
+				if (user?.Presence == null)
+					continue;
+
+				var presence = user.Presence;
+				_matchPlayers[presence.UserId] = string.IsNullOrWhiteSpace(presence.Username)
+					? presence.UserId
+					: presence.Username;
+			}
+		}
 	}
 
-	private int ResolveLocalTeamId(IMatch match)
+	private int ResolveLocalTeamId(IMatch match, IMatchmakerMatched matched)
 	{
-		var orderedPresences = match.Presences.OrderBy(p => p.UserId).ToList();
+		var orderedPresences = match.Presences
+			.OrderBy(p => p.UserId)
+			.ThenBy(p => p.SessionId)
+			.ToList();
+
+		if (orderedPresences.Count == 0 && matched != null)
+		{
+			if (matched.Self?.Presence != null)
+				orderedPresences.Add(matched.Self.Presence);
+
+			foreach (var user in matched.Users)
+			{
+				if (user?.Presence == null)
+					continue;
+
+				orderedPresences.Add(user.Presence);
+			}
+
+			orderedPresences = orderedPresences
+				.OrderBy(p => p.UserId)
+				.ThenBy(p => p.SessionId)
+				.ToList();
+		}
+
 		for (int i = 0; i < orderedPresences.Count; i++)
 		{
 			if (orderedPresences[i].UserId == _userId)
@@ -406,10 +466,38 @@ public partial class NakamaService : Node
 		}
 	}
 
-	private bool HasDuplicateLocalUserId(IMatch match, out int duplicateSessions)
+	private bool HasDuplicateLocalUserId(IMatch match, IMatchmakerMatched matched, out int duplicateSessions)
 	{
-		duplicateSessions = match.Presences.Count(p => p.UserId == _userId);
-		return duplicateSessions > 0;
+		var localSessionIds = new HashSet<string>();
+
+		foreach (var presence in match.Presences)
+		{
+			if (presence.UserId != _userId || string.IsNullOrWhiteSpace(presence.SessionId))
+				continue;
+
+			localSessionIds.Add(presence.SessionId);
+		}
+
+		if (matched?.Self?.Presence != null
+			&& matched.Self.Presence.UserId == _userId
+			&& !string.IsNullOrWhiteSpace(matched.Self.Presence.SessionId))
+		{
+			localSessionIds.Add(matched.Self.Presence.SessionId);
+		}
+
+		foreach (var user in matched?.Users ?? Enumerable.Empty<IMatchmakerUser>())
+		{
+			if (user?.Presence == null)
+				continue;
+
+			if (user.Presence.UserId != _userId || string.IsNullOrWhiteSpace(user.Presence.SessionId))
+				continue;
+
+			localSessionIds.Add(user.Presence.SessionId);
+		}
+
+		duplicateSessions = localSessionIds.Count;
+		return duplicateSessions > 1;
 	}
 
 	private async Task AbortMatchForDuplicateIdentityAsync(string source)
