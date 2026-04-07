@@ -44,6 +44,8 @@ public partial class NakamaService : Node
 	private string _matchId = "";
 	private string _matchmakerTicket = "";
 	private string _localSessionId = "";
+	private int _pendingMatchSeed;
+	private bool _hasEmittedMatchJoined;
 	private readonly Dictionary<string, string> _matchPlayers = new();
 
 	public bool IsAuthenticated => _session != null && !_session.IsExpired;
@@ -219,6 +221,8 @@ public partial class NakamaService : Node
 		_matchId = "";
 		_matchmakerTicket = "";
 		_localSessionId = "";
+		_pendingMatchSeed = 0;
+		_hasEmittedMatchJoined = false;
 		_userId = "";
 		_displayName = "";
 		_matchPlayers.Clear();
@@ -277,6 +281,7 @@ public partial class NakamaService : Node
 			IMatch match = await _socket.JoinMatchAsync(matched);
 			_matchId = match.Id;
 			_matchmakerTicket = "";
+			_hasEmittedMatchJoined = false;
 			_localSessionId = matched?.Self?.Presence?.SessionId ?? "";
 			RefreshMatchPlayers(match, matched);
 			LogMatchPresences(match);
@@ -287,14 +292,12 @@ public partial class NakamaService : Node
 				return;
 			}
 
-			int localTeamId = ResolveLocalTeamId(match, matched);
-			int seed = GenerateSeedFromMatchId(match.Id);
-			GD.Print($"[NAKAMA] Match joined: {_matchId} | team={localTeamId} | seed={seed}");
-			CallDeferred(nameof(DeferredEmitMatchJoined), _matchId, localTeamId, seed);
+			_pendingMatchSeed = GenerateSeedFromMatchId(match.Id);
+			TryEmitMatchJoinedFromKnownParticipants(match, matched, "join snapshot");
 		}
 		catch (Exception ex)
 		{
-			EmitSignal(SignalName.MatchmakingFailed, ex.Message);
+			EmitMatchmakingFailedThreadSafe(ex.Message);
 			GD.PrintErr($"[NAKAMA] Join match failed: {ex.Message}");
 		}
 	}
@@ -302,6 +305,16 @@ public partial class NakamaService : Node
 	private void DeferredEmitMatchJoined(string matchId, int localTeamId, int seed)
 	{
 		EmitSignal(SignalName.MatchJoined, matchId, localTeamId, seed);
+	}
+
+	private void DeferredEmitMatchmakingFailed(string reason)
+	{
+		EmitSignal(SignalName.MatchmakingFailed, reason);
+	}
+
+	private void EmitMatchmakingFailedThreadSafe(string reason)
+	{
+		CallDeferred(nameof(DeferredEmitMatchmakingFailed), reason);
 	}
 
 	private void OnReceivedMatchPresence(IMatchPresenceEvent matchPresence)
@@ -333,14 +346,78 @@ public partial class NakamaService : Node
 		if (duplicateIdentityDetected)
 		{
 			_ = AbortMatchForDuplicateIdentityAsync("presence event");
+			return;
 		}
+
+		TryEmitMatchJoinedFromMatchPlayers("presence event");
 	}
 
 	private void OnReceivedMatchState(IMatchState matchState)
 	{
 		string payload = Encoding.UTF8.GetString(matchState.State);
-		EmitSignal(SignalName.MatchStateReceived, (long)matchState.OpCode, payload);
-		NetworkCommandRouter.HandleIncomingRelayCommand((long)matchState.OpCode, payload);
+		CallDeferred(nameof(DeferredHandleMatchState), (long)matchState.OpCode, payload);
+	}
+
+	private void DeferredHandleMatchState(long opcode, string payload)
+	{
+		EmitSignal(SignalName.MatchStateReceived, opcode, payload);
+		NetworkCommandRouter.HandleIncomingRelayCommand(opcode, payload);
+	}
+
+	private void TryEmitMatchJoinedFromKnownParticipants(IMatch match, IMatchmakerMatched matched, string source)
+	{
+		if (_hasEmittedMatchJoined || string.IsNullOrWhiteSpace(_matchId))
+			return;
+
+		var orderedUserIds = BuildOrderedParticipantUserIds(match, matched);
+		if (orderedUserIds.Count < 2)
+		{
+			GD.Print($"[NAKAMA] Waiting for participants before MatchJoined emit ({source}): count={orderedUserIds.Count}");
+			return;
+		}
+
+		int localIndex = orderedUserIds.FindIndex(id => id == _userId);
+		if (localIndex < 0)
+		{
+			GD.PrintErr($"[NAKAMA] ResolveLocalTeamId pending: local userId={_userId} still missing from participant list ({source}).");
+			return;
+		}
+
+		int localTeamId = localIndex + 1;
+		int seed = _pendingMatchSeed != 0 ? _pendingMatchSeed : GenerateSeedFromMatchId(_matchId);
+		_hasEmittedMatchJoined = true;
+		GD.Print($"[NAKAMA] Match joined: {_matchId} | team={localTeamId} | seed={seed}");
+		CallDeferred(nameof(DeferredEmitMatchJoined), _matchId, localTeamId, seed);
+	}
+
+	private void TryEmitMatchJoinedFromMatchPlayers(string source)
+	{
+		if (_hasEmittedMatchJoined || string.IsNullOrWhiteSpace(_matchId))
+			return;
+
+		var orderedUserIds = _matchPlayers.Keys
+			.Where(id => !string.IsNullOrWhiteSpace(id))
+			.OrderBy(id => id, StringComparer.Ordinal)
+			.ToList();
+
+		if (orderedUserIds.Count < 2)
+		{
+			GD.Print($"[NAKAMA] Waiting for presence sync before MatchJoined emit ({source}): count={orderedUserIds.Count}");
+			return;
+		}
+
+		int localIndex = orderedUserIds.FindIndex(id => id == _userId);
+		if (localIndex < 0)
+		{
+			GD.PrintErr($"[NAKAMA] Presence sync has no local userId={_userId} ({source}).");
+			return;
+		}
+
+		int localTeamId = localIndex + 1;
+		int seed = _pendingMatchSeed != 0 ? _pendingMatchSeed : GenerateSeedFromMatchId(_matchId);
+		_hasEmittedMatchJoined = true;
+		GD.Print($"[NAKAMA] Match joined (presence): {_matchId} | team={localTeamId} | seed={seed}");
+		CallDeferred(nameof(DeferredEmitMatchJoined), _matchId, localTeamId, seed);
 	}
 
 	private void RefreshMatchPlayers(IMatch match, IMatchmakerMatched matched = null)
@@ -381,38 +458,39 @@ public partial class NakamaService : Node
 
 	private int ResolveLocalTeamId(IMatch match, IMatchmakerMatched matched)
 	{
-		var orderedPresences = match.Presences
-			.OrderBy(p => p.UserId)
-			.ThenBy(p => p.SessionId)
-			.ToList();
-
-		if (orderedPresences.Count == 0 && matched != null)
+		var orderedUserIds = BuildOrderedParticipantUserIds(match, matched);
+		for (int i = 0; i < orderedUserIds.Count; i++)
 		{
-			if (matched.Self?.Presence != null)
-				orderedPresences.Add(matched.Self.Presence);
-
-			foreach (var user in matched.Users)
-			{
-				if (user?.Presence == null)
-					continue;
-
-				orderedPresences.Add(user.Presence);
-			}
-
-			orderedPresences = orderedPresences
-				.OrderBy(p => p.UserId)
-				.ThenBy(p => p.SessionId)
-				.ToList();
-		}
-
-		for (int i = 0; i < orderedPresences.Count; i++)
-		{
-			if (orderedPresences[i].UserId == _userId)
+			if (orderedUserIds[i] == _userId)
 				return i + 1;
 		}
 
 		GD.PrintErr($"[NAKAMA] ResolveLocalTeamId failed: local userId={_userId} not found in presences for match={_matchId}.");
 		return 1;
+	}
+
+	private static List<string> BuildOrderedParticipantUserIds(IMatch match, IMatchmakerMatched matched)
+	{
+		var userIds = new HashSet<string>(StringComparer.Ordinal);
+
+		foreach (var presence in match.Presences)
+		{
+			if (!string.IsNullOrWhiteSpace(presence.UserId))
+				userIds.Add(presence.UserId);
+		}
+
+		if (matched?.Self?.Presence != null && !string.IsNullOrWhiteSpace(matched.Self.Presence.UserId))
+			userIds.Add(matched.Self.Presence.UserId);
+
+		foreach (var user in matched?.Users ?? Enumerable.Empty<IMatchmakerUser>())
+		{
+			if (user?.Presence == null || string.IsNullOrWhiteSpace(user.Presence.UserId))
+				continue;
+
+			userIds.Add(user.Presence.UserId);
+		}
+
+		return userIds.OrderBy(id => id, StringComparer.Ordinal).ToList();
 	}
 
 	private static string ResolveDeviceIdFilePath()
@@ -522,8 +600,10 @@ public partial class NakamaService : Node
 
 		_matchId = "";
 		_matchmakerTicket = "";
+		_pendingMatchSeed = 0;
+		_hasEmittedMatchJoined = false;
 		_matchPlayers.Clear();
-		EmitSignal(SignalName.MatchmakingFailed, "Deux instances utilisent le meme user Nakama. Lance chaque instance avec un slot different (--nakama-slot=1, --nakama-slot=2).");
+		EmitMatchmakingFailedThreadSafe("Deux instances utilisent le meme user Nakama. Lance chaque instance avec un slot different (--nakama-slot=1, --nakama-slot=2).");
 	}
 
 	private static int GenerateSeedFromMatchId(string matchId)
