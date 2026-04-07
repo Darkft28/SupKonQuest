@@ -273,13 +273,19 @@ public partial class NakamaService : Node
 			RefreshMatchPlayers(match);
 			int localTeamId = ResolveLocalTeamId(match);
 			int seed = GenerateSeedFromMatchId(match.Id);
-			EmitSignal(SignalName.MatchJoined, _matchId, localTeamId, seed);
+			GD.Print($"[NAKAMA] Match joined: {_matchId} | team={localTeamId} | seed={seed}");
+			CallDeferred(nameof(DeferredEmitMatchJoined), _matchId, localTeamId, seed);
 		}
 		catch (Exception ex)
 		{
 			EmitSignal(SignalName.MatchmakingFailed, ex.Message);
 			GD.PrintErr($"[NAKAMA] Join match failed: {ex.Message}");
 		}
+	}
+
+	private void DeferredEmitMatchJoined(string matchId, int localTeamId, int seed)
+	{
+		EmitSignal(SignalName.MatchJoined, matchId, localTeamId, seed);
 	}
 
 	private void OnReceivedMatchPresence(IMatchPresenceEvent matchPresence)
