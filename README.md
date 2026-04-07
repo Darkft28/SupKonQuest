@@ -4,7 +4,7 @@ Jeu de strategie et de conquete en temps reel developpe avec Godot 4.5 et C# (.N
 
 ## Description
 
-SupKonQuest est un RTS (Real-Time Strategy) ou le joueur doit capturer des camps sur une carte predéfinie. On commence avec un camp et un peu d'or, on produit des unites terrestres et navales, et on part a la conquete des camps adverses. Le jeu propose un mode solo, un mode contre IA (3 niveaux) et un mode multijoueur en reseau local.
+SupKonQuest est un RTS (Real-Time Strategy) ou le joueur doit capturer des camps sur une carte predéfinie. On commence avec un camp et un peu d'or, on produit des unites terrestres et navales, et on part a la conquete des camps adverses. Le jeu propose un mode solo, un mode contre IA (3 niveaux) et un mode multijoueur en reseau local en format "chacun pour soi".
 
 Le principe : chaque camp genere de l'or passivement, cet or permet d'acheter des unites, et ces unites servent a capturer d'autres camps. Controler une region entiere rapporte un bonus. Le joueur qui controle tous les camps gagne.
 
@@ -14,7 +14,7 @@ Le principe : chaque camp genere de l'or passivement, cet or permet d'acheter de
 
 **C# (.NET 8.0)** : typage statique, structures de donnees .NET (`Dictionary`, `Queue`, `List`). Aucune dependance NuGet externe.
 
-**ENet** : protocole reseau UDP fiable integre dans Godot (retransmission des paquets perdus, ordonnancement). Port 7777 pour le jeu, 7778 pour la decouverte LAN via UDP broadcast.
+**ENet** : protocole reseau UDP fiable integre dans Godot pour l'ancien mode local/legacy (retransmission des paquets perdus, ordonnancement). Port 7777 pour le jeu, 7778 pour la decouverte LAN via UDP broadcast.
 
 ## Prerequis
 
@@ -101,8 +101,8 @@ SupKonQuest/
 ```
 Root
 ├── Singletons (AutoLoads)
-│   ├── NetworkManager          # ENet P2P (hosting, connexion, decouverte LAN)
-│   ├── GameState               # Flux de jeu (seed, LocalTeamId, IsAIMode)
+│   ├── NetworkManager          # ENet legacy P2P (hosting, connexion, decouverte LAN)
+│   ├── GameState               # Flux de jeu (seed, identifiant joueur local, IsAIMode)
 │   ├── LocalizationManager     # i18n FR/EN/ES
 │   └── GameManager             # Economie or + bonus region + victoire
 └── Game.tscn
@@ -119,9 +119,9 @@ Root
 
 ### Singletons (AutoLoad)
 
-- **GameManager** : economie or par equipe, bonus region, conditions de victoire via VictoryManager. Accessible via `GameManager.Instance`.
+- **GameManager** : economie or par joueur/slot, bonus region, conditions de victoire via VictoryManager. Accessible via `GameManager.Instance`.
 - **NetworkManager** : connexion ENet P2P, decouverte UDP (port 7778), code salon 6 caracteres.
-- **GameState** : seed de carte, LocalTeamId (1=serveur, 2=client), IsAIMode, AILevel.
+- **GameState** : seed de carte, identifiant local de joueur (slot d'ownership), IsAIMode, AILevel.
 - **LocalizationManager** : 166 cles traduites en FR/EN/ES, signal `LanguageChanged`.
 
 ### Signaux (Observer Pattern)
@@ -342,20 +342,20 @@ Un clic droit deplace les unites selectionnees. Clic droit sur un Transport alli
 
 **Scripts :** `Scripts/Network/`
 
-### Architecture P2P
+### Architecture relay Nakama
 
-- Serveur = Team 1, Client = Team 2
-- Connexion via code salon 6 caracteres (decouverte UDP broadcast sur port 7778)
+- Match "chacun pour soi" : chaque joueur est un slot d'ownership indépendant, sans alliance d'equipe
+- Connexion via code salon 6 caracteres (decouverte UDP broadcast sur port 7778) pour l'ancienne voie ENet; Nakama gere l'authentification et le relay des commandes en ligne
 - `NetworkEntityRegistry` : dictionnaire statique `NetworkId → Node`
   - IDs dynamiques : `"{peerId}_{counter}"`
-  - IDs deterministesd'efenseurs initiaux : `"camp_{campId}_unit_{index}"`
+  - IDs deterministes des defenseurs initiaux : `"camp_{campId}_unit_{index}"`
 
 ### RPCs
 
 | RPC | Mode | Fiabilite | Usage |
 |-----|------|-----------|-------|
 | RpcReceiveSeedAndStart | Authority | Reliable | Serveur → Clients : seed + debut |
-| RpcSyncCampAssignments | Authority | Reliable | Attribution camps/equipes |
+| RpcSyncCampAssignments | Authority | Reliable | Attribution camps/joueurs |
 | RpcSpawnUnit / RpcSpawnShip | AnyPeer | Reliable | Creation entite distante |
 | RpcEntityDied | AnyPeer | Reliable | Destruction puppet |
 | RpcApplyUnitDamage / Camp / Ship | AnyPeer | Reliable | Degats (appliques uniquement par le peer proprietaire) |
@@ -366,7 +366,7 @@ Un clic droit deplace les unites selectionnees. Clic droit sur un Transport alli
 ### Determinisme
 
 - Meme seed → meme terrain, memes positions de camps, meme distribution initiale
-- L'economie de chaque equipe est calculee localement (pas de sync or)
+- L'economie de chaque joueur est calculee localement (pas de sync or)
 - Limitation Godot : `bool[]` non supportee en RPC Variant → convertie en `int[]`
 
 ## Localisation

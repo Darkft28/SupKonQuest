@@ -97,6 +97,7 @@ public partial class GameState : Node
 	{
 		CurrentPlayMode = PlayMode.Offline;
 		LocalTeamId = 1;
+		IsFreeForAll = false;
 		MatchId = "";
 		MatchmakerTicket = "";
 		NakamaUserId = "";

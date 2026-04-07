@@ -4,7 +4,7 @@ Format: `Priorite | Zone | Probleme | Action | Test de validation`
 
 ## P0 - Critique
 
-- [ ] **P0 | Reseau/Economie (Relay)** | En mode Nakama relay, l'or est gere localement par equipe sans sync globale forte. Les achats peuvent diverger selon le timing reseau. (`Scripts/Economy/GameManager.cs`, `Scripts/Network/NetworkSync.cs`, `Scripts/Network/NetworkCommandRouter.cs`) | Rester en modele relay client-driven, mais ajouter convergence explicite: sync d'or plus frequente, reconciliation d'etat sur des evenements cles (achat, capture, refund), et correction deterministe en cas d'ecart. | Lancer 2 clients relay, spam achats sur Team 1/2 pendant 3 minutes: ecart d'or <= seuil fixe et meme files de production a la fin.
+- [ ] **P0 | Reseau/Economie (Relay)** | En mode Nakama relay, l'or est gere localement par joueur/slot sans sync globale forte. Les achats peuvent diverger selon le timing reseau. (`Scripts/Economy/GameManager.cs`, `Scripts/Network/NetworkSync.cs`, `Scripts/Network/NetworkCommandRouter.cs`) | Rester en modele relay client-driven, mais ajouter convergence explicite: sync d'or plus frequente, reconciliation d'etat sur des evenements cles (achat, capture, refund), et correction deterministe en cas d'ecart. | Lancer 2 clients relay, spam achats sur les deux joueurs pendant 3 minutes: ecart d'or <= seuil fixe et meme files de production a la fin.
 
 - [ ] **P0 | Reseau/Robustesse commandes relay** | Les commandes `BuyUnit/MoveUnits/AttackCamp` sont appliquees sans ACK metier et avec protection limitee contre duplicate/out-of-order. (`Scripts/Network/NetworkCommandRouter.cs`) | Ajouter protocole robuste sans serveur autoritaire: idempotence par `(sender, sequence)`, ACK applicatif, retry limite, et replay-safe. | Rejouer paquets dupliques/hors ordre/perdus: aucune duplication d'achat ni ordre applique 2 fois.
 
@@ -16,7 +16,7 @@ Format: `Priorite | Zone | Probleme | Action | Test de validation`
 
 - [ ] **P1 | Sync fonctionnalites Port** | L'achat/placement de port est local et non synchronise explicitement entre peers (etat `HasPort`, visuel port, droits de prod navale). (`Scripts/UI/GameHUD.cs`, `Scripts/Map/TerritoryManager.cs`, `Scripts/Camps/CampSimple.Naval.cs`, `Scripts/Network/*`) | Ajouter commandes/replication reseau pour `BuyPort` + `PlacePortAt` + rollback/remboursement, avec validation autoritaire. | Host construit un port: client voit immediatement le port et peut constater la production navale coherente.
 
-- [ ] **P1 | Validation fonctionnelle des actions en relay** | Les commandes sont appliquees cote receveur avec peu de garde-fous gameplay (camp valide, ownership attendu, preconditions metier). (`Scripts/Network/NetworkCommandRouter.cs`) | Ajouter validations metier minimales (sans zero-trust): coherence team locale, existence entites, preconditions de file/camp, logs de rejet. | Envoyer commandes sur etat obsolete (camp deja capture, unite detruite): commande ignoree proprement, pas de crash ni divergence.
+- [ ] **P1 | Validation fonctionnelle des actions en relay** | Les commandes sont appliquees cote receveur avec peu de garde-fous gameplay (camp valide, ownership attendu, preconditions metier). (`Scripts/Network/NetworkCommandRouter.cs`) | Ajouter validations metier minimales (sans zero-trust): coherence joueur local, existence entites, preconditions de file/camp, logs de rejet. | Envoyer commandes sur etat obsolete (camp deja capture, unite detruite): commande ignoree proprement, pas de crash ni divergence.
 
 ## P2 - Moyenne priorite
 
@@ -42,7 +42,7 @@ Format: `Priorite | Zone | Probleme | Action | Test de validation`
 ## Plan de verification minimal apres corrections
 
 1. Build C# propre: `dotnet build SupKonQuest.csproj`
-2. Scenario ENet 2 joueurs: achats, capture, port, deconnexion/reconnexion.
-3. Scenario Nakama relay 2 joueurs: meme protocole + verif convergence etat (or, unites, camps, ports).
+2. Scenario ENet 2 joueurs en FFA: achats, capture, port, deconnexion/reconnexion.
+3. Scenario Nakama relay 2 joueurs en FFA: meme protocole + verif convergence etat (or, unites, camps, ports).
 4. Stress test local: production massive + deplacements + combats continus 5 min.
 

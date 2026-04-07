@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-SupKonQuest is a strategy and conquest game built with Godot 4.5 and C# (.NET 8.0). It features procedural map generation, multiplayer networking via ENet, and a gold-based economy system with unit production queues.
+SupKonQuest is a strategy and conquest game built with Godot 4.5 and C# (.NET 8.0). It features procedural map generation, multiplayer networking via ENet and Nakama relay, and a gold-based economy system with unit production queues.
 
 ## Game Flow
 1. Joueur spawn avec 1 camp + 100 or
@@ -43,7 +43,7 @@ godot --path . --run
 - `Scripts/Camera/` - CameraController
 - `Scripts/Economy/` - GameManager, VictoryManager
 - `Scripts/Network/` - NetworkManager, GameState, NetworkSync, NetworkEntityRegistry
-- `Scripts/AI/` - AIController (Utility AI, Easy/Medium/Hard, one per bot team)
+- `Scripts/AI/` - AIController (Utility AI, Easy/Medium/Hard, one per bot slot)
 - `Scripts/UI/` - GameHUD, LobbyUI, Minimap, MainMenu, GameModeMenu, LocalizationManager
 - `AI-implementation.md` - Notes de conception IA (idées futures : boss IA, naval, stagger, personnalités)
 - `Scenes/` - Godot scene files (.tscn)
@@ -57,7 +57,7 @@ Three autoloaded managers defined in project.godot:
 
 ### Core Systems
 
-**GameManager** - Team gold economy with passive income (500 gold/sec), unit purchasing, capture bonuses (50 gold). Starting gold: 100. Manages a 3-tier unlock system: Tier 1 (default), Tier 2 (manual purchase: 1500 gold), Tier 3 (auto-unlock when controlling all camps in home region).
+**GameManager** - Gold economy per player/slot with passive income (500 gold/sec), unit purchasing, capture bonuses (50 gold). Starting gold: 100. Manages a 3-tier unlock system: Tier 1 (default), Tier 2 (manual purchase: 1500 gold), Tier 3 (auto-unlock when controlling all camps in home region).
 
 **Unit System** - CharacterBody2D-based units with UnitStatsData (MaxHealth, Attack, Defense, Speed, Range, Price, ProductionTime). 8 unit types available:
 | Type | Price | HP | Attack | Defense | Speed | Range | Prod. Time |
@@ -95,7 +95,7 @@ Ship tiers: Transport = Tier 1, Fregate + Destroyer = Tier 3.
 
 ### Key Patterns
 - Signal-based communication for UI and networking
-- Group-based team organization ("units", "team_1", "team_2", "camps")
+- Group-based ownership organization ("units", "team_<playerId>", "camps")
 - Deterministic systems via seeded random for network sync
 - All network state changes use RPCs with Authority mode
 - Production queue system with async unit spawning
