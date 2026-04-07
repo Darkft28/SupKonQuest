@@ -20,6 +20,8 @@ public partial class NakamaService : Node
 	[Signal] public delegate void DisconnectedEventHandler();
 
 	private const string DeviceIdFilePath = "user://nakama_device_id.txt";
+	private const string ConfigDeviceSlotPath = "nakama/device_slot";
+	private const string EnvDeviceSlotName = "SUPKONQUEST_NAKAMA_SLOT";
 	private const string ConfigSchemePath = "nakama/scheme";
 	private const string ConfigHostPath = "nakama/host";
 	private const string ConfigPortPath = "nakama/port";
@@ -90,6 +92,7 @@ public partial class NakamaService : Node
 			_displayName = string.IsNullOrWhiteSpace(_session.Username)
 				? $"Guest-{_userId[..8]}"
 				: _session.Username;
+			GD.Print($"[NAKAMA] Authenticated userId={_userId} deviceId={_deviceId[..Math.Min(8, _deviceId.Length)]}...");
 
 			await EnsureSocketConnectedAsync();
 			EmitSignal(SignalName.Authenticated, _userId, _displayName);
@@ -271,6 +274,14 @@ public partial class NakamaService : Node
 			_matchId = match.Id;
 			_matchmakerTicket = "";
 			RefreshMatchPlayers(match);
+			LogMatchPresences(match);
+
+			if (HasDuplicateLocalUserId(match, out int duplicateSessions))
+			{
+				await AbortMatchForDuplicateIdentityAsync($"join snapshot ({duplicateSessions} matching presences)");
+				return;
+			}
+
 			int localTeamId = ResolveLocalTeamId(match);
 			int seed = GenerateSeedFromMatchId(match.Id);
 			GD.Print($"[NAKAMA] Match joined: {_matchId} | team={localTeamId} | seed={seed}");
@@ -290,14 +301,24 @@ public partial class NakamaService : Node
 
 	private void OnReceivedMatchPresence(IMatchPresenceEvent matchPresence)
 	{
+		bool duplicateIdentityDetected = false;
 		foreach (var joined in matchPresence.Joins)
 		{
 			_matchPlayers[joined.UserId] = string.IsNullOrWhiteSpace(joined.Username) ? joined.UserId : joined.Username;
+			if (joined.UserId == _userId)
+			{
+				duplicateIdentityDetected = true;
+			}
 		}
 
 		foreach (var left in matchPresence.Leaves)
 		{
 			_matchPlayers.Remove(left.UserId);
+		}
+
+		if (duplicateIdentityDetected)
+		{
+			_ = AbortMatchForDuplicateIdentityAsync("presence event");
 		}
 	}
 
@@ -311,7 +332,7 @@ public partial class NakamaService : Node
 	private void RefreshMatchPlayers(IMatch match)
 	{
 		_matchPlayers.Clear();
-		foreach (var presence in match.Presences.OrderBy(p => p.Username).ThenBy(p => p.UserId))
+		foreach (var presence in match.Presences.OrderBy(p => p.UserId))
 		{
 			_matchPlayers[presence.UserId] = string.IsNullOrWhiteSpace(presence.Username)
 				? presence.UserId
@@ -321,14 +342,98 @@ public partial class NakamaService : Node
 
 	private int ResolveLocalTeamId(IMatch match)
 	{
-		var orderedPresences = match.Presences.OrderBy(p => p.Username).ThenBy(p => p.UserId).ToList();
+		var orderedPresences = match.Presences.OrderBy(p => p.UserId).ToList();
 		for (int i = 0; i < orderedPresences.Count; i++)
 		{
 			if (orderedPresences[i].UserId == _userId)
 				return i + 1;
 		}
 
+		GD.PrintErr($"[NAKAMA] ResolveLocalTeamId failed: local userId={_userId} not found in presences for match={_matchId}.");
 		return 1;
+	}
+
+	private static string ResolveDeviceIdFilePath()
+	{
+		string slot = ResolveDeviceSlot();
+		return string.IsNullOrWhiteSpace(slot)
+			? DeviceIdFilePath
+			: $"user://nakama_device_id_{slot}.txt";
+	}
+
+	private static string ResolveDeviceSlot()
+	{
+		foreach (string arg in OS.GetCmdlineArgs())
+		{
+			const string prefix = "--nakama-slot=";
+			if (arg.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+				return SanitizeDeviceSlot(arg[prefix.Length..]);
+		}
+
+		string envSlot = OS.GetEnvironment(EnvDeviceSlotName);
+		if (!string.IsNullOrWhiteSpace(envSlot))
+			return SanitizeDeviceSlot(envSlot);
+
+		string configuredSlot = GetProjectSetting(ConfigDeviceSlotPath, "");
+		return SanitizeDeviceSlot(configuredSlot);
+	}
+
+	private static string SanitizeDeviceSlot(string value)
+	{
+		if (string.IsNullOrWhiteSpace(value))
+			return "";
+
+		var builder = new StringBuilder(value.Trim().ToLowerInvariant());
+		for (int i = builder.Length - 1; i >= 0; i--)
+		{
+			char c = builder[i];
+			if (char.IsLetterOrDigit(c) || c == '_' || c == '-')
+				continue;
+
+			builder.Remove(i, 1);
+		}
+
+		string sanitized = builder.ToString();
+		return sanitized.Length > 24 ? sanitized[..24] : sanitized;
+	}
+
+	private void LogMatchPresences(IMatch match)
+	{
+		GD.Print($"[NAKAMA] Match presences count={match.Presences.Count()} localUserId={_userId}");
+		foreach (var presence in match.Presences.OrderBy(p => p.UserId))
+		{
+			GD.Print($"[NAKAMA] Presence userId={presence.UserId} username={presence.Username} sessionId={presence.SessionId}");
+		}
+	}
+
+	private bool HasDuplicateLocalUserId(IMatch match, out int duplicateSessions)
+	{
+		duplicateSessions = match.Presences.Count(p => p.UserId == _userId);
+		return duplicateSessions > 0;
+	}
+
+	private async Task AbortMatchForDuplicateIdentityAsync(string source)
+	{
+		string reason = $"[NAKAMA] Duplicate local userId detected from {source} for userId={_userId}. " +
+			"Stop join to avoid same-camp spawn and relay self-filtering. Use distinct slots: --nakama-slot=1 and --nakama-slot=2.";
+		GD.PrintErr(reason);
+
+		if (_socket != null && !string.IsNullOrWhiteSpace(_matchId))
+		{
+			try
+			{
+				await _socket.LeaveMatchAsync(_matchId);
+			}
+			catch (Exception leaveEx)
+			{
+				GD.PrintErr($"[NAKAMA] LeaveMatchAsync after duplicate identity warning failed: {leaveEx.Message}");
+			}
+		}
+
+		_matchId = "";
+		_matchmakerTicket = "";
+		_matchPlayers.Clear();
+		EmitSignal(SignalName.MatchmakingFailed, "Deux instances utilisent le meme user Nakama. Lance chaque instance avec un slot different (--nakama-slot=1, --nakama-slot=2).");
 	}
 
 	private static int GenerateSeedFromMatchId(string matchId)
@@ -363,18 +468,19 @@ public partial class NakamaService : Node
 
 	private static string LoadOrCreateDeviceId()
 	{
+		string filePath = ResolveDeviceIdFilePath();
 		try
 		{
-			if (FileAccess.FileExists(DeviceIdFilePath))
+			if (FileAccess.FileExists(filePath))
 			{
-				using var file = FileAccess.Open(DeviceIdFilePath, FileAccess.ModeFlags.Read);
+				using var file = FileAccess.Open(filePath, FileAccess.ModeFlags.Read);
 				string existing = file?.GetAsText().Trim() ?? "";
 				if (!string.IsNullOrWhiteSpace(existing))
 					return existing;
 			}
 
 			string deviceId = Guid.NewGuid().ToString("N");
-			using var writer = FileAccess.Open(DeviceIdFilePath, FileAccess.ModeFlags.Write);
+			using var writer = FileAccess.Open(filePath, FileAccess.ModeFlags.Write);
 			writer?.StoreString(deviceId);
 			return deviceId;
 		}
