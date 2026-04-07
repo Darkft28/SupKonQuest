@@ -11,6 +11,10 @@ public static class NetworkCommandRouter
 	public const long OpcodeMoveUnits = 2001;
 	public const long OpcodeAttackCamp = 2002;
 	public const long OpcodeGoldSnapshot = 3001;
+	private static readonly JsonSerializerOptions RelayJsonOptions = new()
+	{
+		PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+	};
 
 	private static int _sequence;
 
@@ -220,7 +224,7 @@ public static class NetworkCommandRouter
 		if (NakamaService.Instance == null || !NakamaService.Instance.IsSocketConnected || string.IsNullOrEmpty(NakamaService.Instance.MatchId))
 			return;
 
-		await NakamaService.Instance.SendMatchCommandAsync(opcode, command);
+		await NakamaService.Instance.SendMatchCommandAsync(opcode, command, RelayJsonOptions);
 	}
 
 	private static void ApplyBuyUnit(BuyUnitCommand command)

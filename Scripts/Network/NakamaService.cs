@@ -176,14 +176,16 @@ public partial class NakamaService : Node
 		}
 	}
 
-	public async Task<bool> SendMatchCommandAsync<T>(long opcode, T payload)
+	public async Task<bool> SendMatchCommandAsync<T>(long opcode, T payload, JsonSerializerOptions serializerOptions = null)
 	{
 		if (_socket == null || string.IsNullOrEmpty(_matchId))
 			return false;
 
 		try
 		{
-			string json = JsonSerializer.Serialize(payload);
+			string json = serializerOptions == null
+				? JsonSerializer.Serialize(payload)
+				: JsonSerializer.Serialize(payload, serializerOptions);
 			await _socket.SendMatchStateAsync(_matchId, opcode, json);
 			return true;
 		}
