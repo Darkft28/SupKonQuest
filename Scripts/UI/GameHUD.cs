@@ -295,6 +295,12 @@ public partial class GameHUD : Control
 		return gameState?.LocalTeamId ?? 1;
 	}
 
+	private bool ShouldUseRelayCommands()
+	{
+		var gameState = GetNodeOrNull<GameState>("/root/GameState");
+		return gameState?.IsOnline == true && NakamaService.Instance?.IsSocketConnected == true;
+	}
+
 	private void OnUnitButtonPressed(string unitType)
 	{
 		if (_selectionManager == null) return;
@@ -308,6 +314,12 @@ public partial class GameHUD : Control
 		int maxQueue = selectedCamp.GetMaxQueueSize();
 
 		if (totalInQueue >= maxQueue) return;
+
+		if (ShouldUseRelayCommands())
+		{
+			NetworkCommandRouter.RequestBuyUnit(selectedCamp, unitType);
+			return;
+		}
 
 		selectedCamp.BuyUnit(unitType);
 	}

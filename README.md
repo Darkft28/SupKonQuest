@@ -31,6 +31,36 @@ dotnet build SupKonQuest.csproj
 
 Ensuite ouvrir le projet dans Godot 4.5 et lancer avec F5.
 
+## Serveur Nakama local (pour le mode en ligne)
+
+Si vous n'avez pas encore de serveur, le mode solo fonctionne sans Nakama.
+Pour tester le mode en ligne (auth guest + matchmaking + lobby), lancez un Nakama local.
+
+Prerequis minimaux:
+- Docker Desktop
+
+Commandes (PowerShell):
+
+```powershell
+docker network create nakama-net
+docker run --name nakama-postgres --network nakama-net -e POSTGRES_PASSWORD=localdb -e POSTGRES_USER=local -e POSTGRES_DB=nakama -p 5432:5432 -d postgres:15-alpine
+docker run --name nakama --network nakama-net -p 7350:7350 -p 7349:7349 -d heroiclabs/nakama:3.22.0 --database.address root@nakama-postgres:5432
+```
+
+Le projet utilise par defaut ces valeurs dans `project.godot`:
+- `nakama/scheme = "http"`
+- `nakama/host = "127.0.0.1"`
+- `nakama/port = 7350`
+- `nakama/server_key = "defaultkey"`
+
+Arret/nettoyage rapide:
+
+```powershell
+docker stop nakama nakama-postgres
+docker rm nakama nakama-postgres
+docker network rm nakama-net
+```
+
 ## Structure du projet
 
 ```

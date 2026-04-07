@@ -4,6 +4,7 @@
 
 # Documentation et fichiers de configuration personnels
 .claude/
+.copilot/
 
 # Godot UID files
 *.cs.uid

@@ -249,6 +249,8 @@ public partial class SelectionManager : Node2D
 	{
 		if (_selectedUnits.Count > 0)
 		{
+			bool relayMode = ShouldUseRelayCommands();
+
 			var ships = GetTree().GetNodesInGroup("ships");
 			foreach (var node in ships)
 			{
@@ -285,9 +287,22 @@ public partial class SelectionManager : Node2D
 
 			if (targetCamp != null)
 			{
-				foreach (var unit in _selectedUnits)
-					if (IsInstanceValid(unit))
-						unit.AttackCamp(targetCamp);
+				if (relayMode)
+				{
+					NetworkCommandRouter.RequestAttackCamp(_selectedUnits, targetCamp);
+				}
+				else
+				{
+					foreach (var unit in _selectedUnits)
+						if (IsInstanceValid(unit))
+							unit.AttackCamp(targetCamp);
+				}
+				return;
+			}
+
+			if (relayMode)
+			{
+				NetworkCommandRouter.RequestMoveUnits(_selectedUnits, target);
 				return;
 			}
 
@@ -383,6 +398,12 @@ public partial class SelectionManager : Node2D
 				ship.MoveTo(target);
 			}
 		}
+	}
+
+	private bool ShouldUseRelayCommands()
+	{
+		var gameState = GetNodeOrNull<GameState>("/root/GameState");
+		return gameState?.IsOnline == true && NakamaService.Instance?.IsSocketConnected == true;
 	}
 
 	public void OnUnitClicked(Unit unit)
