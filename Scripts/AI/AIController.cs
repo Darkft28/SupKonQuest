@@ -165,6 +165,10 @@ public partial class AIController : Node
 			return; // on attend le prochain tick pour produire
 		}
 
+		// Medium/Hard : achète un port dès qu'une région entière est contrôlée
+		if (_diffIdx > 0)
+			ManagePortBuying(aiCamps, gold);
+
 		// Easy : dépense tout sans réfléchir
 		// Medium/Hard : économise si on approche du seuil tier 2
 		if (_diffIdx > 0 && tier < 2)
@@ -205,6 +209,53 @@ public partial class AIController : Node
 			camp.BuyUnit(unitType);
 			GD.Print($"[IA] Achat {unitType} (tier {tier}, or {gold})");
 		}
+	}
+
+	// Achète un port uniquement si l'équipe contrôle entièrement au moins une région.
+	// Choisit le camp le plus proche de l'eau dont la côte est dans le territoire de l'équipe.
+	private void ManagePortBuying(System.Collections.Generic.List<CampSimple> aiCamps, int gold)
+	{
+		if (gold < CampSimple.PortCost) return;
+		if (!ControlsAnyFullRegion()) return;
+
+		var sorted = aiCamps
+			.Where(c => c.CanBuyPort())
+			.OrderByDescending(c => c.GetNearbyWaterCount())
+			.ToList();
+
+		foreach (var camp in sorted)
+		{
+			if (camp.AIBuyPort())
+			{
+				GD.Print($"[IA team {_teamId}] Port construit au camp #{camp.CampId}");
+				return;
+			}
+		}
+	}
+
+	// Vrai si l'équipe contrôle 100% des camps d'au moins une région.
+	private bool ControlsAnyFullRegion()
+	{
+		var allCamps = GameManager.Instance?.GetAllCamps();
+		if (allCamps == null) return false;
+
+		var regionGroups = new System.Collections.Generic.Dictionary<int, System.Collections.Generic.List<CampSimple>>();
+		foreach (var camp in allCamps)
+		{
+			int r = camp.RegionId;
+			if (r <= 0) continue;
+			if (!regionGroups.ContainsKey(r))
+				regionGroups[r] = new System.Collections.Generic.List<CampSimple>();
+			regionGroups[r].Add(camp);
+		}
+
+		foreach (var (_, camps) in regionGroups)
+		{
+			if (camps.Count == 0) continue;
+			if (camps.TrueForAll(c => c.GetTeamId() == _teamId && !c.IsNeutralCamp))
+				return true;
+		}
+		return false;
 	}
 
 	/// <summary>
@@ -483,18 +534,18 @@ public partial class AIController : Node
 
 	private CampSimple FindThreatenedAICamp()
 	{
-		// Seuils stricts : ne défendre que si le camp est vraiment en danger
-		// HP < 40% OU ennemi à moins de 500px (littéralement dans le camp)
+		// Seuils : défendre si le camp est en danger réel mais encore sauvable
+		// HP < 60% OU ennemi à moins de 700px
 		return GetAICamps()
 			.Where(c =>
 			{
 				float hpRatio = c.GetCurrentHealth() / c.MaxHealth;
-				if (hpRatio < 0.40f) return true;
+				if (hpRatio < 0.60f) return true;
 
 				return GetTree().GetNodesInGroup("units")
 					.OfType<Unit>()
 					.Any(u => u.GetTeamId() != _teamId
-					       && u.GlobalPosition.DistanceTo(c.GlobalPosition) < 500f);
+					       && u.GlobalPosition.DistanceTo(c.GlobalPosition) < 700f);
 			})
 			.OrderBy(c => c.GetCurrentHealth())
 			.FirstOrDefault();

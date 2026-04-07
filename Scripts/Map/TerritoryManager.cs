@@ -95,6 +95,20 @@ public partial class TerritoryManager : Node2D
 		_solLayer = solLayer;
 	}
 
+	/// <summary>
+	/// Retourne l'équipe propriétaire d'une tuile à une position monde donnée.
+	/// Retourne -1 si la tuile n'appartient à aucune équipe (wilderness ou eau).
+	/// </summary>
+	public int GetTeamAtWorldPos(Vector2 worldPos)
+	{
+		if (_solLayer == null) return -1;
+		Vector2I tile = _solLayer.LocalToMap(_solLayer.ToLocal(worldPos));
+		int tx = tile.X + HalfWidth;
+		int ty = tile.Y + HalfHeight;
+		if (tx < 0 || tx >= MapWidth || ty < 0 || ty >= MapHeight) return -1;
+		return _territoryMap[tx, ty];
+	}
+
 	public void SetTerritoryGrid(int[,] grid)
 	{
 		_territoryGrid = grid;
