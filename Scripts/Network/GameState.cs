@@ -20,6 +20,8 @@ public partial class GameState : Node
 	public MapSizePreset MapSize { get; set; } = MapSizePreset.Medium;
 	public int MaxCamps { get; set; } = 6;
 	public bool IsFreeForAll { get; set; } = false;
+	public bool IsAIMode { get; set; } = false;
+	public AIController.Difficulty AILevel { get; set; } = AIController.Difficulty.Medium;
 	public MapType SelectedMapType { get; set; } = MapType.Irridium;
 	public string NakamaUserId { get; private set; } = "";
 	public string PlayerDisplayName { get; private set; } = "";

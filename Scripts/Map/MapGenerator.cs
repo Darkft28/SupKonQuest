@@ -1,6 +1,7 @@
 ﻿using Godot;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using SupKonQuest.Map.Presets;
 
 [Tool]
@@ -27,10 +28,12 @@ public partial class MapGenerator : Node
 	private const int TileSize = 128;
 
 	private int? _networkSeed = null;
+	private CanvasLayer _loadingOverlay;
+	private Label _loadingStatusLabel;
 
 	private Random _seededRandom;
 
-	public override void _Ready()
+	public override async void _Ready()
 	{
 		_tileMapSol = GetNode<TileMapLayer>("Sol");
 		_tileMapObjets = GetNode<TileMapLayer>("Objets");
@@ -56,9 +59,7 @@ public partial class MapGenerator : Node
 		{
 			var gameState = GetNodeOrNull<GameState>("/root/GameState");
 			if (gameState != null && gameState.MapSeed != 0)
-			{
 				_networkSeed = gameState.MapSeed;
-			}
 		}
 
 		if (!Engine.IsEditorHint())
@@ -66,8 +67,83 @@ public partial class MapGenerator : Node
 			if (GetNodeOrNull<NetworkSync>("NetworkSync") == null)
 				GD.PrintErr("[MAP] Noeud 'NetworkSync' manquant dans Game.tscn");
 
-			GenererMap();
-			CallDeferred(nameof(InitTerritory));
+			await LancerAvecChargement();
+		}
+	}
+
+	// Lance la génération de map + attend la synchronisation nav avant de démarrer l'IA
+	private async System.Threading.Tasks.Task LancerAvecChargement()
+	{
+		ShowLoadingScreen("Génération de la carte...");
+
+		// Laisser un frame pour que l'overlay s'affiche avant le travail lourd
+		await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+
+		GenererMap();
+
+		// Le NavigationServer2D traite les régions de nav de façon asynchrone.
+		// Il faut attendre qu'il ait synchronisé le navmesh avant que les unités
+		// puissent calculer des chemins — sinon deux IA entre les mêmes points
+		// peuvent obtenir des chemins différents selon qui calcule en premier.
+		SetLoadingStatus("Pré-calcul des chemins...");
+		for (int i = 0; i < 5; i++)
+			await ToSignal(GetTree(), SceneTree.SignalName.PhysicsFrame);
+
+		HideLoadingScreen();
+
+		InitTerritory();
+		InitAIController();
+	}
+
+	private void ShowLoadingScreen(string status)
+	{
+		_loadingOverlay = new CanvasLayer();
+		_loadingOverlay.Layer = 128; // au-dessus de tout
+		AddChild(_loadingOverlay);
+
+		// Fond opaque
+		var bg = new ColorRect();
+		bg.Color = new Color(0.06f, 0.07f, 0.1f, 1f);
+		bg.SetAnchorsPreset(Control.LayoutPreset.FullRect);
+		bg.MouseFilter = Control.MouseFilterEnum.Stop; // bloque tous les clics joueur
+		_loadingOverlay.AddChild(bg);
+
+		// Conteneur centré
+		var vbox = new VBoxContainer();
+		vbox.SetAnchorsPreset(Control.LayoutPreset.Center);
+		vbox.GrowHorizontal = Control.GrowDirection.Both;
+		vbox.GrowVertical = Control.GrowDirection.Both;
+		vbox.AddThemeConstantOverride("separation", 16);
+		_loadingOverlay.AddChild(vbox);
+
+		var title = new Label();
+		title.Text = "SupKonQuest";
+		title.HorizontalAlignment = HorizontalAlignment.Center;
+		title.AddThemeFontSizeOverride("font_size", 36);
+		title.Modulate = new Color(1f, 0.85f, 0.4f);
+		vbox.AddChild(title);
+
+		_loadingStatusLabel = new Label();
+		_loadingStatusLabel.Text = status;
+		_loadingStatusLabel.HorizontalAlignment = HorizontalAlignment.Center;
+		_loadingStatusLabel.AddThemeFontSizeOverride("font_size", 18);
+		_loadingStatusLabel.Modulate = new Color(0.75f, 0.85f, 1f);
+		vbox.AddChild(_loadingStatusLabel);
+	}
+
+	private void SetLoadingStatus(string status)
+	{
+		if (_loadingStatusLabel != null && IsInstanceValid(_loadingStatusLabel))
+			_loadingStatusLabel.Text = status;
+	}
+
+	private void HideLoadingScreen()
+	{
+		if (_loadingOverlay != null && IsInstanceValid(_loadingOverlay))
+		{
+			_loadingOverlay.QueueFree();
+			_loadingOverlay = null;
+			_loadingStatusLabel = null;
 		}
 	}
 
@@ -299,6 +375,7 @@ public partial class MapGenerator : Node
 		AddChild(_territoryManager);
 		MoveChild(_territoryManager, 1); // après Sol pour le Z-order
 		_territoryManager.SetSolLayer(_tileMapSol);
+		_territoryManager.SetTerritoryGrid(_territoryGrid);
 		_territoryManager.Initialize();
 	}
 
@@ -438,7 +515,91 @@ public partial class MapGenerator : Node
 		return hasLand;
 	}
 
-	public override void _Input(InputEvent @event)
+	private void InitAIController()
+	{
+		var gameState = GetNodeOrNull<GameState>("/root/GameState");
+		if (gameState == null || !gameState.IsAIMode) return;
+
+		// Supprimer les anciens AIControllers
+		for (int i = GetChildCount() - 1; i >= 0; i--)
+		{
+			if (GetChild(i) is AIController old)
+				old.QueueFree();
+		}
+
+		var botTeams = GameManager.Instance?.GetBotTeamIds() ?? new System.Collections.Generic.List<int>();
+		int playerRegion = GameManager.Instance?.GetHomeRegion(1) ?? -1;
+
+		AIController.BossTeamIds.Clear();
+
+		// Difficulté boss = un cran au-dessus de la sélection du joueur
+		AIController.Difficulty bossLevel = gameState.AILevel switch
+		{
+			AIController.Difficulty.Easy   => AIController.Difficulty.Medium,
+			AIController.Difficulty.Medium => AIController.Difficulty.Hard,
+			_                              => AIController.Difficulty.Hard
+		};
+
+		// 1 boss par région non-joueur : le bot le plus éloigné du joueur dans chaque région
+		var playerCamp = GameManager.Instance?.GetAllCamps()?.Find(c => c.GetTeamId() == 1);
+		var allCamps   = GameManager.Instance?.GetAllCamps();
+
+		// Regrouper les bots par région
+		var botsByRegion = new System.Collections.Generic.Dictionary<int, System.Collections.Generic.List<int>>();
+		foreach (int teamId in botTeams)
+		{
+			int region = GameManager.Instance?.GetHomeRegion(teamId) ?? -1;
+			if (!botsByRegion.ContainsKey(region))
+				botsByRegion[region] = new System.Collections.Generic.List<int>();
+			botsByRegion[region].Add(teamId);
+		}
+
+		// Pour chaque région non-joueur : boss = bot le plus éloigné du joueur
+		foreach (var (region, teams) in botsByRegion)
+		{
+			if (region == playerRegion) continue;
+
+			int bossInRegion = -1;
+			float maxDist = float.MinValue;
+			foreach (int teamId in teams)
+			{
+				var botCamp = allCamps?.Find(c => c.GetTeamId() == teamId);
+				float dist = playerCamp != null && botCamp != null
+					? playerCamp.GlobalPosition.DistanceTo(botCamp.GlobalPosition)
+					: 0f;
+				if (dist > maxDist) { maxDist = dist; bossInRegion = teamId; }
+			}
+			if (bossInRegion != -1)
+				AIController.BossTeamIds.Add(bossInRegion);
+		}
+
+		foreach (int teamId in botTeams)
+		{
+			bool isBoss = AIController.BossTeamIds.Contains(teamId);
+			var ai = new AIController();
+			ai.Name = $"AIController_team{teamId}";
+			AddChild(ai);
+			ai.Initialize(isBoss ? bossLevel : AIController.Difficulty.Easy, teamId);
+		}
+
+		GD.Print($"[MAP] {botTeams.Count} AIController(s) — {AIController.BossTeamIds.Count} boss ({bossLevel}), reste Easy");
+		GD.Print($"[IA DEBUG] Région joueur (team 1) : {playerRegion}");
+		foreach (int teamId in botTeams)
+		{
+			int region = GameManager.Instance?.GetHomeRegion(teamId) ?? -1;
+			bool isBoss = AIController.BossTeamIds.Contains(teamId);
+			GD.Print($"[IA DEBUG]   Team {teamId} → région {region} → {(isBoss ? $"BOSS ({bossLevel})" : "Easy")}");
+		}
+
+		// Rafraîchir les labels des camps maintenant que BossTeamIds est rempli
+		foreach (var node in GetTree().GetNodesInGroup("camps"))
+		{
+			if (node is CampSimple camp)
+				camp.RefreshCampLabel();
+		}
+	}
+
+	public override async void _Input(InputEvent @event)
 	{
 		if (@event.IsActionPressed("ui_accept"))
 		{
@@ -449,8 +610,7 @@ public partial class MapGenerator : Node
 				_territoryManager = null;
 			}
 
-			GenererMap();
-			CallDeferred(nameof(InitTerritory)); // différé comme dans _Ready(), pour que les camps aient leur _Ready()
+			await LancerAvecChargement();
 		}
 	}
 }

@@ -27,6 +27,9 @@ public partial class GameManager : Node
 
 	private List<CampSimple> _allCamps = new List<CampSimple>();
 
+	// Équipes ayant acheté le palier 2
+	private HashSet<int> _tier2Unlocked = new HashSet<int>();
+
 	private const int NumberOfPlayers = 2;
 
 	private VictoryManager _victoryManager;
@@ -49,6 +52,7 @@ public partial class GameManager : Node
 		_teamGoldVersion.Clear();
 		_homeRegions.Clear();
 		_allCamps.Clear();
+		_tier2Unlocked.Clear();
 
 		var campNodes = GetTree().GetNodesInGroup("camps");
 		foreach (var node in campNodes)
@@ -273,6 +277,31 @@ public partial class GameManager : Node
 		return _allCamps;
 	}
 
+	// ── Limite globale d'unités par équipe ───────────────────────────────────
+	// 10 unités par camp contrôlé. Toutes les unités de l'équipe comptent,
+	// peu importe quel camp les a produites.
+	public const int MaxUnitsPerCamp = 10;
+
+	public int GetTeamUnitCount(int teamId)
+	{
+		int count = 0;
+		var nodes = GetTree().GetNodesInGroup("units");
+		foreach (var node in nodes)
+		{
+			if (node is Unit u && u.GetTeamId() == teamId && u.GetCurrentHealth() > 0)
+				count++;
+		}
+		return count;
+	}
+
+	public int GetMaxUnitsForTeam(int teamId)
+	{
+		int camps = 0;
+		foreach (var c in _allCamps)
+			if (c.GetTeamId() == teamId) camps++;
+		return Mathf.Max(1, camps) * MaxUnitsPerCamp;
+	}
+
 	public void InitializeTeam(int teamId)
 	{
 		if (teamId <= 0)
@@ -447,17 +476,33 @@ public partial class GameManager : Node
 		return _homeRegions.TryGetValue(teamId, out int r) ? r : -1;
 	}
 
+	public const int Tier2Cost = 1500;
+
+	/// <summary>
+	/// Tente d'acheter le palier 2 pour une équipe (coûte Tier2Cost or).
+	/// Retourne true si l'achat a réussi.
+	/// </summary>
+	public bool UnlockTier2(int teamId)
+	{
+		if (_tier2Unlocked.Contains(teamId)) return false; // déjà acheté
+		if (!CanAfford(teamId, Tier2Cost)) return false;
+
+		SpendGold(teamId, Tier2Cost);
+		_tier2Unlocked.Add(teamId);
+		GD.Print($"[TIER] Équipe {teamId} a débloqué le palier 2 !");
+		return true;
+	}
+
 	public int GetUnlockedTier(int teamId)
 	{
-		var ownedCamps = _allCamps.FindAll(c => c.GetTeamId() == teamId);
+		// Tier 2 : achat manuel effectué
+		if (!_tier2Unlocked.Contains(teamId)) return 1;
 
-		if (ownedCamps.Count < 2) return 1;
-
-		// Tier 3 : contrôle tous les camps de sa home region (≥2 camps dans la région)
+		// Tier 3 : contrôle tous les camps de sa région d'origine (nombre calculé dynamiquement)
 		if (!_homeRegions.TryGetValue(teamId, out int homeRegion)) return 2;
 
 		var homeCamps = _allCamps.FindAll(c => c.RegionId == homeRegion);
-		if (homeCamps.Count < 2) return 2;
+		if (homeCamps.Count == 0) return 2;
 
 		if (homeCamps.TrueForAll(c => c.GetTeamId() == teamId)) return 3;
 
