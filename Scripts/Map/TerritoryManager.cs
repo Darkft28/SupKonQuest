@@ -88,9 +88,30 @@ public partial class TerritoryManager : Node2D
 	private const float BorderAlpha = 0.5f;
 	private const float BorderWidth = 4f;
 
+	private int[,] _territoryGrid;
+
 	public void SetSolLayer(TileMapLayer solLayer)
 	{
 		_solLayer = solLayer;
+	}
+
+	/// <summary>
+	/// Retourne l'équipe propriétaire d'une tuile à une position monde donnée.
+	/// Retourne -1 si la tuile n'appartient à aucune équipe (wilderness ou eau).
+	/// </summary>
+	public int GetTeamAtWorldPos(Vector2 worldPos)
+	{
+		if (_solLayer == null) return -1;
+		Vector2I tile = _solLayer.LocalToMap(_solLayer.ToLocal(worldPos));
+		int tx = tile.X + HalfWidth;
+		int ty = tile.Y + HalfHeight;
+		if (tx < 0 || tx >= MapWidth || ty < 0 || ty >= MapHeight) return -1;
+		return _territoryMap[tx, ty];
+	}
+
+	public void SetTerritoryGrid(int[,] grid)
+	{
+		_territoryGrid = grid;
 	}
 
 	public override void _ExitTree()
@@ -483,6 +504,71 @@ public partial class TerritoryManager : Node2D
 
 					_territoryMap[tx, ty] = teamId;
 				}
+			}
+		}
+
+		ApplyRegionConquest();
+	}
+
+	// Si une équipe contrôle tous les camps d'une région, toutes les tuiles de cette région lui appartiennent.
+	private void ApplyRegionConquest()
+	{
+		if (_territoryGrid == null) return;
+
+		var gameManager = GameManager.Instance;
+		if (gameManager == null) return;
+
+		var allCamps = gameManager.GetAllCamps();
+		if (allCamps == null || allCamps.Count == 0) return;
+
+		// Regrouper les camps par région
+		var campsByRegion = new Dictionary<int, List<CampSimple>>();
+		foreach (var camp in allCamps)
+		{
+			int r = camp.RegionId;
+			if (r <= 0) continue;
+			if (!campsByRegion.ContainsKey(r))
+				campsByRegion[r] = new List<CampSimple>();
+			campsByRegion[r].Add(camp);
+		}
+
+		// Pour chaque région, vérifier si une seule équipe possède tous les camps
+		var conqueredRegions = new Dictionary<int, int>(); // regionId → teamId
+		foreach (var (regionId, camps) in campsByRegion)
+		{
+			if (camps.Count == 0) continue;
+			int firstTeam = camps[0].GetTeamId();
+			if (firstTeam <= 0) continue;
+			bool allSameTeam = true;
+			foreach (var camp in camps)
+			{
+				if (camp.GetTeamId() != firstTeam) { allSameTeam = false; break; }
+			}
+			if (allSameTeam)
+				conqueredRegions[regionId] = firstTeam;
+		}
+
+		if (conqueredRegions.Count == 0) return;
+
+		// Remplir toutes les tuiles de la région conquise (hors eau)
+		int gridW = _territoryGrid.GetLength(0);
+		int gridH = _territoryGrid.GetLength(1);
+
+		for (int x = 0; x < MapWidth; x++)
+		{
+			for (int y = 0; y < MapHeight; y++)
+			{
+				int gx = x < gridW ? x : -1;
+				int gy = y < gridH ? y : -1;
+				if (gx < 0 || gy < 0) continue;
+
+				int regionId = _territoryGrid[gx, gy];
+				if (!conqueredRegions.TryGetValue(regionId, out int teamId)) continue;
+
+				Vector2I tileCoords = new Vector2I(x - HalfWidth, y - HalfHeight);
+				if (_solLayer != null && _solLayer.GetCellSourceId(tileCoords) == 6) continue;
+
+				_territoryMap[x, y] = teamId;
 			}
 		}
 	}

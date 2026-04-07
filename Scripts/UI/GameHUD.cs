@@ -16,6 +16,7 @@ public partial class GameHUD : Control
 	private HBoxContainer _brushSizeContainer;
 	private Button _portButton;
 	private Label _tierInfoLabel;
+	private Button _unlockTier2Button;
 
 	private Panel _disconnectPanel;
 	private Label _disconnectLabel;
@@ -213,7 +214,6 @@ public partial class GameHUD : Control
 		_tierInfoLabel.AutowrapMode = TextServer.AutowrapMode.WordSmart;
 		_tierInfoLabel.Visible = false;
 
-		// Ancré juste au-dessus du NinePatchRect (barre d'unités)
 		_tierInfoLabel.AnchorLeft   = 0f;
 		_tierInfoLabel.AnchorTop    = 1f;
 		_tierInfoLabel.AnchorRight  = 1f;
@@ -223,6 +223,30 @@ public partial class GameHUD : Control
 		_tierInfoLabel.OffsetRight  = -10f;
 		_tierInfoLabel.OffsetBottom = -115f;
 		AddChild(_tierInfoLabel);
+
+		// Bouton d'achat palier 2
+		_unlockTier2Button = new Button();
+		_unlockTier2Button.Text = $"Débloquer Palier 2 ({GameManager.Tier2Cost}g)";
+		_unlockTier2Button.AddThemeFontSizeOverride("font_size", 13);
+		UIStyle.ApplyStone(_unlockTier2Button);
+		_unlockTier2Button.AnchorLeft   = 0.5f;
+		_unlockTier2Button.AnchorTop    = 1f;
+		_unlockTier2Button.AnchorRight  = 0.5f;
+		_unlockTier2Button.AnchorBottom = 1f;
+		_unlockTier2Button.GrowHorizontal = Control.GrowDirection.Both;
+		_unlockTier2Button.OffsetLeft   = -120f;
+		_unlockTier2Button.OffsetTop    = -165f;
+		_unlockTier2Button.OffsetRight  = 120f;
+		_unlockTier2Button.OffsetBottom = -135f;
+		_unlockTier2Button.Visible = false;
+		_unlockTier2Button.Pressed += OnUnlockTier2Pressed;
+		AddChild(_unlockTier2Button);
+	}
+
+	private void OnUnlockTier2Pressed()
+	{
+		int teamId = GetLocalTeamId();
+		GameManager.Instance?.UnlockTier2(teamId);
 	}
 
 	private void ConnectUnitButtons()
@@ -340,15 +364,27 @@ public partial class GameHUD : Control
 			if (unlockedTier >= 3)
 			{
 				_tierInfoLabel.Text = "Palier 3/3 — Toutes les unités débloquées ✓";
+				if (_unlockTier2Button != null) _unlockTier2Button.Visible = false;
 			}
 			else if (unlockedTier == 2)
 			{
 				string regionDesc = GetTier3RegionDescription(GetLocalTeamId());
-				_tierInfoLabel.Text = $"Palier 2/3 — Débloquez le palier 3 : {regionDesc} + 1 camp ailleurs + un port";
+				_tierInfoLabel.Text = $"Palier 2/3 — Débloquez le palier 3 : capturez tous les camps de {regionDesc}";
+				if (_unlockTier2Button != null) _unlockTier2Button.Visible = false;
 			}
 			else
 			{
-				_tierInfoLabel.Text = "Palier 1/3 — Débloquez le palier 2 : possédez 2 camps";
+				int gold = GameManager.Instance?.GetGold(GetLocalTeamId()) ?? 0;
+				bool canAfford = gold >= GameManager.Tier2Cost;
+				_tierInfoLabel.Text = canAfford
+					? $"Palier 1/3 — Vous pouvez débloquer le Palier 2 !"
+					: $"Palier 1/3 — Économisez {GameManager.Tier2Cost}g pour débloquer le Palier 2 ({gold}g)";
+				if (_unlockTier2Button != null)
+				{
+					_unlockTier2Button.Visible = true;
+					_unlockTier2Button.Disabled = !canAfford;
+					_unlockTier2Button.Modulate = canAfford ? new Color(1f, 1f, 1f, 1f) : new Color(0.5f, 0.5f, 0.5f, 0.8f);
+				}
 			}
 		}
 
@@ -370,7 +406,7 @@ public partial class GameHUD : Control
 
 			if (locked)
 				btn.TooltipText = requiredTier == 2
-					? "🔒 Palier 2 : possédez 2 camps"
+					? $"🔒 Palier 2 : achetez l'amélioration ({GameManager.Tier2Cost}g)"
 					: "🔒 Palier 3 : capturez tous les camps de votre région de départ";
 			else if (queueFull)
 				btn.TooltipText = "File de production pleine !";

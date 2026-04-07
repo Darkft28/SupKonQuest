@@ -11,6 +11,7 @@ public partial class GameModeMenu : Control
 	private ColorRect _overlay;
 	private GameState.MapType _selectedMapType = GameState.MapType.Irridium;
 	private CheckBox _fastModeCheckBox;
+	private AIController.Difficulty _selectedDifficulty = AIController.Difficulty.Medium;
 
 	public override void _Ready()
 	{
@@ -98,6 +99,34 @@ public partial class GameModeMenu : Control
 
 		vbox.AddChild(new HSeparator());
 
+		// Difficulté IA
+		var diffLabel = new Label();
+		diffLabel.Text = "Difficulté IA";
+		vbox.AddChild(diffLabel);
+
+		var diffHBox = new HBoxContainer();
+		diffHBox.AddThemeConstantOverride("separation", 8);
+		vbox.AddChild(diffHBox);
+
+		var diffGroup = new ButtonGroup();
+		var diffNames  = new[] { "Facile", "Moyen", "Difficile" };
+		var diffValues = new[] { AIController.Difficulty.Easy, AIController.Difficulty.Medium, AIController.Difficulty.Hard };
+		for (int i = 0; i < 3; i++)
+		{
+			var btn = new Button();
+			btn.Text = diffNames[i];
+			btn.ToggleMode = true;
+			btn.ButtonGroup = diffGroup;
+			btn.ButtonPressed = (diffValues[i] == _selectedDifficulty);
+			btn.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+			UIStyle.ApplyStone(btn);
+			var captured = diffValues[i];
+			btn.Pressed += () => { _selectedDifficulty = captured; };
+			diffHBox.AddChild(btn);
+		}
+
+		vbox.AddChild(new HSeparator());
+
 		// Mode test : vitesse x3
 		_fastModeCheckBox = new CheckBox();
 		_fastModeCheckBox.Text = "⚡ Vitesse x3 (test)";
@@ -138,6 +167,8 @@ public partial class GameModeMenu : Control
 		{
 			gameState.LocalTeamId = 1;
 			gameState.IsFreeForAll = true;
+			gameState.IsAIMode = true;
+			gameState.AILevel = _selectedDifficulty;
 			gameState.SelectedMapType = _selectedMapType;
 			gameState.FastMode = _fastModeCheckBox.ButtonPressed;
 		}
