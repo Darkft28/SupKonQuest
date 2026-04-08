@@ -11,7 +11,7 @@ public partial class CampSimple
 	private void ProcessTerritoryAlert(double delta)
 	{
 		if (IsNeutralCamp) return;
-		if (!IsLocallyOwned()) return;
+		if (!IsRelayModeActive() && !IsLocallyOwned()) return;
 
 		_alertCooldownTimer -= (float)delta;
 		_alertTimer += (float)delta;
@@ -74,7 +74,7 @@ public partial class CampSimple
 		if (IsNeutralCamp)
 			return;
 
-		if (!IsLocallyOwned())
+		if (!IsRelayModeActive() && !IsLocallyOwned())
 			return;
 
 		var allUnits = GetTree().GetNodesInGroup("units");
@@ -116,7 +116,7 @@ public partial class CampSimple
 
 	public bool TakeDamage(float damage, int attackerTeamId)
 	{
-		if (!IsLocallyOwned())
+		if (!IsRelayModeActive() && !IsLocallyOwned())
 		{
 			NetworkSync.Instance?.SendCampDamage(CampId, damage, attackerTeamId);
 			return true;
@@ -178,7 +178,8 @@ public partial class CampSimple
 		SpawnBonusUnits();
 
 		EmitSignal(SignalName.CampCaptured, newTeamId);
-		NetworkSync.Instance?.SendCampCaptured(CampId, newTeamId);
+		if (!IsRelayModeActive())
+			NetworkSync.Instance?.SendCampCaptured(CampId, newTeamId);
 
 		// Appel direct garanti — ne dépend pas de la connexion signal
 		TerritoryManager.Instance?.RefreshTerritory(newTeamId);
@@ -228,7 +229,8 @@ public partial class CampSimple
 			unit.OwnerCamp = this;
 
 			// Reseau : assigner un NetworkId et broadcaster
-			string networkId = NetworkEntityRegistry.GenerateId();
+			int spawnSequence = ++_dynamicUnitSpawnSequence;
+			string networkId = BuildDynamicUnitNetworkId(spawnSequence);
 			unit.NetworkId = networkId;
 			unit.IsLocalAuthority = true;
 			unit.OwnerCamp = this;
@@ -237,8 +239,11 @@ public partial class CampSimple
 			_spawnedUnits.Add(unit);
 			_defenders.Add(unit); // les bonus units défendent le camp nouvellement capturé
 
-			NetworkSync.Instance?.SendSpawnUnit(networkId, bonusUnits[i], TeamId,
-				unit.GlobalPosition.X, unit.GlobalPosition.Y, unit.GetCurrentHealth(), false);
+			if (!IsRelayModeActive())
+			{
+				NetworkSync.Instance?.SendSpawnUnit(networkId, bonusUnits[i], TeamId,
+					unit.GlobalPosition.X, unit.GlobalPosition.Y, unit.GetCurrentHealth(), false);
+			}
 		}
 	}
 }

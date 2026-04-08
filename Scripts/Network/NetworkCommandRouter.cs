@@ -241,7 +241,7 @@ public static class NetworkCommandRouter
 		{
 			if (node is CampSimple camp && camp.GetCampId() == command.CampId)
 			{
-				camp.BuyUnit(command.UnitType);
+				camp.ApplyRelayBuyUnit(command.UnitType);
 				break;
 			}
 		}

@@ -4,7 +4,7 @@ public partial class CampSimple
 {
 	private void ProcessProductionQueue(double delta)
 	{
-		if (!IsLocallyOwned()) return;
+		if (!IsRelayModeActive() && !IsLocallyOwned()) return;
 
 		if (_currentProduction == null && _productionQueue.Count > 0)
 		{
@@ -48,6 +48,16 @@ public partial class CampSimple
 			if (!GameManager.Instance.SpendGold(TeamId, price))
 				return false;
 		}
+
+		_productionQueue.Enqueue(unitType);
+		return true;
+	}
+
+	public bool ApplyRelayBuyUnit(string unitType)
+	{
+		int totalInQueue = _productionQueue.Count + (_currentProduction != null ? 1 : 0);
+		if (totalInQueue >= MaxQueueSize)
+			return false;
 
 		_productionQueue.Enqueue(unitType);
 		return true;
@@ -108,7 +118,8 @@ public partial class CampSimple
 
 		var unit = unitScene.Instantiate<Unit>();
 
-		float spawnAngle = (float)GD.RandRange(0, Mathf.Tau);
+		int spawnSequence = ++_dynamicUnitSpawnSequence;
+		float spawnAngle = GetDeterministicSpawnAngle(spawnSequence);
 		unit.GlobalPosition = FindClearSpawnPosition(spawnAngle, SpawnRadius);
 		unit.UnitType = unitType;
 		unit.TeamId = TeamId;
@@ -117,15 +128,30 @@ public partial class CampSimple
 		unit.RegionId = RegionId;
 
 		// Reseau : assigner un NetworkId et broadcaster le spawn
-		string networkId = NetworkEntityRegistry.GenerateId();
+		string networkId = BuildDynamicUnitNetworkId(spawnSequence);
 		unit.NetworkId = networkId;
 		unit.IsLocalAuthority = true;
 
 		GetParent().AddChild(unit);
 		_spawnedUnits.Add(unit);
 
-		NetworkSync.Instance?.SendSpawnUnit(networkId, unitType, TeamId,
-			unit.GlobalPosition.X, unit.GlobalPosition.Y, unit.GetCurrentHealth(), false);
+		if (!IsRelayModeActive())
+		{
+			NetworkSync.Instance?.SendSpawnUnit(networkId, unitType, TeamId,
+				unit.GlobalPosition.X, unit.GlobalPosition.Y, unit.GetCurrentHealth(), false);
+		}
+	}
+
+	private string BuildDynamicUnitNetworkId(int spawnSequence)
+	{
+		return $"camp_{CampId}_dyn_{spawnSequence}";
+	}
+
+	private float GetDeterministicSpawnAngle(int spawnSequence)
+	{
+		int hash = (CampId * 73856093) ^ (spawnSequence * 19349663);
+		hash &= int.MaxValue;
+		return (hash / (float)int.MaxValue) * Mathf.Tau;
 	}
 
 	private void SpawnUnits()

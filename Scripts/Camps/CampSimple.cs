@@ -35,6 +35,7 @@ public partial class CampSimple : Area2D
 	private Queue<string> _productionQueue = new Queue<string>();
 	private string _currentProduction = null;
 	private float _productionTimer = 0f;
+	private int _dynamicUnitSpawnSequence = 0;
 	private const int MaxQueueSize = 7;
 	// Plafond global d'unités géré par GameManager.GetMaxUnitsForTeam() (10 par camp contrôlé)
 
@@ -111,6 +112,11 @@ public partial class CampSimple : Area2D
 			return localTeamId == 1;
 
 		return TeamId == localTeamId;
+	}
+
+	private bool IsRelayModeActive()
+	{
+		return NetworkSync.Instance?.IsRelayMode() == true;
 	}
 
 	// Reseau : mettre a jour l'autorite des defenseurs apres assignation

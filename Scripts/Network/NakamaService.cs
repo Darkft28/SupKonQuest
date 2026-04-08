@@ -503,7 +503,7 @@ public partial class NakamaService : Node
 
 	private static string ResolveDeviceSlot()
 	{
-		foreach (string arg in OS.GetCmdlineArgs())
+		foreach (string arg in OS.GetCmdlineUserArgs())
 		{
 			const string prefix = "--nakama-slot=";
 			if (arg.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
