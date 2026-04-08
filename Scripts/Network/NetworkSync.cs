@@ -29,7 +29,7 @@ public partial class NetworkSync : Node
 	{
 		if (!IsMultiplayer()) return;
 
-		if (IsNakamaRelayMode())
+		if (IsRelayMode())
 		{
 			_relayGoldSnapshotTimer += (float)delta;
 			if (_relayGoldSnapshotTimer >= RelayGoldSnapshotInterval)
@@ -62,7 +62,7 @@ public partial class NetworkSync : Node
 
 	public bool IsMultiplayer()
 	{
-		if (IsNakamaRelayMode())
+		if (IsRelayMode())
 			return true;
 
 		// Utilise NetworkManager.IsConnected qui vérifie le peer ENet réel (_peer != null)
@@ -71,7 +71,7 @@ public partial class NetworkSync : Node
 		return nm?.IsConnected ?? false;
 	}
 
-	private bool IsNakamaRelayMode()
+	public bool IsRelayMode()
 	{
 		var gameState = GetNodeOrNull<GameState>("/root/GameState");
 		return gameState?.IsOnline == true && NakamaService.Instance?.IsSocketConnected == true;

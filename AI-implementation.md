@@ -16,8 +16,8 @@ En mode FFA avec plusieurs IA Easy, les combats entre bots sont des stalemates i
 
 **Implémentation suggérée** :
 
-- Dans `MapGenerator.InitAIController()`, trier les teamIds bots et attribuer Hard au dernier (ex. team la plus éloignée du joueur selon position de camp).
-- Ou tirer aléatoirement le "boss" parmi les équipes bots.
+- Dans `MapGenerator.InitAIController()`, trier les teamIds bots et attribuer Hard au dernier (ex. slot le plus éloigné du joueur selon position de camp).
+- Ou tirer aléatoirement le "boss" parmi les slots IA.
 - Paramètre en GameModeMenu : "IA Ennemie" = Facile / Moyen / Difficile → difficulté de la boss IA, les autres restent Easy.
 
 ---
@@ -61,13 +61,13 @@ En mode FFA avec plusieurs IA Easy, les combats entre bots sont des stalemates i
 
 **Problème** : Toutes les IAs Easy attaquent en même temps au même endroit → embouteillage.
 
-**Concept** : Ajouter un délai de démarrage aléatoire par équipe bot (`_gameStartDelay`).
+**Concept** : Ajouter un délai de démarrage aléatoire par slot bot (`_gameStartDelay`).
 
-| Équipe | Délai            |
+| Slot IA | Délai            |
 | ------ | ---------------- |
-| Team 2 | 0s               |
-| Team 3 | +5s à +15s       |
-| Team 4 | +10s à +25s      |
+| Slot 2 | 0s               |
+| Slot 3 | +5s à +15s       |
+| Slot 4 | +10s à +25s      |
 | ...    | ...              |
 
 Cela étale les conflits inter-IA et évite les stalemates parfaits.

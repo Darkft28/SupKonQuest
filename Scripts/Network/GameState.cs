@@ -97,6 +97,7 @@ public partial class GameState : Node
 	{
 		CurrentPlayMode = PlayMode.Offline;
 		LocalTeamId = 1;
+		IsFreeForAll = false;
 		MatchId = "";
 		MatchmakerTicket = "";
 		NakamaUserId = "";
@@ -109,6 +110,12 @@ public partial class GameState : Node
 	/// </summary>
 	public void StartGame()
 	{
+		if (IsOnline && !string.IsNullOrWhiteSpace(MatchId))
+		{
+			CallDeferred(nameof(LoadGameScene));
+			return;
+		}
+
 		StartOfflineGame(SelectedMapType, FastMode);
 	}
 
@@ -122,7 +129,8 @@ public partial class GameState : Node
 	public void StartOnlineGameFromMatch(string matchId, int localTeamId, int seed, string nakamaUserId, string displayName)
 	{
 		ConfigureOnlineMatch(matchId, localTeamId, seed, nakamaUserId, displayName);
-		LoadGameScene();
+		EmitSignal(SignalName.GameStarting, seed);
+		CallDeferred(nameof(LoadGameScene));
 	}
 
 	/// <summary>
@@ -142,7 +150,7 @@ public partial class GameState : Node
 
 	private void LoadGameScene()
 	{
-		GetTree().ChangeSceneToFile("res://Scenes/Game.tscn");
+		GetTree()?.ChangeSceneToFile("res://Scenes/Game.tscn");
 	}
 
 	public void ReturnToLobby()

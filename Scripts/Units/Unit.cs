@@ -292,7 +292,8 @@ public partial class Unit : CharacterBody2D
 	{
 		// Puppet réseau : interpoler vers la position distante, pas d'IA locale
 		bool isMulti = NetworkSync.Instance?.IsMultiplayer() == true;
-		if (isMulti && !IsLocalAuthority)
+		bool isRelay = NetworkSync.Instance?.IsRelayMode() == true;
+		if (isMulti && !isRelay && !IsLocalAuthority)
 		{
 			if (_networkTargetPosition.HasValue)
 			{

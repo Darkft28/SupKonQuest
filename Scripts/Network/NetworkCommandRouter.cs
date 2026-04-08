@@ -11,6 +11,15 @@ public static class NetworkCommandRouter
 	public const long OpcodeMoveUnits = 2001;
 	public const long OpcodeAttackCamp = 2002;
 	public const long OpcodeGoldSnapshot = 3001;
+	private static readonly JsonSerializerOptions RelayJsonOptions = new()
+	{
+		PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+	};
+
+	private static readonly JsonSerializerOptions RelayJsonReadOptions = new()
+	{
+		PropertyNameCaseInsensitive = true,
+	};
 
 	private static int _sequence;
 
@@ -129,41 +138,89 @@ public static class NetworkCommandRouter
 	public static void HandleIncomingRelayCommand(long opcode, string payload)
 	{
 		string localUserId = NakamaService.Instance?.UserId ?? "";
+		GD.Print($"[RELAY] Received opcode={opcode} localUserId={localUserId} payloadBytes={payload?.Length ?? 0}");
 
 		switch (opcode)
 		{
 			case OpcodeBuyUnit:
 			{
-				var command = JsonSerializer.Deserialize<BuyUnitCommand>(payload);
-				if (command == null || command.SenderUserId == localUserId) return;
+				var command = JsonSerializer.Deserialize<BuyUnitCommand>(payload, RelayJsonReadOptions);
+				if (command == null)
+				{
+					GD.PrintErr("[RELAY] BuyUnit deserialize failed.");
+					return;
+				}
 
+				if (command.SenderUserId == localUserId)
+				{
+					GD.Print($"[RELAY] BuyUnit skipped (self message) sender={command.SenderUserId}");
+					return;
+				}
+
+				GD.Print($"[RELAY] BuyUnit apply sender={command.SenderUserId} campId={command.CampId} unitType={command.UnitType}");
 				ApplyBuyUnit(command);
 				break;
 			}
 			case OpcodeMoveUnits:
 			{
-				var command = JsonSerializer.Deserialize<MoveUnitsCommand>(payload);
-				if (command == null || command.SenderUserId == localUserId) return;
+				var command = JsonSerializer.Deserialize<MoveUnitsCommand>(payload, RelayJsonReadOptions);
+				if (command == null)
+				{
+					GD.PrintErr("[RELAY] MoveUnits deserialize failed.");
+					return;
+				}
 
+				if (command.SenderUserId == localUserId)
+				{
+					GD.Print($"[RELAY] MoveUnits skipped (self message) sender={command.SenderUserId}");
+					return;
+				}
+
+				GD.Print($"[RELAY] MoveUnits apply sender={command.SenderUserId} unitCount={command.UnitIds.Length}");
 				ApplyMoveUnits(command);
 				break;
 			}
 			case OpcodeAttackCamp:
 			{
-				var command = JsonSerializer.Deserialize<AttackCampCommand>(payload);
-				if (command == null || command.SenderUserId == localUserId) return;
+				var command = JsonSerializer.Deserialize<AttackCampCommand>(payload, RelayJsonReadOptions);
+				if (command == null)
+				{
+					GD.PrintErr("[RELAY] AttackCamp deserialize failed.");
+					return;
+				}
 
+				if (command.SenderUserId == localUserId)
+				{
+					GD.Print($"[RELAY] AttackCamp skipped (self message) sender={command.SenderUserId}");
+					return;
+				}
+
+				GD.Print($"[RELAY] AttackCamp apply sender={command.SenderUserId} campId={command.CampId} unitCount={command.UnitIds.Length}");
 				ApplyAttackCamp(command);
 				break;
 			}
 			case OpcodeGoldSnapshot:
 			{
-				var command = JsonSerializer.Deserialize<GoldSnapshotCommand>(payload);
-				if (command == null || command.SenderUserId == localUserId) return;
+				var command = JsonSerializer.Deserialize<GoldSnapshotCommand>(payload, RelayJsonReadOptions);
+				if (command == null)
+				{
+					GD.PrintErr("[RELAY] GoldSnapshot deserialize failed.");
+					return;
+				}
 
+				if (command.SenderUserId == localUserId)
+				{
+					GD.Print($"[RELAY] GoldSnapshot skipped (self message) sender={command.SenderUserId}");
+					return;
+				}
+
+				GD.Print($"[RELAY] GoldSnapshot apply sender={command.SenderUserId} teamId={command.TeamId} gold={command.Gold} version={command.Version}");
 				ApplyGoldSnapshot(command);
 				break;
 			}
+			default:
+				GD.Print($"[RELAY] Unsupported opcode={opcode}");
+				break;
 		}
 	}
 
@@ -172,7 +229,7 @@ public static class NetworkCommandRouter
 		if (NakamaService.Instance == null || !NakamaService.Instance.IsSocketConnected || string.IsNullOrEmpty(NakamaService.Instance.MatchId))
 			return;
 
-		await NakamaService.Instance.SendMatchCommandAsync(opcode, command);
+		await NakamaService.Instance.SendMatchCommandAsync(opcode, command, RelayJsonOptions);
 	}
 
 	private static void ApplyBuyUnit(BuyUnitCommand command)
@@ -184,7 +241,7 @@ public static class NetworkCommandRouter
 		{
 			if (node is CampSimple camp && camp.GetCampId() == command.CampId)
 			{
-				camp.BuyUnit(command.UnitType);
+				camp.ApplyRelayBuyUnit(command.UnitType);
 				break;
 			}
 		}
