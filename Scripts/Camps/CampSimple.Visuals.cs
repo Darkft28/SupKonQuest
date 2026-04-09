@@ -8,30 +8,23 @@ public partial class CampSimple
 	{
 		_campUiRoot = GetNodeOrNull<Node2D>("CampUI");
 		if (_campUiRoot == null)
-		{
-			var campUiScene = GD.Load<PackedScene>("res://Scenes/CampUI.tscn");
-			_campUiRoot = campUiScene?.Instantiate<Node2D>();
-			if (_campUiRoot == null)
-			{
-				_campUiRoot = new Node2D();
-				_campUiRoot.Name = "CampUI";
-			}
-			AddChild(_campUiRoot);
-		}
+			return;
 
 		_campIdLabel = _campUiRoot.GetNodeOrNull<Label>("CampIdLabel");
-		_healthBarBackground = _campUiRoot.GetNodeOrNull<ColorRect>("HealthBarBackground");
-		_healthBarForeground = _campUiRoot.GetNodeOrNull<ColorRect>("HealthBarForeground");
+		_healthBar = _campUiRoot.GetNodeOrNull<ProgressBar>("HealthBar");
 	}
 
 	private void CreateCampIdLabel()
 	{
 		EnsureCampUi();
+		if (_campUiRoot == null)
+			return;
+
 		if (_campIdLabel == null)
 		{
 			_campIdLabel = new Label();
 			_campIdLabel.Name = "CampIdLabel";
-			_campUiRoot?.AddChild(_campIdLabel);
+			_campUiRoot.AddChild(_campIdLabel);
 		}
 
 		_campIdLabel.Text = GetCampLabel();
@@ -45,36 +38,64 @@ public partial class CampSimple
 	private void CreateHealthBar()
 	{
 		EnsureCampUi();
-		if (_healthBarBackground == null)
+		if (_campUiRoot == null)
+			return;
+
+		if (_healthBar == null)
 		{
-			_healthBarBackground = new ColorRect();
-			_healthBarBackground.Name = "HealthBarBackground";
-			_campUiRoot?.AddChild(_healthBarBackground);
+			_healthBar = new ProgressBar();
+			_healthBar.Name = "HealthBar";
+			_campUiRoot.AddChild(_healthBar);
 		}
 
-		_healthBarBackground.Size = new Vector2(HealthBarWidth, HealthBarHeight);
-		_healthBarBackground.Position = new Vector2(-HealthBarWidth / 2, -100);
-		_healthBarBackground.Color = new Color(0, 0, 0, 0.8f);
+		_healthBar.Position = new Vector2(-HealthBarWidth / 2, -100);
+		_healthBar.Size = new Vector2(HealthBarWidth, HealthBarHeight);
+		_healthBar.CustomMinimumSize = new Vector2(HealthBarWidth, HealthBarHeight);
+		_healthBar.ShowPercentage = false;
+		_healthBar.FillMode = 0;
+		_healthBar.MinValue = 0;
+		_healthBar.MaxValue = MaxHealth;
+		_healthBar.Value = GetCurrentHealth();
 
-		if (_healthBarForeground == null)
-		{
-			_healthBarForeground = new ColorRect();
-			_healthBarForeground.Name = "HealthBarForeground";
-			_campUiRoot?.AddChild(_healthBarForeground);
-		}
+		_healthBarBackgroundStyle ??= new StyleBoxFlat();
+		_healthBarBackgroundStyle.BgColor = new Color(0, 0, 0, 0.8f);
+		_healthBarBackgroundStyle.CornerRadiusTopLeft = 2;
+		_healthBarBackgroundStyle.CornerRadiusTopRight = 2;
+		_healthBarBackgroundStyle.CornerRadiusBottomLeft = 2;
+		_healthBarBackgroundStyle.CornerRadiusBottomRight = 2;
 
-		_healthBarForeground.Size = new Vector2(HealthBarWidth, HealthBarHeight);
-		_healthBarForeground.Position = new Vector2(-HealthBarWidth / 2, -100);
-		_healthBarForeground.Color = GetTeamColor();
+		_healthBarFillStyle ??= new StyleBoxFlat();
+		_healthBarFillStyle.BgColor = GetTeamColor();
+		_healthBarFillStyle.CornerRadiusTopLeft = 2;
+		_healthBarFillStyle.CornerRadiusTopRight = 2;
+		_healthBarFillStyle.CornerRadiusBottomLeft = 2;
+		_healthBarFillStyle.CornerRadiusBottomRight = 2;
+
+		_healthBar.AddThemeStyleboxOverride("background", _healthBarBackgroundStyle);
+		_healthBar.AddThemeStyleboxOverride("fill", _healthBarFillStyle);
 	}
 
 	private void UpdateHealthBar()
 	{
-		if (_healthBarForeground == null)
+		if (_healthBar == null)
 			return;
 
-		float healthPercent = GetCurrentHealth() / MaxHealth;
-		_healthBarForeground.Size = new Vector2(HealthBarWidth * healthPercent, HealthBarHeight);
+		_healthBar.MaxValue = MaxHealth;
+		_healthBar.Value = GetCurrentHealth();
+	}
+
+	private void UpdateCampVisualTheme()
+	{
+		if (_campIdLabel != null)
+		{
+			_campIdLabel.AddThemeColorOverride("font_color", GetTeamColor());
+			_campIdLabel.AddThemeColorOverride("font_outline_color", new Color(0, 0, 0, 1));
+		}
+
+		if (_healthBarFillStyle != null)
+		{
+			_healthBarFillStyle.BgColor = GetTeamColor();
+		}
 	}
 
 	private static readonly Color[] _teamColors = new Color[]

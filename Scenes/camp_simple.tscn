@@ -16,6 +16,21 @@ texture = ExtResource("1_0eod8")
 
 [node name="CampUI" parent="." instance=ExtResource("2_campui")]
 
+[node name="TurretTimer" type="Timer" parent="."]
+wait_time = 1.0
+one_shot = false
+autostart = false
+
+[node name="TerritoryAlertTimer" type="Timer" parent="."]
+wait_time = 1.5
+one_shot = false
+autostart = false
+
+[node name="TerritoryAlertCooldownTimer" type="Timer" parent="."]
+wait_time = 8.0
+one_shot = true
+autostart = false
+
 [node name="CollisionShape2D" type="CollisionShape2D" parent="."]
 position = Vector2(-0.5, 0)
 shape = SubResource("RectangleShape2D_brwug")

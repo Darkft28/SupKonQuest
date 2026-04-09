@@ -285,7 +285,7 @@ public partial class Unit
 			return; // chemin pas encore prêt
 		}
 
-		if (!_navAgent.IsTargetReachable() || _navAgent.IsNavigationFinished())
+		if (_navAgent.IsNavigationFinished())
 		{
 			_navPathCooldown = 60; // cible inatteignable : ne pas re-tester pendant ~1s
 			Velocity = Vector2.Zero;

@@ -13,9 +13,9 @@
 [ext_resource type="Texture2D" uid="uid://d13wt48l5hfnf" path="res://Assets/Units/Characters/Heavy/Heavy_Front.png" id="11_heavy"]
 [ext_resource type="Texture2D" uid="uid://ca7vofpdoodgq" path="res://Assets/Units/Characters/Mortar/Mortar_Front.png" id="12_mortar"]
 [ext_resource type="Texture2D" uid="uid://brkuiocf4e3uk" path="res://Assets/Units/Characters/Tank/Tank_Front.png" id="13_tank"]
-[ext_resource type="Texture2D" path="res://Assets/Units/Ships/Destroyer/Destroyers_Front.png" id="14_destroyer"]
-[ext_resource type="Texture2D" path="res://Assets/Units/Ships/Frégate/frégate_Front.png" id="15_fregate"]
-[ext_resource type="Texture2D" path="res://Assets/Units/Ships/Transport/Transport_Front.png" id="16_transport"]
+[ext_resource type="Texture2D" uid="uid://cam3shauc416r" path="res://Assets/Units/Ships/Destroyer/Destroyers_Front.png" id="14_destroyer"]
+[ext_resource type="Texture2D" uid="uid://ctcijpm275jdb" path="res://Assets/Units/Ships/Frégate/frégate_Front.png" id="15_fregate"]
+[ext_resource type="Texture2D" uid="uid://cwokkina61v3f" path="res://Assets/Units/Ships/Transport/Transport_Front.png" id="16_transport"]
 
 [node name="GameHUD" type="Control"]
 layout_mode = 3
@@ -400,7 +400,7 @@ texture = ExtResource("5_gold")
 expand_mode = 1
 stretch_mode = 5
 
-[node name="NinePatchRect2" type="NinePatchRect" parent="."]
+[node name="Minimap" type="NinePatchRect" parent="."]
 layout_mode = 0
 offset_left = -12.0
 offset_top = 460.0
@@ -408,7 +408,7 @@ offset_right = 177.0
 offset_bottom = 658.0
 texture = ExtResource("2_s6mu7")
 
-[node name="SubViewportContainer" type="SubViewportContainer" parent="NinePatchRect2"]
+[node name="SubViewportContainer" type="SubViewportContainer" parent="Minimap"]
 layout_mode = 1
 anchors_preset = -1
 anchor_left = 0.163
@@ -423,12 +423,12 @@ mouse_filter = 0
 stretch = true
 script = ExtResource("3_s6mu7")
 
-[node name="SubViewport" type="SubViewport" parent="NinePatchRect2/SubViewportContainer"]
+[node name="SubViewport" type="SubViewport" parent="Minimap/SubViewportContainer"]
 handle_input_locally = false
 size = Vector2i(129, 128)
 render_target_update_mode = 4
 
-[node name="MinimapCamera" type="Camera2D" parent="NinePatchRect2/SubViewportContainer/SubViewport"]
+[node name="MinimapCamera" type="Camera2D" parent="Minimap/SubViewportContainer/SubViewport"]
 
 [node name="GoldPanel" type="Control" parent="."]
 anchors_preset = 0
@@ -436,6 +436,32 @@ offset_left = 186.0
 offset_top = 541.0
 offset_right = 279.0
 offset_bottom = 568.0
+
+[node name="HBoxContainer" type="HBoxContainer" parent="GoldPanel"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 43.0
+offset_top = -2.0
+offset_right = 20.0
+offset_bottom = -1.0
+grow_horizontal = 2
+grow_vertical = 2
+alignment = 1
+
+[node name="GoldLabel" type="Label" parent="GoldPanel/HBoxContainer"]
+layout_mode = 2
+size_flags_vertical = 1
+theme_override_font_sizes/font_size = 24
+vertical_alignment = 1
+
+[node name="GoldIcon" type="TextureRect" parent="GoldPanel/HBoxContainer"]
+custom_minimum_size = Vector2(10, 10)
+layout_mode = 2
+texture = ExtResource("5_gold")
+expand_mode = 3
+stretch_mode = 5
 
 [node name="QuitButton" type="Button" parent="."]
 layout_mode = 1
@@ -494,14 +520,14 @@ text = "5×5"
 [node name="PortButton" type="Button" parent="."]
 visible = false
 layout_mode = 1
-anchors_preset = 8
+anchors_preset = 7
 anchor_left = 0.5
 anchor_top = 1.0
 anchor_right = 0.5
 anchor_bottom = 1.0
-offset_left = -80.0
+offset_left = -95.0
 offset_top = -110.0
-offset_right = 80.0
+offset_right = 65.0
 offset_bottom = -75.0
 grow_horizontal = 2
 grow_vertical = 0
@@ -519,6 +545,7 @@ grow_vertical = 2
 mouse_filter = 2
 
 [node name="DisconnectLabel" type="Label" parent="DisconnectPanel"]
+modulate = Color(1, 0.3, 0.3, 1)
 layout_mode = 1
 anchors_preset = 8
 anchor_left = 0.5
@@ -532,33 +559,21 @@ offset_bottom = 80.0
 grow_horizontal = 2
 grow_vertical = 2
 theme_override_font_sizes/font_size = 28
-modulate = Color(1, 0.3, 0.3, 1)
-text = "Adversaire déconnecté\nRetour au menu dans 5s..."
+text = "Adversaire déconnecté
+Retour au menu dans 5s..."
 horizontal_alignment = 1
 vertical_alignment = 1
 
-[node name="HBoxContainer" type="HBoxContainer" parent="GoldPanel"]
-layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-offset_left = 43.0
-offset_top = -2.0
-offset_right = 20.0
-offset_bottom = -1.0
-grow_horizontal = 2
-grow_vertical = 2
-alignment = 1
+[node name="LeaderboardPanel" type="Panel" parent="."]
+layout_mode = 0
 
-[node name="GoldLabel" type="Label" parent="GoldPanel/HBoxContainer"]
-layout_mode = 2
-size_flags_vertical = 1
-theme_override_font_sizes/font_size = 24
-vertical_alignment = 1
+[node name="LeaderboardVBox" type="VBoxContainer" parent="LeaderboardPanel"]
+layout_mode = 0
+offset_right = 1.0
+offset_bottom = 50.0
 
-[node name="GoldIcon" type="TextureRect" parent="GoldPanel/HBoxContainer"]
-custom_minimum_size = Vector2(10, 10)
+[node name="LeaderboardTitle" type="Label" parent="LeaderboardPanel/LeaderboardVBox"]
 layout_mode = 2
-texture = ExtResource("5_gold")
-expand_mode = 3
-stretch_mode = 5
+
+[node name="LeaderboardRows" type="Label" parent="LeaderboardPanel/LeaderboardVBox"]
+layout_mode = 2
