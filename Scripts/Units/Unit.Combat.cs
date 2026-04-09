@@ -153,6 +153,8 @@ public partial class Unit
 		if (target.GetCurrentHealth() <= 0)
 			return;
 
+		PlayAttackSfx();
+
 		// Range et Mortar : projectile au lieu de dégâts directs
 		if (UnitType == "Range" || UnitType == "Mortar")
 		{

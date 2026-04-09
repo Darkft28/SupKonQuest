@@ -150,6 +150,7 @@ public partial class GameState : Node
 
 	private void LoadGameScene()
 	{
+		AudioSettings.Instance?.StopMenuMusic();
 		GetTree()?.ChangeSceneToFile("res://Scenes/Game.tscn");
 	}
 

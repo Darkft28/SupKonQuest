@@ -28,6 +28,8 @@ public partial class GameModeMenu : Control
 		if (LocalizationManager.Instance != null)
 			LocalizationManager.Instance.LanguageChanged += UpdateTexts;
 
+		AudioSettings.Instance?.EnsureMenuMusicPlaying();
+
 		CreateSettingsPopup();
 		UpdateTexts();
 	}

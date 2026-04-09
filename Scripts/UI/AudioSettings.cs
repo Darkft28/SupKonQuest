@@ -2,6 +2,9 @@ using Godot;
 
 public partial class AudioSettings : Node
 {
+	private const string MenuMusicPath = "res://Assets/Menu/Son/MainTheme.mp3";
+	private const string SfxBusName = "SFX";
+
 	public static AudioSettings Instance { get; private set; }
 
 	[Signal]
@@ -20,7 +23,10 @@ public partial class AudioSettings : Node
 
 		ProcessMode = ProcessModeEnum.Always;
 		EnsureAudioNodes();
+		EnsureSfxBus();
+		EnsureMenuMusicStream();
 		ApplyAudioState();
+		EnsureMenuMusicPlaying();
 	}
 
 	private void EnsureAudioNodes()
@@ -40,6 +46,8 @@ public partial class AudioSettings : Node
 			SfxPlayer.Name = "SfxPlayer";
 			AddChild(SfxPlayer);
 		}
+
+		SfxPlayer.Bus = SfxBusName;
 	}
 
 	public void ToggleMusic()
@@ -76,6 +84,12 @@ public partial class AudioSettings : Node
 		{
 			MusicPlayer.StreamPaused = !MusicEnabled;
 			MusicPlayer.VolumeDb = MusicEnabled ? 0f : -80f;
+
+			if (!MusicEnabled && MusicPlayer.Playing)
+				MusicPlayer.Stop();
+
+			if (MusicEnabled && MusicPlayer.Stream != null && !MusicPlayer.Playing)
+				MusicPlayer.Play();
 		}
 
 		if (SfxPlayer != null)
@@ -83,5 +97,56 @@ public partial class AudioSettings : Node
 			SfxPlayer.StreamPaused = !SfxEnabled;
 			SfxPlayer.VolumeDb = SfxEnabled ? 0f : -80f;
 		}
+
+		int sfxBusIndex = AudioServer.GetBusIndex(SfxBusName);
+		if (sfxBusIndex >= 0)
+			AudioServer.SetBusMute(sfxBusIndex, !SfxEnabled);
+	}
+
+	private void EnsureSfxBus()
+	{
+		int sfxBusIndex = AudioServer.GetBusIndex(SfxBusName);
+		if (sfxBusIndex >= 0)
+			return;
+
+		int busCount = AudioServer.GetBusCount();
+		AudioServer.AddBus(busCount);
+		AudioServer.SetBusName(busCount, SfxBusName);
+		AudioServer.SetBusSend(busCount, "Master");
+	}
+
+	private void EnsureMenuMusicStream()
+	{
+		if (MusicPlayer == null || MusicPlayer.Stream != null)
+			return;
+
+		var stream = GD.Load<AudioStream>(MenuMusicPath);
+		if (stream == null)
+		{
+			GD.PushWarning($"AudioSettings: menu music not found at {MenuMusicPath}");
+			return;
+		}
+
+		MusicPlayer.Stream = stream;
+		MusicPlayer.Autoplay = false;
+		MusicPlayer.Bus = "Master";
+	}
+
+	public void EnsureMenuMusicPlaying()
+	{
+		EnsureAudioNodes();
+		EnsureMenuMusicStream();
+
+		if (!MusicEnabled || MusicPlayer?.Stream == null)
+			return;
+
+		if (!MusicPlayer.Playing)
+			MusicPlayer.Play();
+	}
+
+	public void StopMenuMusic()
+	{
+		if (MusicPlayer?.Playing == true)
+			MusicPlayer.Stop();
 	}
 }

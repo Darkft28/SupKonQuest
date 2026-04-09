@@ -336,6 +336,8 @@ public partial class Unit : CharacterBody2D
 				break;
 		}
 
+		ProcessSupportBattleHorn(delta);
+
 		UpdateSpriteDirection(Velocity);
 	}
 }

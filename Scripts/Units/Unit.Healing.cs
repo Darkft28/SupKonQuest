@@ -29,6 +29,7 @@ public partial class Unit
 		if (_healTimer >= HealInterval)
 		{
 			_healTimer = 0f;
+			PlayHealerSfx();
 			_healTarget.Heal(HealAmount);
 		}
 	}

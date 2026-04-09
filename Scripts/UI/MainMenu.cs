@@ -51,6 +51,7 @@ public partial class MainMenu : Control
 		if (AudioSettings.Instance != null)
 		{
 			AudioSettings.Instance.AudioSettingsChanged += UpdateTexts;
+			AudioSettings.Instance.EnsureMenuMusicPlaying();
 		}
 
 		UpdateTexts();

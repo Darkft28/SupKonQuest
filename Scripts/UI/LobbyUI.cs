@@ -55,6 +55,8 @@ public partial class LobbyUI : Control
 		if (LocalizationManager.Instance != null)
 			LocalizationManager.Instance.LanguageChanged += UpdateTexts;
 
+		AudioSettings.Instance?.EnsureMenuMusicPlaying();
+
 		_startButton.Visible = false;
 		_codeInput.Editable = true;
 		_codeInput.Text = "";
