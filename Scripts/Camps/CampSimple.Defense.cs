@@ -225,7 +225,9 @@ public partial class CampSimple
 		SpawnBonusUnits();
 
 		EmitSignal(SignalName.CampCaptured, newTeamId);
-		if (!IsRelayModeActive())
+		if (IsRelayModeActive())
+			NetworkCommandRouter.SendCampCaptured(CampId, newTeamId);
+		else
 			NetworkSync.Instance?.SendCampCaptured(CampId, newTeamId);
 
 		// Appel direct garanti — ne dépend pas de la connexion signal

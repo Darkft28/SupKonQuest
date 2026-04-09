@@ -10,6 +10,7 @@ public static class NetworkCommandRouter
 	public const long OpcodeBuyUnit = 1001;
 	public const long OpcodeMoveUnits = 2001;
 	public const long OpcodeAttackCamp = 2002;
+	public const long OpcodeCampCaptured = 2003;
 	public const long OpcodeGoldSnapshot = 3001;
 	private static readonly JsonSerializerOptions RelayJsonOptions = new()
 	{
@@ -53,6 +54,13 @@ public static class NetworkCommandRouter
 	{
 		public string[] UnitIds { get; set; } = Array.Empty<string>();
 		public int CampId { get; set; }
+	}
+
+	[Serializable]
+	private sealed class CampCapturedCommand : RelayCommandBase
+	{
+		public int CampId { get; set; }
+		public int NewTeamId { get; set; }
 	}
 
 	[Serializable]
@@ -116,6 +124,20 @@ public static class NetworkCommandRouter
 			Sequence = ++_sequence,
 			UnitIds = validUnits.Where(unit => !string.IsNullOrWhiteSpace(unit.NetworkId)).Select(unit => unit.NetworkId).ToArray(),
 			CampId = camp.GetCampId()
+		});
+	}
+
+	public static void SendCampCaptured(int campId, int newTeamId)
+	{
+		if (campId <= 0 || newTeamId <= 0)
+			return;
+
+		SendRelayAsync(OpcodeCampCaptured, new CampCapturedCommand
+		{
+			SenderUserId = NakamaService.Instance?.UserId ?? "",
+			Sequence = ++_sequence,
+			CampId = campId,
+			NewTeamId = newTeamId
 		});
 	}
 
@@ -218,6 +240,25 @@ public static class NetworkCommandRouter
 				ApplyGoldSnapshot(command);
 				break;
 			}
+			case OpcodeCampCaptured:
+			{
+				var command = JsonSerializer.Deserialize<CampCapturedCommand>(payload, RelayJsonReadOptions);
+				if (command == null)
+				{
+					GD.PrintErr("[RELAY] CampCaptured deserialize failed.");
+					return;
+				}
+
+				if (command.SenderUserId == localUserId)
+				{
+					GD.Print($"[RELAY] CampCaptured skipped (self message) sender={command.SenderUserId}");
+					return;
+				}
+
+				GD.Print($"[RELAY] CampCaptured apply sender={command.SenderUserId} campId={command.CampId} newTeam={command.NewTeamId}");
+				ApplyCampCaptured(command);
+				break;
+			}
 			default:
 				GD.Print($"[RELAY] Unsupported opcode={opcode}");
 				break;
@@ -287,6 +328,21 @@ public static class NetworkCommandRouter
 	private static void ApplyGoldSnapshot(GoldSnapshotCommand command)
 	{
 		GameManager.Instance?.ApplyRelayGoldSnapshot(command.TeamId, command.Gold, command.Version, command.SenderUserId);
+	}
+
+	private static void ApplyCampCaptured(CampCapturedCommand command)
+	{
+		var camps = GetTree()?.GetNodesInGroup("camps");
+		if (camps == null) return;
+
+		foreach (var node in camps)
+		{
+			if (node is CampSimple camp && camp.GetCampId() == command.CampId)
+			{
+				camp.ApplyRemoteCapture(command.NewTeamId);
+				break;
+			}
+		}
 	}
 
 	private static SceneTree GetTree()

@@ -137,6 +137,9 @@ public partial class CampSimple : Area2D
 	// Reseau : appliquer une capture recue du peer distant
 	public void ApplyRemoteCapture(int newTeamId)
 	{
+		if (!IsNeutralCamp && TeamId == newTeamId)
+			return;
+
 		int oldTeamId = TeamId;
 		TeamId = newTeamId;
 		IsNeutralCamp = false;
@@ -155,6 +158,14 @@ public partial class CampSimple : Area2D
 				_localGold = 0;
 			}
 		}
+
+		UpdateSpawnedUnitsTeam();
+		UpdateDefendersAuthority();
+
+		// En mode relay, une capture peut n'être confirmée que par message distant.
+		// On ajoute donc les bonus units ici pour converger avec le peer qui a capturé localement.
+		if (IsRelayModeActive())
+			SpawnBonusUnits();
 
 		GD.Print($"[NET] Camp #{CampId} capture a distance: Team {oldTeamId} -> {newTeamId}");
 		EmitSignal(SignalName.CampCaptured, newTeamId);

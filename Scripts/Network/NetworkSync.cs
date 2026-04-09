@@ -161,6 +161,15 @@ public partial class NetworkSync : Node
 	public void SendUnitDamage(string targetNetworkId, float damage, int attackerTeamId)
 	{
 		if (!IsMultiplayer()) return;
+
+		if (IsRelayMode())
+		{
+			var unit = NetworkEntityRegistry.Get<Unit>(targetNetworkId);
+			if (unit != null && GodotObject.IsInstanceValid(unit))
+				unit.TakeDamageFrom(damage, attackerTeamId);
+			return;
+		}
+
 		Rpc(nameof(RpcApplyUnitDamage), targetNetworkId, damage, attackerTeamId);
 	}
 
@@ -177,6 +186,15 @@ public partial class NetworkSync : Node
 	public void SendShipDamage(string targetNetworkId, float damage, int attackerTeamId)
 	{
 		if (!IsMultiplayer()) return;
+
+		if (IsRelayMode())
+		{
+			var ship = NetworkEntityRegistry.Get<Ship>(targetNetworkId);
+			if (ship != null && GodotObject.IsInstanceValid(ship))
+				ship.TakeDamageFrom(damage, attackerTeamId);
+			return;
+		}
+
 		Rpc(nameof(RpcApplyShipDamage), targetNetworkId, damage, attackerTeamId);
 	}
 
