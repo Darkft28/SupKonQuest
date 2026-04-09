@@ -1,4 +1,4 @@
-[gd_scene load_steps=10 format=3 uid="uid://d2v1sgk2tlmyr"]
+[gd_scene load_steps=8 format=3 uid="uid://d2v1sgk2tlmyr"]
 
 [ext_resource type="Texture2D" uid="uid://b04lypslc5oeg" path="res://Assets/Menu/Texture/Menu_bg.png" id="1_0fbet"]
 [ext_resource type="Texture2D" uid="uid://j0eqoi64tmqd" path="res://Assets/Menu/Texture/Title_stone.png" id="2_62e2m"]
@@ -6,27 +6,27 @@
 [ext_resource type="Script" uid="uid://o7wkq34odbuj" path="res://Scripts/UI/MainMenu.cs" id="8_mainmenu"]
 
 [sub_resource type="StyleBoxTexture" id="SBT_normal"]
-texture = ExtResource("5_cmrfp")
 content_margin_left = 14.0
-content_margin_right = 14.0
 content_margin_top = 8.0
+content_margin_right = 14.0
 content_margin_bottom = 8.0
-
-[sub_resource type="StyleBoxTexture" id="SBT_hover"]
 texture = ExtResource("5_cmrfp")
-modulate_color = Color(1, 0.88, 0.42, 1)
-content_margin_left = 14.0
-content_margin_right = 14.0
-content_margin_top = 8.0
-content_margin_bottom = 8.0
 
 [sub_resource type="StyleBoxTexture" id="SBT_pressed"]
+content_margin_left = 14.0
+content_margin_top = 8.0
+content_margin_right = 14.0
+content_margin_bottom = 8.0
 texture = ExtResource("5_cmrfp")
 modulate_color = Color(0.68, 0.48, 0.18, 1)
+
+[sub_resource type="StyleBoxTexture" id="SBT_hover"]
 content_margin_left = 14.0
-content_margin_right = 14.0
 content_margin_top = 8.0
+content_margin_right = 14.0
 content_margin_bottom = 8.0
+texture = ExtResource("5_cmrfp")
+modulate_color = Color(1, 0.88, 0.42, 1)
 
 [node name="Control" type="Control"]
 layout_mode = 3
@@ -61,7 +61,7 @@ grow_vertical = 2
 layout_mode = 2
 theme_override_constants/separation = 15
 
-[node name="TextureRect" type="TextureRect" parent="TextureRect/MarginContainer/VBoxContainer"]
+[node name="GameLogo" type="TextureRect" parent="TextureRect/MarginContainer/VBoxContainer"]
 custom_minimum_size = Vector2(350, 180)
 layout_mode = 2
 size_flags_horizontal = 4
@@ -74,39 +74,39 @@ stretch_mode = 5
 custom_minimum_size = Vector2(0, 20)
 layout_mode = 2
 
-[node name="Button" type="Button" parent="TextureRect/MarginContainer/VBoxContainer"]
+[node name="PlayButton" type="Button" parent="TextureRect/MarginContainer/VBoxContainer"]
 custom_minimum_size = Vector2(304, 64)
 layout_mode = 2
 size_flags_horizontal = 4
 size_flags_vertical = 4
 theme_override_font_sizes/font_size = 24
 theme_override_styles/normal = SubResource("SBT_normal")
-theme_override_styles/hover = SubResource("SBT_hover")
 theme_override_styles/pressed = SubResource("SBT_pressed")
+theme_override_styles/hover = SubResource("SBT_hover")
 theme_override_styles/focus = SubResource("SBT_hover")
 text = "Jouer"
 
-[node name="Button2" type="Button" parent="TextureRect/MarginContainer/VBoxContainer"]
+[node name="OptionButton" type="Button" parent="TextureRect/MarginContainer/VBoxContainer"]
 custom_minimum_size = Vector2(304, 64)
 layout_mode = 2
 size_flags_horizontal = 4
 size_flags_vertical = 4
 theme_override_font_sizes/font_size = 24
 theme_override_styles/normal = SubResource("SBT_normal")
-theme_override_styles/hover = SubResource("SBT_hover")
 theme_override_styles/pressed = SubResource("SBT_pressed")
+theme_override_styles/hover = SubResource("SBT_hover")
 theme_override_styles/focus = SubResource("SBT_hover")
 text = "Options"
 
-[node name="Button3" type="Button" parent="TextureRect/MarginContainer/VBoxContainer"]
+[node name="ExitButton" type="Button" parent="TextureRect/MarginContainer/VBoxContainer"]
 custom_minimum_size = Vector2(304, 64)
 layout_mode = 2
 size_flags_horizontal = 4
 size_flags_vertical = 4
 theme_override_font_sizes/font_size = 24
 theme_override_styles/normal = SubResource("SBT_normal")
-theme_override_styles/hover = SubResource("SBT_hover")
 theme_override_styles/pressed = SubResource("SBT_pressed")
+theme_override_styles/hover = SubResource("SBT_hover")
 theme_override_styles/focus = SubResource("SBT_hover")
 text = "Quitter"
 
@@ -126,5 +126,91 @@ grow_vertical = 0
 theme_override_font_sizes/font_size = 16
 text = "FR"
 
-[connection signal="pressed" from="TextureRect/MarginContainer/VBoxContainer/Button" to="." method="OnPlayPressed"]
-[connection signal="pressed" from="TextureRect/MarginContainer/VBoxContainer/Button3" to="." method="OnQuitPressed"]
+[node name="OptionsOverlay" type="ColorRect" parent="."]
+visible = false
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 1
+color = Color(0, 0, 0, 0.72)
+
+[node name="PanelContainer" type="PanelContainer" parent="OptionsOverlay"]
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -220.0
+offset_top = -150.0
+offset_right = 220.0
+offset_bottom = 150.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="MarginContainer" type="MarginContainer" parent="OptionsOverlay/PanelContainer"]
+layout_mode = 2
+theme_override_constants/margin_left = 28
+theme_override_constants/margin_top = 22
+theme_override_constants/margin_right = 28
+theme_override_constants/margin_bottom = 22
+
+[node name="VBoxContainer" type="VBoxContainer" parent="OptionsOverlay/PanelContainer/MarginContainer"]
+layout_mode = 2
+theme_override_constants/separation = 14
+
+[node name="TitleLabel" type="Label" parent="OptionsOverlay/PanelContainer/MarginContainer/VBoxContainer"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 24
+text = "Options"
+horizontal_alignment = 1
+
+[node name="LanguageButton" type="Button" parent="OptionsOverlay/PanelContainer/MarginContainer/VBoxContainer"]
+custom_minimum_size = Vector2(304, 56)
+layout_mode = 2
+size_flags_horizontal = 4
+theme_override_font_sizes/font_size = 20
+theme_override_styles/normal = SubResource("SBT_normal")
+theme_override_styles/pressed = SubResource("SBT_pressed")
+theme_override_styles/hover = SubResource("SBT_hover")
+theme_override_styles/focus = SubResource("SBT_hover")
+text = "Langue : FR"
+
+[node name="MusicButton" type="Button" parent="OptionsOverlay/PanelContainer/MarginContainer/VBoxContainer"]
+custom_minimum_size = Vector2(304, 56)
+layout_mode = 2
+size_flags_horizontal = 4
+theme_override_font_sizes/font_size = 20
+theme_override_styles/normal = SubResource("SBT_normal")
+theme_override_styles/pressed = SubResource("SBT_pressed")
+theme_override_styles/hover = SubResource("SBT_hover")
+theme_override_styles/focus = SubResource("SBT_hover")
+text = "Musique : Activée"
+
+[node name="SfxButton" type="Button" parent="OptionsOverlay/PanelContainer/MarginContainer/VBoxContainer"]
+custom_minimum_size = Vector2(304, 56)
+layout_mode = 2
+size_flags_horizontal = 4
+theme_override_font_sizes/font_size = 20
+theme_override_styles/normal = SubResource("SBT_normal")
+theme_override_styles/pressed = SubResource("SBT_pressed")
+theme_override_styles/hover = SubResource("SBT_hover")
+theme_override_styles/focus = SubResource("SBT_hover")
+text = "Effets sonores : Activés"
+
+[node name="CloseButton" type="Button" parent="OptionsOverlay/PanelContainer/MarginContainer/VBoxContainer"]
+custom_minimum_size = Vector2(304, 56)
+layout_mode = 2
+size_flags_horizontal = 4
+theme_override_font_sizes/font_size = 20
+theme_override_styles/normal = SubResource("SBT_normal")
+theme_override_styles/pressed = SubResource("SBT_pressed")
+theme_override_styles/hover = SubResource("SBT_hover")
+theme_override_styles/focus = SubResource("SBT_hover")
+text = "Fermer"
+
+[connection signal="pressed" from="TextureRect/MarginContainer/VBoxContainer/PlayButton" to="." method="OnPlayPressed"]
+[connection signal="pressed" from="TextureRect/MarginContainer/VBoxContainer/ExitButton" to="." method="OnQuitPressed"]

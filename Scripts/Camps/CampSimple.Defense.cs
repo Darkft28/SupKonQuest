@@ -2,30 +2,91 @@ using Godot;
 
 public partial class CampSimple
 {
-	private float _alertTimer = 0f;
-	private float _alertCooldownTimer = 0f;
-	private const float AlertCheckInterval = 1.5f;
-	private const float AlertCooldown = 8f;
 	private const float TerritoryRadius = 600f; // réduit pour laisser des failles au joueur
 
-	private void ProcessTerritoryAlert(double delta)
+	private void SetupCampTimers()
+	{
+		if (_campTimersSetup)
+			return;
+
+		_turretTimerNode = GetNodeOrNull<Timer>("TurretTimer");
+		_territoryAlertTimerNode = GetNodeOrNull<Timer>("TerritoryAlertTimer");
+		_territoryAlertCooldownTimerNode = GetNodeOrNull<Timer>("TerritoryAlertCooldownTimer");
+
+		if (_turretTimerNode != null)
+			_turretTimerNode.Timeout += ProcessTurret;
+
+		if (_territoryAlertTimerNode != null)
+			_territoryAlertTimerNode.Timeout += ProcessTerritoryAlert;
+
+		if (_turretTimerNode != null)
+		{
+			_turretTimerNode.WaitTime = 1.0f;
+			_turretTimerNode.OneShot = false;
+		}
+
+		if (_territoryAlertTimerNode != null)
+		{
+			_territoryAlertTimerNode.WaitTime = 1.5f;
+			_territoryAlertTimerNode.OneShot = false;
+		}
+
+		if (_territoryAlertCooldownTimerNode != null)
+		{
+			_territoryAlertCooldownTimerNode.WaitTime = 8.0f;
+			_territoryAlertCooldownTimerNode.OneShot = true;
+		}
+
+		_campTimersSetup = true;
+	}
+
+	private void UpdateCampTimers()
+	{
+		bool shouldRunTimers = !IsNeutralCamp && (IsRelayModeActive() || IsLocallyOwned());
+
+		if (_turretTimerNode != null)
+		{
+			if (shouldRunTimers)
+			{
+				if (_turretTimerNode.IsStopped())
+					_turretTimerNode.Start();
+			}
+			else
+			{
+				_turretTimerNode.Stop();
+			}
+		}
+
+		if (_territoryAlertTimerNode != null)
+		{
+			if (shouldRunTimers)
+			{
+				if (_territoryAlertTimerNode.IsStopped())
+					_territoryAlertTimerNode.Start();
+			}
+			else
+			{
+				_territoryAlertTimerNode.Stop();
+			}
+		}
+
+		if (_territoryAlertCooldownTimerNode != null && !shouldRunTimers)
+			_territoryAlertCooldownTimerNode.Stop();
+	}
+
+	private void ProcessTerritoryAlert()
 	{
 		if (IsNeutralCamp) return;
 		if (!IsRelayModeActive() && !IsLocallyOwned()) return;
 
-		_alertCooldownTimer -= (float)delta;
-		_alertTimer += (float)delta;
-
-		if (_alertTimer < AlertCheckInterval) return;
-		_alertTimer = 0f;
-
-		if (_alertCooldownTimer > 0f) return;
+		if (_territoryAlertCooldownTimerNode != null && !_territoryAlertCooldownTimerNode.IsStopped())
+			return;
 
 		Vector2? intruderPos = FindIntruderInTerritory();
 		if (intruderPos.HasValue)
 		{
 			AlertDefenders(intruderPos.Value);
-			_alertCooldownTimer = AlertCooldown;
+			_territoryAlertCooldownTimerNode?.Start();
 		}
 	}
 
@@ -58,15 +119,9 @@ public partial class CampSimple
 		}
 	}
 
-	private void ProcessTurret(double delta)
+	private void ProcessTurret()
 	{
-		_turretTimer += (float)delta;
-
-		if (_turretTimer >= TurretAttackInterval)
-		{
-			_turretTimer = 0f;
-			AttackEnemiesInRange();
-		}
+		AttackEnemiesInRange();
 	}
 
 	private void AttackEnemiesInRange()
@@ -152,17 +207,9 @@ public partial class CampSimple
 		IsNeutralCamp = false;
 
 		SetCurrentHealth(MaxHealth);
-
-		if (_healthBarForeground != null)
-		{
-			_healthBarForeground.Color = GetTeamColor();
-		}
-
-		if (_campIdLabel != null)
-		{
-			_campIdLabel.AddThemeColorOverride("font_color", GetTeamColor());
-			RefreshCampLabel(); // texte boss/normal selon la nouvelle équipe
-		}
+		UpdateCampVisualTheme();
+		UpdateCampTimers();
+		RefreshCampLabel(); // texte boss/normal selon la nouvelle équipe
 
 		if (GameManager.Instance != null)
 		{

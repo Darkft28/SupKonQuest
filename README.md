@@ -239,8 +239,8 @@ Un **port** s'achete manuellement depuis le HUD (bouton **⚓ Port — 500g**) p
 
 **Script :** `Scripts/Camps/CampSimple.cs` + partials
 
-- 500 PV, genere 50 or/sec
-- **Tourelle defensive** : 10 degats/sec a 600px (active contre les ennemis)
+- 750 PV, genere 500 or/sec
+- **Tourelle defensive** : 15 degats/sec a 600px (active contre les ennemis)
 - **File de production** : `Queue<string>` max 7 unites, un seul type produit a la fois
 
 ### Capture (deux phases)
@@ -257,7 +257,7 @@ Recompenses : +50 or instantane, 3 unites bonus spawnees (Infantry, Range, Infan
 | Source | Montant |
 |--------|---------|
 | Passif joueur | +500 or/sec |
-| Par camp possede | +500 or/sec |
+| Par camp possede | +50 or/sec |
 | Capture d'un camp | +50 or instantane |
 | Or stocke dans camp neutre | Transfere au moment de la capture |
 | Bonus region (region entiere controlee) | +30 or/sec |
