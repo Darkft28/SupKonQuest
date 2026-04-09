@@ -12,8 +12,6 @@ Format: `Priorite | Zone | Probleme | Action | Test de validation`
 
 ## P1 - Haute priorite
 
-- [ ] **P1 | Economie/Balance** | Les constantes d'or (`PassiveGoldPerSecond=500`, `GoldPerSecond=500`) sont tres loin du game flow documente (5/s passif, 50/s camp). (`Scripts/Economy/GameManager.cs`, `Scripts/Camps/CampSimple.cs`, `CLAUDE.md`) | Aligner les constantes code + docs + UI design. Ajouter une source unique de configuration economie. | Test 60s en partie: revenu observe = revenu attendu (+ bonus region). 
-
 - [ ] **P1 | Sync entites Port** | L'achat/placement de port est local et n'est pas propage aux autres joueurs (etat `HasPort`, visuel port, droits prod navale). (`Scripts/UI/GameHUD.cs`, `Scripts/Map/TerritoryManager.cs`, `Scripts/Camps/CampSimple.Naval.cs`, `Scripts/Network/*`) | Ajouter RPC de synchronisation d'entite Port + destruction/capture: chaque joueur voit les ports des autres meme s'il ne controle pas leur or. | Joueur 1 place un port, joueur 2 le voit immediatement; joueur 2 capture le camp du port: le port disparait visuelment pour tous.
 
 - [ ] **P1 | Validation fonctionnelle des actions en relay** | Les commandes sont appliquees cote receveur avec peu de garde-fous gameplay (camp valide, ownership attendu, preconditions metier). (`Scripts/Network/NetworkCommandRouter.cs`) | Ajouter validations metier minimales (sans zero-trust): coherence joueur local, existence entites, preconditions de file/camp, logs de rejet. | Envoyer commandes sur etat obsolete (camp deja capture, unite detruite): commande ignoree proprement, pas de crash ni divergence.
@@ -29,8 +27,6 @@ Format: `Priorite | Zone | Probleme | Action | Test de validation`
 - [ ] **P2 | Qualite UX lobby** | `LobbyUI` melange authentification, pseudo, matchmaking, navigation scene, avec peu d'etats explicites. (`Scripts/UI/LobbyUI.cs`) | Passer a une machine d'etats UI simple (Idle/Auth/Ready/Matchmaking/Joining/Error). | Tests manuels des transitions (annulation, echec auth, retour menu) sans bouton bloque.
 
 ## P3 - Dette technique / qualite
-
-- [ ] **P3 | Documentation vs code** | L'architecture documentee mentionne des elements absents (ex: `Scripts/AI/AIController.cs`) et certains chiffres gameplay divergent. (`CLAUDE.md`, arborescence `Scripts/`) | Mettre la doc a jour automatiquement a partir du code (checklist release). | CI ou script local detecte les ecarts doc/code.
 
 - [ ] **P3 | Couverture de tests** | Pas de tests automatises visibles pour economie, capture, sync reseau et production queues. | Ajouter tests unitaires (formule degats, tiers, remboursements) + tests d'integration headless pour flux multijoueur critiques. | Suite de tests executable en CI, avec cas de non-regression des incidents connus.
 

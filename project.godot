@@ -22,6 +22,7 @@ GameState="*res://Scripts/Network/GameState.cs"
 NakamaService="*res://Scripts/Network/NakamaService.cs"
 LocalizationManager="*res://Scripts/UI/LocalizationManager.cs"
 GameManager="*res://Scripts/Economy/GameManager.cs"
+AudioSettings="*res://Scripts/UI/AudioSettings.cs"
 
 [display]
 

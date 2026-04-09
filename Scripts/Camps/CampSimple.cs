@@ -7,13 +7,11 @@ public partial class CampSimple : Area2D
 
 	[Export] public int TeamId = 1;
 	[Export] public bool IsNeutralCamp = false;
-	[Export] public float MaxHealth = 500f;
-	[Export] public int GoldPerSecond = 500;
+	[Export] public float MaxHealth = 750f;
+	[Export] public int GoldPerSecond = 50;
 
-	[Export] public float TurretDamage = 10f;
+	[Export] public float TurretDamage = 15f;
 	[Export] public float TurretRange = 600f;
-	private float _turretTimer = 0f;
-	private const float TurretAttackInterval = 1f;
 
 	private float _currentHealth;
 	private float _goldTimer = 0f;
@@ -53,10 +51,16 @@ public partial class CampSimple : Area2D
 	private TileMapLayer _tileMapSol;
 	private TileMapLayer _tileMapObjets;
 
-	private ColorRect _healthBarBackground;
-	private ColorRect _healthBarForeground;
+	private ProgressBar _healthBar;
+	private StyleBoxFlat _healthBarBackgroundStyle;
+	private StyleBoxFlat _healthBarFillStyle;
 	private const float HealthBarWidth = 100f;
 	private const float HealthBarHeight = 10f;
+	private bool _campTimersSetup = false;
+
+	private Timer _turretTimerNode;
+	private Timer _territoryAlertTimerNode;
+	private Timer _territoryAlertCooldownTimerNode;
 
 	private static readonly string[] UnitTypes = new[]
 	{
@@ -138,15 +142,9 @@ public partial class CampSimple : Area2D
 		IsNeutralCamp = false;
 
 		SetCurrentHealth(MaxHealth);
-
-		if (_healthBarForeground != null)
-			_healthBarForeground.Color = GetTeamColor();
-
-		if (_campIdLabel != null)
-		{
-			_campIdLabel.AddThemeColorOverride("font_color", GetTeamColor());
-			RefreshCampLabel(); // label boss/normal selon la nouvelle équipe
-		}
+		UpdateCampVisualTheme();
+		UpdateCampTimers();
+		RefreshCampLabel(); // label boss/normal selon la nouvelle équipe
 
 		if (GameManager.Instance != null)
 		{
@@ -184,16 +182,9 @@ public partial class CampSimple : Area2D
 		TeamId = newTeamId;
 		IsNeutralCamp = isNeutral;
 
-		if (_healthBarForeground != null)
-		{
-			_healthBarForeground.Color = GetTeamColor();
-		}
-
-		if (_campIdLabel != null)
-		{
-			_campIdLabel.Text = GetCampLabel();
-			_campIdLabel.AddThemeColorOverride("font_color", GetTeamColor());
-		}
+		UpdateCampVisualTheme();
+		UpdateCampTimers();
+		RefreshCampLabel();
 
 		if (!isNeutral && GameManager.Instance != null)
 		{
@@ -240,6 +231,8 @@ public partial class CampSimple : Area2D
 
 		CreateHealthBar();
 		CreateCampIdLabel();
+		SetupCampTimers();
+		UpdateCampTimers();
 		SpawnUnits();
 
 		GD.Print($"Camp #{CampId} cree - Team {TeamId}");
@@ -251,9 +244,7 @@ public partial class CampSimple : Area2D
 		CleanDeadUnits();
 		GeneratePassiveGold(delta);
 		ProcessProductionQueue(delta);
-		ProcessTurret(delta);
 		ProcessShipProductionQueue(delta);
-		ProcessTerritoryAlert(delta);
 	}
 
 	private void GeneratePassiveGold(double delta)

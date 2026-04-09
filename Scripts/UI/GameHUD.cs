@@ -20,6 +20,12 @@ public partial class GameHUD : Control
 
 	private Panel _disconnectPanel;
 	private Label _disconnectLabel;
+	private Panel _leaderboardPanel;
+	private VBoxContainer _leaderboardVBox;
+	private Label _leaderboardTitle;
+	private Label _leaderboardRows;
+	private float _leaderboardRefreshTimer = 0f;
+	private const float LeaderboardRefreshInterval = 0.5f;
 
 		private static readonly string[] UnitTypes = new[]
 	{
@@ -68,6 +74,10 @@ public partial class GameHUD : Control
 		_portButton = GetNode<Button>("PortButton");
 		_disconnectPanel = GetNode<Panel>("DisconnectPanel");
 		_disconnectLabel = GetNode<Label>("DisconnectPanel/DisconnectLabel");
+		_leaderboardPanel = GetNodeOrNull<Panel>("LeaderboardPanel");
+		_leaderboardVBox = GetNodeOrNull<VBoxContainer>("LeaderboardPanel/LeaderboardVBox");
+		_leaderboardTitle = GetNodeOrNull<Label>("LeaderboardPanel/LeaderboardVBox/LeaderboardTitle");
+		_leaderboardRows = GetNodeOrNull<Label>("LeaderboardPanel/LeaderboardVBox/LeaderboardRows");
 
 		_quitButton.Text = "✕ Menu";
 		UIStyle.ApplyStone(_quitButton);
@@ -97,6 +107,56 @@ public partial class GameHUD : Control
 		style.BgColor = new Color(0f, 0f, 0f, 0.6f);
 		_disconnectPanel.AddThemeStyleboxOverride("panel", style);
 		_disconnectPanel.Visible = false;
+
+		SetupLeaderboardUi();
+	}
+
+	private void SetupLeaderboardUi()
+	{
+		if (_leaderboardPanel == null || _leaderboardVBox == null || _leaderboardTitle == null || _leaderboardRows == null)
+			return;
+
+		_leaderboardPanel.AnchorLeft = 0f;
+		_leaderboardPanel.AnchorTop = 0f;
+		_leaderboardPanel.AnchorRight = 0f;
+		_leaderboardPanel.AnchorBottom = 0f;
+		_leaderboardPanel.OffsetLeft = 12f;
+		_leaderboardPanel.OffsetTop = 12f;
+		_leaderboardPanel.OffsetRight = 312f;
+		_leaderboardPanel.OffsetBottom = 300f;
+
+		var panelStyle = new StyleBoxFlat();
+		panelStyle.BgColor = new Color(0f, 0f, 0f, 0.55f);
+		panelStyle.CornerRadiusTopLeft = 6;
+		panelStyle.CornerRadiusTopRight = 6;
+		panelStyle.CornerRadiusBottomLeft = 6;
+		panelStyle.CornerRadiusBottomRight = 6;
+		panelStyle.ContentMarginLeft = 14f;
+		panelStyle.ContentMarginTop = 10f;
+		panelStyle.ContentMarginRight = 14f;
+		panelStyle.ContentMarginBottom = 10f;
+		_leaderboardPanel.AddThemeStyleboxOverride("panel", panelStyle);
+
+		_leaderboardVBox.AnchorLeft = 0f;
+		_leaderboardVBox.AnchorTop = 0f;
+		_leaderboardVBox.AnchorRight = 1f;
+		_leaderboardVBox.AnchorBottom = 1f;
+		_leaderboardVBox.OffsetLeft = 10f;
+		_leaderboardVBox.OffsetTop = 8f;
+		_leaderboardVBox.OffsetRight = -10f;
+		_leaderboardVBox.OffsetBottom = -8f;
+		_leaderboardVBox.AddThemeConstantOverride("separation", 6);
+
+		_leaderboardTitle.Text = "Classement";
+		_leaderboardTitle.AddThemeFontSizeOverride("font_size", 16);
+		_leaderboardTitle.AddThemeColorOverride("font_color", new Color(1f, 0.92f, 0.6f, 1f));
+		_leaderboardTitle.HorizontalAlignment = HorizontalAlignment.Left;
+
+		_leaderboardRows.Text = "";
+		_leaderboardRows.AutowrapMode = TextServer.AutowrapMode.WordSmart;
+		_leaderboardRows.AddThemeFontSizeOverride("font_size", 14);
+		_leaderboardRows.AddThemeColorOverride("font_color", new Color(1f, 1f, 1f, 1f));
+		_leaderboardRows.VerticalAlignment = VerticalAlignment.Top;
 	}
 
 	private void UpdatePriceLabels()
@@ -347,6 +407,124 @@ public partial class GameHUD : Control
 		UpdateContainerVisibility();
 		UpdateUnitButtons();
 		UpdateShipButtons();
+		UpdateLeaderboard(delta);
+	}
+
+	private void UpdateLeaderboard(double delta)
+	{
+		if (_leaderboardRows == null || GameManager.Instance == null)
+			return;
+
+		_leaderboardRefreshTimer -= (float)delta;
+		if (_leaderboardRefreshTimer > 0f)
+			return;
+
+		_leaderboardRefreshTimer = LeaderboardRefreshInterval;
+
+		var allCamps = GameManager.Instance.GetAllCamps();
+		if (allCamps == null || allCamps.Count == 0)
+		{
+			_leaderboardRows.Text = "Aucune donnée";
+			return;
+		}
+
+		var teamStats = new Dictionary<int, (int camps, int territories)>();
+		var campsByRegion = new Dictionary<int, List<CampSimple>>();
+
+		foreach (var camp in allCamps)
+		{
+			if (camp == null || !IsInstanceValid(camp))
+				continue;
+
+			int teamId = camp.GetTeamId();
+			if (teamId <= 0 || camp.IsNeutralCamp)
+				continue;
+
+			if (!teamStats.ContainsKey(teamId))
+				teamStats[teamId] = (0, 0);
+
+			var current = teamStats[teamId];
+			teamStats[teamId] = (current.camps + 1, current.territories);
+
+			if (camp.RegionId > 0)
+			{
+				if (!campsByRegion.ContainsKey(camp.RegionId))
+					campsByRegion[camp.RegionId] = new List<CampSimple>();
+				campsByRegion[camp.RegionId].Add(camp);
+			}
+		}
+
+		foreach (var (_, regionCamps) in campsByRegion)
+		{
+			if (regionCamps.Count == 0)
+				continue;
+
+			int firstTeam = regionCamps[0].GetTeamId();
+			if (firstTeam <= 0)
+				continue;
+
+			bool fullyControlled = true;
+			foreach (var camp in regionCamps)
+			{
+				if (camp.IsNeutralCamp || camp.GetTeamId() != firstTeam)
+				{
+					fullyControlled = false;
+					break;
+				}
+			}
+
+			if (!fullyControlled || !teamStats.ContainsKey(firstTeam))
+				continue;
+
+			var current = teamStats[firstTeam];
+			teamStats[firstTeam] = (current.camps, current.territories + 1);
+		}
+
+		var ranking = new List<(int teamId, int camps, int territories)>();
+		foreach (var (teamId, stats) in teamStats)
+			ranking.Add((teamId, stats.camps, stats.territories));
+
+		ranking.Sort((a, b) =>
+		{
+			int cmp = b.camps.CompareTo(a.camps);
+			if (cmp != 0) return cmp;
+			cmp = b.territories.CompareTo(a.territories);
+			if (cmp != 0) return cmp;
+			return a.teamId.CompareTo(b.teamId);
+		});
+
+		var lines = new List<string>();
+		for (int i = 0; i < ranking.Count; i++)
+		{
+			var row = ranking[i];
+			string name = ResolveLeaderboardName(row.teamId);
+			lines.Add($"{i + 1}. {name}  |  Camps: {row.camps}  |  Territoires: {row.territories}");
+		}
+
+		_leaderboardRows.Text = string.Join("\n", lines);
+	}
+
+	private string ResolveLeaderboardName(int teamId)
+	{
+		var gameState = GetNodeOrNull<GameState>("/root/GameState");
+		int localTeamId = GetLocalTeamId();
+
+		if (teamId == localTeamId)
+		{
+			if (gameState?.IsOnline == true && !string.IsNullOrWhiteSpace(gameState.PlayerDisplayName))
+				return gameState.PlayerDisplayName;
+			return $"Joueur {teamId}";
+		}
+
+		bool isAi = (gameState?.IsAIMode == true) || AIController.BossTeamIds.Contains(teamId);
+		if (isAi)
+		{
+			if (AIController.BossTeamIds.Contains(teamId))
+				return $"IA Boss {teamId}";
+			return $"IA {teamId}";
+		}
+
+		return $"Joueur {teamId}";
 	}
 
 	private void UpdateUnitButtons()

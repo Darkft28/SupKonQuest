@@ -62,6 +62,36 @@ public partial class LocalizationManager : Node
 			{ Language.EN, "Back" },
 			{ Language.ES, "Volver" }
 		}},
+		{ "language", new Dictionary<Language, string> {
+			{ Language.FR, "Langue" },
+			{ Language.EN, "Language" },
+			{ Language.ES, "Idioma" }
+		}},
+		{ "music", new Dictionary<Language, string> {
+			{ Language.FR, "Musique" },
+			{ Language.EN, "Music" },
+			{ Language.ES, "Música" }
+		}},
+		{ "sfx", new Dictionary<Language, string> {
+			{ Language.FR, "Effets sonores" },
+			{ Language.EN, "Sound effects" },
+			{ Language.ES, "Efectos sonoros" }
+		}},
+		{ "on", new Dictionary<Language, string> {
+			{ Language.FR, "Activée" },
+			{ Language.EN, "On" },
+			{ Language.ES, "Activado" }
+		}},
+		{ "off", new Dictionary<Language, string> {
+			{ Language.FR, "Désactivée" },
+			{ Language.EN, "Off" },
+			{ Language.ES, "Desactivado" }
+		}},
+		{ "close", new Dictionary<Language, string> {
+			{ Language.FR, "Fermer" },
+			{ Language.EN, "Close" },
+			{ Language.ES, "Cerrar" }
+		}},
 
 		// Lobby
 		{ "lobby_title", new Dictionary<Language, string> {
