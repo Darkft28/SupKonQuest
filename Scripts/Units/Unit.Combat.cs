@@ -326,7 +326,6 @@ public partial class Unit
 		{
 			if (node is not CampSimple camp) continue;
 			if (camp.GetTeamId() == TeamId) continue;
-			if (!camp.AreAllUnitsDefeated()) continue;
 
 			float distance = GlobalPosition.DistanceTo(camp.GlobalPosition);
 			if (distance > CampAttackDetectionRange) continue;

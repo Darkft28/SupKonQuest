@@ -4,7 +4,7 @@ Jeu de strategie et de conquete en temps reel developpe avec Godot 4.5 et C# (.N
 
 ## Description
 
-SupKonQuest est un RTS (Real-Time Strategy) ou le joueur doit capturer des camps sur une carte generee proceduralement. On commence avec un camp et un peu d'or, on produit des unites terrestres et navales, et on part a la conquete des camps adverses. Le jeu propose un mode solo, un mode contre IA (3 niveaux) et un mode multijoueur en reseau local.
+SupKonQuest est un RTS (Real-Time Strategy) ou le joueur doit capturer des camps sur une carte predéfinie. On commence avec un camp et un peu d'or, on produit des unites terrestres et navales, et on part a la conquete des camps adverses. Le jeu propose un mode solo, un mode contre IA (3 niveaux) et un mode multijoueur en reseau local en format "chacun pour soi".
 
 Le principe : chaque camp genere de l'or passivement, cet or permet d'acheter des unites, et ces unites servent a capturer d'autres camps. Controler une region entiere rapporte un bonus. Le joueur qui controle tous les camps gagne.
 
@@ -14,7 +14,7 @@ Le principe : chaque camp genere de l'or passivement, cet or permet d'acheter de
 
 **C# (.NET 8.0)** : typage statique, structures de donnees .NET (`Dictionary`, `Queue`, `List`). Aucune dependance NuGet externe.
 
-**ENet** : protocole reseau UDP fiable integre dans Godot (retransmission des paquets perdus, ordonnancement). Port 7777 pour le jeu, 7778 pour la decouverte LAN via UDP broadcast.
+**ENet** : protocole reseau UDP fiable integre dans Godot pour l'ancien mode local/legacy (retransmission des paquets perdus, ordonnancement). Port 7777 pour le jeu, 7778 pour la decouverte LAN via UDP broadcast.
 
 ## Prerequis
 
@@ -30,6 +30,36 @@ dotnet build SupKonQuest.csproj
 ```
 
 Ensuite ouvrir le projet dans Godot 4.5 et lancer avec F5.
+
+## Serveur Nakama local (pour le mode en ligne)
+
+Si vous n'avez pas encore de serveur, le mode solo fonctionne sans Nakama.
+Pour tester le mode en ligne (auth guest + matchmaking + lobby), lancez un Nakama local.
+
+Prerequis minimaux:
+- Docker Desktop
+
+Commandes (PowerShell):
+
+```powershell
+docker network create nakama-net
+docker run --name nakama-postgres --network nakama-net -e POSTGRES_PASSWORD=localdb -e POSTGRES_USER=local -e POSTGRES_DB=nakama -p 5432:5432 -d postgres:15-alpine
+docker run --name nakama --network nakama-net -p 7350:7350 -p 7349:7349 -d heroiclabs/nakama:3.22.0 --database.address root@nakama-postgres:5432
+```
+
+Le projet utilise par defaut ces valeurs dans `project.godot`:
+- `nakama/scheme = "http"`
+- `nakama/host = "127.0.0.1"`
+- `nakama/port = 7350`
+- `nakama/server_key = "defaultkey"`
+
+Arret/nettoyage rapide:
+
+```powershell
+docker stop nakama nakama-postgres
+docker rm nakama nakama-postgres
+docker network rm nakama-net
+```
 
 ## Structure du projet
 
@@ -71,8 +101,8 @@ SupKonQuest/
 ```
 Root
 ├── Singletons (AutoLoads)
-│   ├── NetworkManager          # ENet P2P (hosting, connexion, decouverte LAN)
-│   ├── GameState               # Flux de jeu (seed, LocalTeamId, IsAIMode)
+│   ├── NetworkManager          # ENet legacy P2P (hosting, connexion, decouverte LAN)
+│   ├── GameState               # Flux de jeu (seed, identifiant joueur local, IsAIMode)
 │   ├── LocalizationManager     # i18n FR/EN/ES
 │   └── GameManager             # Economie or + bonus region + victoire
 └── Game.tscn
@@ -89,9 +119,9 @@ Root
 
 ### Singletons (AutoLoad)
 
-- **GameManager** : economie or par equipe, bonus region, conditions de victoire via VictoryManager. Accessible via `GameManager.Instance`.
+- **GameManager** : economie or par joueur/slot, bonus region, conditions de victoire via VictoryManager. Accessible via `GameManager.Instance`.
 - **NetworkManager** : connexion ENet P2P, decouverte UDP (port 7778), code salon 6 caracteres.
-- **GameState** : seed de carte, LocalTeamId (1=serveur, 2=client), IsAIMode, AILevel.
+- **GameState** : seed de carte, identifiant local de joueur (slot d'ownership), IsAIMode, AILevel.
 - **LocalizationManager** : 166 cles traduites en FR/EN/ES, signal `LanguageChanged`.
 
 ### Signaux (Observer Pattern)
@@ -106,37 +136,37 @@ EmitSignal(SignalName.PlayerConnected, id);
 
 `NetworkManager` emet `PlayerConnected`, `LobbyUI` s'abonne pour mettre a jour la liste sans dependance directe.
 
-## Generation procedurale de la carte
+## Generation de la carte
 
 **Scripts :** `Scripts/Map/MapGenerator.cs`, `TerrainGenerator.cs` (statique), `CampPlacer.cs` (statique)
 
-### Deux couches FastNoiseLite
+### Maps prédéfinies (presets)
+
+La carte est chargee depuis un preset encode en RLE. Deux maps disponibles : **Irridium** et **Alabasta**.
 
 ```
-Couche elevation  : seed = baseSeed,       frequence 0.008, FBM 5 octaves
-Couche foret      : seed = baseSeed+1000,  frequence 0.05
-RNG placement     : seed = baseSeed+2000   (System.Random deterministe)
+RNG placement camps : seed = baseSeed+2000  (System.Random deterministe)
 ```
 
-Le serveur genere un seed aleatoire, l'envoie via RPC aux clients. Chaque peer regenere la meme carte localement — pas de transfert des 65 536 tuiles.
+Le serveur genere un seed aleatoire, l'envoie via RPC aux clients. Les positions des camps sont predefinies par le preset puis melangees de facon deterministe (Fisher-Yates). Pas de generation procedurale des camps.
 
-### Biomes
+### Tuiles
 
-| Altitude | Biome | Praticable |
-|----------|-------|-----------|
-| < -0.2 | Eau | Non (navires seulement) |
-| -0.2 a -0.15 | Sable | Oui |
-| -0.15 a 0.4 | Herbe / Foret | Oui |
-| 0.4 a 0.55 | Roche | Non |
-| > 0.55 | Neige | Non |
+| ID | Biome | Praticable |
+|----|-------|-----------|
+| 6 | Eau | Non (navires seulement) |
+| 1 | Sable | Oui |
+| 0 | Herbe | Oui |
+| 3 | Foret | Oui |
+| 5 | Roche | Non |
+| 4 | Neige | Non |
 
 Carte : 256x256 tuiles de 128px = ~32 000 x 32 000 px.
 
 ### Placement des camps
 
-- Probabilite 0.1% par tuile d'herbe (sans foret)
-- Distance minimale 3500px entre deux camps
-- Chaque camp reçoit un `RegionId` selon son quadrant (1=NW, 2=NE, 3=SW, 4=SE)
+- Positions predefinies par la map preset (pas de probabilite ni distance minimale dans le code)
+- Chaque camp reçoit un `RegionId` selon la grille territoire du preset (3 regions sur Irridium, 4 sur Alabasta)
 - Chaque camp neutre spawne 4 defenseurs initiaux (Infantry, Support, Heal, Range) avec HP x1.5
 
 ### Territoire visuel
@@ -167,16 +197,16 @@ Detectection de blocage : si vitesse reelle < 10% de la vitesse attendue pendant
 
 ### Stats des unites
 
-| Type | Prix | PV | Attaque | Defense | Vitesse | Portee | Production |
-|------|------|----|---------|---------|---------|--------|------------|
-| Infantry | 50g | 100 | 15 | 10 | 150 | 50 | 2s |
-| Support | 75g | 80 | 8 | 5 | 120 | 100 | 3s |
-| Range | 80g | 70 | 20 | 5 | 100 | 300 | 3s |
-| Heal | 100g | 60 | 0 | 3 | 100 | 150 | 3s |
-| AntiArmor | 120g | 80 | 35 | 8 | 90 | 120 | 4s |
-| Mortar | 130g | 50 | 40 | 3 | 60 | 400 | 4s |
-| Heavy | 150g | 150 | 25 | 20 | 70 | 60 | 5s |
-| Tank | 200g | 200 | 30 | 25 | 50 | 100 | 6s |
+| Type | Tier | Prix | PV | Attaque | Defense | Vitesse | Portee | Production |
+|------|------|------|----|---------|---------|---------|--------|------------|
+| Infantry | 1 | 50g | 100 | 15 | 10 | 150 | 100 | 2s |
+| Support | 1 | 75g | 80 | 8 | 5 | 120 | 100 | 3s |
+| Range | 1 | 80g | 70 | 20 | 5 | 100 | 300 | 3s |
+| Heal | 2 | 100g | 60 | 0 | 3 | 100 | 150 | 3s |
+| AntiArmor | 2 | 120g | 80 | 35 | 8 | 90 | 120 | 4s |
+| Mortar | 3 | 130g | 50 | 40 | 3 | 60 | 400 | 4s |
+| Heavy | 3 | 150g | 150 | 25 | 20 | 70 | 100 | 5s |
+| Tank | 3 | 200g | 200 | 30 | 25 | 50 | 100 | 6s |
 
 ### Formule de degats
 
@@ -197,13 +227,13 @@ Formule scalaire — la defense reduit progressivement (100 defense = 50% reduct
 
 **Scripts :** `Scripts/Ships/`
 
-| Type | PV | Attaque | Defense | Vitesse | Portee | Prix | Production | Capacite |
-|------|----|---------|---------|---------|--------|------|-----------|---------|
-| Transport | 200 | 0 | 10 | 120 | - | 150g | 5s | 10 unites |
-| Fregate | 180 | 20 | 15 | 100 | 250 | 200g | 5s | - |
-| Destroyer | 250 | 35 | 20 | 80 | 350 | 300g | 7s | - |
+| Type | Tier | PV | Attaque | Defense | Vitesse | Portee | Prix | Production | Capacite |
+|------|------|-----|---------|---------|---------|--------|------|-----------|---------|
+| Transport | 1 | 200 | 0 | 10 | 120 | - | 150g | 5s | 10 unites |
+| Fregate | 3 | 180 | 20 | 15 | 100 | 250 | 200g | 5s | - |
+| Destroyer | 3 | 250 | 35 | 20 | 80 | 350 | 300g | 7s | - |
 
-Les camps adjacents a l'eau obtiennent automatiquement un **port** (detection smart de la cote, orientation selon la direction vers l'eau). Le port dispose de sa propre file de production (max 5 navires). Le Transport peut embarquer jusqu'a 10 unites terrestres et les debarquer sur une cote.
+Un **port** s'achete manuellement depuis le HUD (bouton **⚓ Port — 500g**) puis le joueur clique sur une tuile cotiere pour le poser. L'orientation est auto-detectee selon la direction de l'eau adjacente. Le port dispose de sa propre file de production (max 5 navires). Le Transport peut embarquer jusqu'a 10 unites terrestres et les debarquer sur une cote. Le placement peut etre annule (or rembourse).
 
 ## Systeme de camps
 
@@ -226,8 +256,8 @@ Recompenses : +50 or instantane, 3 unites bonus spawnees (Infantry, Range, Infan
 
 | Source | Montant |
 |--------|---------|
-| Passif joueur | +5 or/sec |
-| Par camp possede | +50 or/sec |
+| Passif joueur | +500 or/sec |
+| Par camp possede | +500 or/sec |
 | Capture d'un camp | +50 or instantane |
 | Or stocke dans camp neutre | Transfere au moment de la capture |
 | Bonus region (region entiere controlee) | +30 or/sec |
@@ -236,7 +266,19 @@ Or de depart : 100 or.
 
 ### Regions economiques
 
-La carte est divisee en 4 quadrants (NW, NE, SW, SE). Si une equipe controle tous les camps non-neutres d'un quadrant, elle reçoit +30 or/sec. Verifie chaque seconde.
+La carte est divisee en regions (3 sur Irridium, 4 sur Alabasta). Si une equipe controle tous les camps d'une region, elle reçoit +30 or/sec. Verifie chaque seconde. Les regions servent aussi a debloquer le Tier 3 (controler sa region d'origine).
+
+### Systeme de tiers
+
+Chaque equipe progresse sur 3 paliers de production :
+
+| Palier | Condition de deblocage | Unites disponibles |
+|--------|------------------------|-------------------|
+| Tier 1 | Depart | Infantry, Support, Range, Transport |
+| Tier 2 | Achat 1500 or | + Heal, AntiArmor |
+| Tier 3 | Controler tous les camps de sa region d'origine | + Mortar, Heavy, Tank, Fregate, Destroyer |
+
+Le bouton de deblocage tier 2 est visible dans le HUD quand un camp est selectionne.
 
 ### Victoire
 
@@ -246,15 +288,28 @@ Controler 100% des camps non-neutres. Verifie chaque seconde par `VictoryManager
 
 **Script :** `Scripts/AI/AIController.cs`
 
-L'IA controle l'equipe 2 en mode solo. Elle achete des unites et les envoie vers les cibles prioritaires (camps neutres favorises, puis camps ennemis).
+L'IA controle les equipes bot (mode solo ou FFA). Architecture **Utility AI** : chaque tick, l'IA score ses options (production, attaque, defense) et choisit la meilleure. Une instance `AIController` est creee par equipe bot dans `MapGenerator.InitAIController()`.
 
-| Niveau | Tick | Max unites/ordre | Types autorises |
-|--------|------|-----------------|-----------------|
-| Easy | 5s | 3 | Infantry, Range |
-| Medium | 3s | 6 | +Support, AntiArmor, Heavy |
-| Hard | 1.5s | Illimite | Tous |
+| Parametre | Easy | Medium | Hard |
+|-----------|------|--------|------|
+| Tick de decision | 6s | 3.5s | 2s |
+| Max unites | 8 | 16 | 28 |
+| Delai premiere attaque | 20s | 12s | 5s |
+| Delai de reaction | 5s | 1.5s | 0.3s |
+| Taux d'erreur cible | 40% | 15% | 0% |
+| Ratio defense | 0% | 25% | 30% |
 
-Activee via `GameState.IsAIMode = true`, initialisee par `MapGenerator.InitAIController()`.
+**Comportement par niveau :**
+- **Easy** : spam Infantry, attaque le camp le plus proche, pas de defense reactiva
+- **Medium** : composition equilibree (Infantry 45%, Range 35%, Support 20%), economise pour tier 2, defense reactive si camp menace
+- **Hard** : composition adaptative (contre AntiArmor si ennemi a >3 Heavy), vise tier 3 en controlant sa region d'origine
+
+**Tiers IA :**
+- Tier 1 (depart) : Infantry, Support, Range
+- Tier 2 (achat 1500 or) : + Heal, AntiArmor
+- Tier 3 (controle region d'origine) : + Mortar, Heavy, Tank
+
+Activee via `GameState.IsAIMode = true`, niveau via `GameState.AILevel`.
 
 ## Systeme de selection
 
@@ -287,20 +342,20 @@ Un clic droit deplace les unites selectionnees. Clic droit sur un Transport alli
 
 **Scripts :** `Scripts/Network/`
 
-### Architecture P2P
+### Architecture relay Nakama
 
-- Serveur = Team 1, Client = Team 2
-- Connexion via code salon 6 caracteres (decouverte UDP broadcast sur port 7778)
+- Match "chacun pour soi" : chaque joueur est un slot d'ownership indépendant, sans alliance d'equipe
+- Connexion via code salon 6 caracteres (decouverte UDP broadcast sur port 7778) pour l'ancienne voie ENet; Nakama gere l'authentification et le relay des commandes en ligne
 - `NetworkEntityRegistry` : dictionnaire statique `NetworkId → Node`
   - IDs dynamiques : `"{peerId}_{counter}"`
-  - IDs deterministesd'efenseurs initiaux : `"camp_{campId}_unit_{index}"`
+  - IDs deterministes des defenseurs initiaux : `"camp_{campId}_unit_{index}"`
 
 ### RPCs
 
 | RPC | Mode | Fiabilite | Usage |
 |-----|------|-----------|-------|
 | RpcReceiveSeedAndStart | Authority | Reliable | Serveur → Clients : seed + debut |
-| RpcSyncCampAssignments | Authority | Reliable | Attribution camps/equipes |
+| RpcSyncCampAssignments | Authority | Reliable | Attribution camps/joueurs |
 | RpcSpawnUnit / RpcSpawnShip | AnyPeer | Reliable | Creation entite distante |
 | RpcEntityDied | AnyPeer | Reliable | Destruction puppet |
 | RpcApplyUnitDamage / Camp / Ship | AnyPeer | Reliable | Degats (appliques uniquement par le peer proprietaire) |
@@ -311,7 +366,7 @@ Un clic droit deplace les unites selectionnees. Clic droit sur un Transport alli
 ### Determinisme
 
 - Meme seed → meme terrain, memes positions de camps, meme distribution initiale
-- L'economie de chaque equipe est calculee localement (pas de sync or)
+- L'economie de chaque joueur est calculee localement (pas de sync or)
 - Limitation Godot : `bool[]` non supportee en RPC Variant → convertie en `int[]`
 
 ## Localisation

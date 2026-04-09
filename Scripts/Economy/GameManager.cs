@@ -11,6 +11,7 @@ public partial class GameManager : Node
 	}
 
 	private Dictionary<int, int> _teamGold = new Dictionary<int, int>();
+	private Dictionary<int, int> _teamGoldVersion = new Dictionary<int, int>();
 	private Dictionary<int, int> _homeRegions = new Dictionary<int, int>();
 
 	private const int StartingGold = 100;
@@ -25,6 +26,9 @@ public partial class GameManager : Node
 	private const float RegionSpeedBonusPerRegion = 0.20f;
 
 	private List<CampSimple> _allCamps = new List<CampSimple>();
+
+	// Équipes ayant acheté le palier 2
+	private HashSet<int> _tier2Unlocked = new HashSet<int>();
 
 	private const int NumberOfPlayers = 2;
 
@@ -45,8 +49,10 @@ public partial class GameManager : Node
 	{
 		// Reset de l'or entre les parties (GameManager est un autoload persistant)
 		_teamGold.Clear();
+		_teamGoldVersion.Clear();
 		_homeRegions.Clear();
 		_allCamps.Clear();
+		_tier2Unlocked.Clear();
 
 		var campNodes = GetTree().GetNodesInGroup("camps");
 		foreach (var node in campNodes)
@@ -168,6 +174,32 @@ public partial class GameManager : Node
 			&& NetworkSync.Instance.IsMultiplayer();
 	}
 
+	private bool IsNakamaRelayMode()
+	{
+		var gameState = GetNodeOrNull<GameState>("/root/GameState");
+		return gameState?.IsOnline == true && NakamaService.Instance?.IsSocketConnected == true;
+	}
+
+	private int GetLocalTeamId()
+	{
+		var gameState = GetNodeOrNull<GameState>("/root/GameState");
+		return gameState?.LocalTeamId ?? 1;
+	}
+
+	private bool IsLocalTeam(int teamId)
+	{
+		return teamId > 0 && teamId == GetLocalTeamId();
+	}
+
+	private int IncrementGoldVersion(int teamId)
+	{
+		if (!_teamGoldVersion.ContainsKey(teamId))
+			_teamGoldVersion[teamId] = 0;
+
+		_teamGoldVersion[teamId] += 1;
+		return _teamGoldVersion[teamId];
+	}
+
 	public override void _Process(double delta)
 	{
 		_passiveGoldTimer += (float)delta;
@@ -245,6 +277,31 @@ public partial class GameManager : Node
 		return _allCamps;
 	}
 
+	// ── Limite globale d'unités par équipe ───────────────────────────────────
+	// 10 unités par camp contrôlé. Toutes les unités de l'équipe comptent,
+	// peu importe quel camp les a produites.
+	public const int MaxUnitsPerCamp = 10;
+
+	public int GetTeamUnitCount(int teamId)
+	{
+		int count = 0;
+		var nodes = GetTree().GetNodesInGroup("units");
+		foreach (var node in nodes)
+		{
+			if (node is Unit u && u.GetTeamId() == teamId && u.GetCurrentHealth() > 0)
+				count++;
+		}
+		return count;
+	}
+
+	public int GetMaxUnitsForTeam(int teamId)
+	{
+		int camps = 0;
+		foreach (var c in _allCamps)
+			if (c.GetTeamId() == teamId) camps++;
+		return Mathf.Max(1, camps) * MaxUnitsPerCamp;
+	}
+
 	public void InitializeTeam(int teamId)
 	{
 		if (teamId <= 0)
@@ -252,6 +309,9 @@ public partial class GameManager : Node
 
 		if (!_teamGold.ContainsKey(teamId))
 			_teamGold[teamId] = StartingGold;
+
+		if (!_teamGoldVersion.ContainsKey(teamId))
+			_teamGoldVersion[teamId] = 0;
 	}
 
 	public int GetGold(int teamId)
@@ -270,6 +330,8 @@ public partial class GameManager : Node
 			return false;
 
 		_teamGold[teamId] -= amount;
+		int version = IncrementGoldVersion(teamId);
+		TrySendRelayGoldSnapshot(teamId, version, "spend");
 		return true;
 	}
 
@@ -280,11 +342,68 @@ public partial class GameManager : Node
 			_teamGold[teamId] = 0;
 		}
 		_teamGold[teamId] += amount;
+		int version = IncrementGoldVersion(teamId);
+		TrySendRelayGoldSnapshot(teamId, version, "add");
+	}
+
+	private void TrySendRelayGoldSnapshot(int teamId, int version, string reason)
+	{
+		if (!IsNakamaRelayMode())
+			return;
+
+		if (!IsLocalTeam(teamId))
+			return;
+
+		NetworkCommandRouter.SendGoldSnapshot(teamId, GetGold(teamId), version, reason);
 	}
 
 	public void GiveCaptureBonus(int teamId)
 	{
 		AddGold(teamId, CaptureBonus);
+	}
+
+	public int GetGoldVersion(int teamId)
+	{
+		return _teamGoldVersion.TryGetValue(teamId, out int version) ? version : 0;
+	}
+
+	public void BroadcastRelayGoldSnapshotForLocalTeam(string reason = "periodic")
+	{
+		if (!IsNakamaRelayMode())
+			return;
+
+		int localTeamId = GetLocalTeamId();
+		if (localTeamId <= 0 || !_teamGold.ContainsKey(localTeamId))
+			return;
+
+		NetworkCommandRouter.SendGoldSnapshot(localTeamId, _teamGold[localTeamId], GetGoldVersion(localTeamId), reason);
+	}
+
+	public void ApplyRelayGoldSnapshot(int teamId, int authoritativeGold, int version, string senderUserId)
+	{
+		if (teamId <= 0)
+			return;
+
+		if (!IsNakamaRelayMode())
+			return;
+
+		if (IsLocalTeam(teamId))
+			return;
+
+		if (!_teamGold.ContainsKey(teamId))
+			_teamGold[teamId] = authoritativeGold;
+
+		int localVersion = GetGoldVersion(teamId);
+		if (version < localVersion)
+			return;
+
+		if (_teamGold[teamId] != authoritativeGold)
+		{
+			GD.Print($"[RELAY][GOLD] Reconcile team {teamId}: {_teamGold[teamId]} -> {authoritativeGold} (v{version}, from {senderUserId})");
+			_teamGold[teamId] = authoritativeGold;
+		}
+
+		_teamGoldVersion[teamId] = version;
 	}
 
 	public float GetSpeedMultiplier(int teamId)
@@ -357,17 +476,33 @@ public partial class GameManager : Node
 		return _homeRegions.TryGetValue(teamId, out int r) ? r : -1;
 	}
 
+	public const int Tier2Cost = 1500;
+
+	/// <summary>
+	/// Tente d'acheter le palier 2 pour une équipe (coûte Tier2Cost or).
+	/// Retourne true si l'achat a réussi.
+	/// </summary>
+	public bool UnlockTier2(int teamId)
+	{
+		if (_tier2Unlocked.Contains(teamId)) return false; // déjà acheté
+		if (!CanAfford(teamId, Tier2Cost)) return false;
+
+		SpendGold(teamId, Tier2Cost);
+		_tier2Unlocked.Add(teamId);
+		GD.Print($"[TIER] Équipe {teamId} a débloqué le palier 2 !");
+		return true;
+	}
+
 	public int GetUnlockedTier(int teamId)
 	{
-		var ownedCamps = _allCamps.FindAll(c => c.GetTeamId() == teamId);
+		// Tier 2 : achat manuel effectué
+		if (!_tier2Unlocked.Contains(teamId)) return 1;
 
-		if (ownedCamps.Count < 2) return 1;
-
-		// Tier 3 : contrôle tous les camps de sa home region (≥2 camps dans la région)
+		// Tier 3 : contrôle tous les camps de sa région d'origine (nombre calculé dynamiquement)
 		if (!_homeRegions.TryGetValue(teamId, out int homeRegion)) return 2;
 
 		var homeCamps = _allCamps.FindAll(c => c.RegionId == homeRegion);
-		if (homeCamps.Count < 2) return 2;
+		if (homeCamps.Count == 0) return 2;
 
 		if (homeCamps.TrueForAll(c => c.GetTeamId() == teamId)) return 3;
 
@@ -381,6 +516,9 @@ public partial class GameManager : Node
 
 		int diff = Mathf.Abs(_teamGold[teamId] - authorativeGold);
 		if (diff > 5)
+		{
 			_teamGold[teamId] = authorativeGold;
+			IncrementGoldVersion(teamId);
+		}
 	}
 }

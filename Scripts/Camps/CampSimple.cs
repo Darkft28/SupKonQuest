@@ -35,8 +35,9 @@ public partial class CampSimple : Area2D
 	private Queue<string> _productionQueue = new Queue<string>();
 	private string _currentProduction = null;
 	private float _productionTimer = 0f;
+	private int _dynamicUnitSpawnSequence = 0;
 	private const int MaxQueueSize = 7;
-	public const int MaxLiveUnitsPerCamp = 12; // cap anti-crash
+	// Plafond global d'unités géré par GameManager.GetMaxUnitsForTeam() (10 par camp contrôlé)
 
 	// Region economique (1, 2 ou 3) — secteur angulaire par rapport au centre
 	public int RegionId { get; set; } = 0;
@@ -113,6 +114,11 @@ public partial class CampSimple : Area2D
 		return TeamId == localTeamId;
 	}
 
+	private bool IsRelayModeActive()
+	{
+		return NetworkSync.Instance?.IsRelayMode() == true;
+	}
+
 	// Reseau : mettre a jour l'autorite des defenseurs apres assignation
 	public void UpdateDefendersAuthority()
 	{
@@ -137,7 +143,10 @@ public partial class CampSimple : Area2D
 			_healthBarForeground.Color = GetTeamColor();
 
 		if (_campIdLabel != null)
+		{
 			_campIdLabel.AddThemeColorOverride("font_color", GetTeamColor());
+			RefreshCampLabel(); // label boss/normal selon la nouvelle équipe
+		}
 
 		if (GameManager.Instance != null)
 		{
@@ -182,6 +191,7 @@ public partial class CampSimple : Area2D
 
 		if (_campIdLabel != null)
 		{
+			_campIdLabel.Text = GetCampLabel();
 			_campIdLabel.AddThemeColorOverride("font_color", GetTeamColor());
 		}
 

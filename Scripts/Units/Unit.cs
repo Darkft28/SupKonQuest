@@ -60,6 +60,7 @@ public partial class Unit : CharacterBody2D
 	private NavigationAgent2D _navAgent = null;
 	private Vector2 _lastNavTargetPos = Vector2.Zero;
 	private bool _navTargetDirty = true;
+	private int _navPathCooldown = 0; // frames avant d'appeler IsTargetReachable (calcul asynchrone)
 	private const float NavUpdateDistance = 64f; // recalcule le chemin si la cible bouge > 64px
 
 	// Throttle recherche ennemis/camps — évite O(n²) chaque frame
@@ -291,7 +292,8 @@ public partial class Unit : CharacterBody2D
 	{
 		// Puppet réseau : interpoler vers la position distante, pas d'IA locale
 		bool isMulti = NetworkSync.Instance?.IsMultiplayer() == true;
-		if (isMulti && !IsLocalAuthority)
+		bool isRelay = NetworkSync.Instance?.IsRelayMode() == true;
+		if (isMulti && !isRelay && !IsLocalAuthority)
 		{
 			if (_networkTargetPosition.HasValue)
 			{

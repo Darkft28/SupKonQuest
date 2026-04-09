@@ -11,7 +11,7 @@ public partial class CampSimple
 	private void ProcessTerritoryAlert(double delta)
 	{
 		if (IsNeutralCamp) return;
-		if (!IsLocallyOwned()) return;
+		if (!IsRelayModeActive() && !IsLocallyOwned()) return;
 
 		_alertCooldownTimer -= (float)delta;
 		_alertTimer += (float)delta;
@@ -74,11 +74,7 @@ public partial class CampSimple
 		if (IsNeutralCamp)
 			return;
 
-		// La tourelle ne tire que quand tous les défenseurs sont morts
-		if (!AreAllUnitsDefeated())
-			return;
-
-		if (!IsLocallyOwned())
+		if (!IsRelayModeActive() && !IsLocallyOwned())
 			return;
 
 		var allUnits = GetTree().GetNodesInGroup("units");
@@ -120,11 +116,7 @@ public partial class CampSimple
 
 	public bool TakeDamage(float damage, int attackerTeamId)
 	{
-		// Attaquable seulement si toutes les unités défendantes sont mortes
-		if (!AreAllUnitsDefeated())
-			return false;
-
-		if (!IsLocallyOwned())
+		if (!IsRelayModeActive() && !IsLocallyOwned())
 		{
 			NetworkSync.Instance?.SendCampDamage(CampId, damage, attackerTeamId);
 			return true;
@@ -169,6 +161,7 @@ public partial class CampSimple
 		if (_campIdLabel != null)
 		{
 			_campIdLabel.AddThemeColorOverride("font_color", GetTeamColor());
+			RefreshCampLabel(); // texte boss/normal selon la nouvelle équipe
 		}
 
 		if (GameManager.Instance != null)
@@ -185,11 +178,32 @@ public partial class CampSimple
 		SpawnBonusUnits();
 
 		EmitSignal(SignalName.CampCaptured, newTeamId);
-		NetworkSync.Instance?.SendCampCaptured(CampId, newTeamId);
+		if (!IsRelayModeActive())
+			NetworkSync.Instance?.SendCampCaptured(CampId, newTeamId);
 
 		// Appel direct garanti — ne dépend pas de la connexion signal
 		TerritoryManager.Instance?.RefreshTerritory(newTeamId);
 		GD.Print($"[TERRITOIRE] Camp #{CampId} capturé : Team {oldTeamId} → {newTeamId}");
+
+		// Si l'ancienne équipe n'a plus aucun camp → toutes ses unités meurent
+		if (oldTeamId > 0)
+		{
+			bool hasAnyCamp = false;
+			foreach (var camp in GameManager.Instance?.GetAllCamps() ?? new System.Collections.Generic.List<CampSimple>())
+			{
+				if (camp.GetTeamId() == oldTeamId) { hasAnyCamp = true; break; }
+			}
+
+			if (!hasAnyCamp)
+			{
+				GD.Print($"[ELIMINATION] Team {oldTeamId} n'a plus de camp → toutes ses unités meurent");
+				foreach (var node in GetTree().GetNodesInGroup("units"))
+				{
+					if (node is Unit unit && unit.GetTeamId() == oldTeamId && IsInstanceValid(unit))
+						unit.TakeDamage(999999f);
+				}
+			}
+		}
 	}
 
 	private void SpawnBonusUnits()
@@ -215,7 +229,8 @@ public partial class CampSimple
 			unit.OwnerCamp = this;
 
 			// Reseau : assigner un NetworkId et broadcaster
-			string networkId = NetworkEntityRegistry.GenerateId();
+			int spawnSequence = ++_dynamicUnitSpawnSequence;
+			string networkId = BuildDynamicUnitNetworkId(spawnSequence);
 			unit.NetworkId = networkId;
 			unit.IsLocalAuthority = true;
 			unit.OwnerCamp = this;
@@ -224,8 +239,11 @@ public partial class CampSimple
 			_spawnedUnits.Add(unit);
 			_defenders.Add(unit); // les bonus units défendent le camp nouvellement capturé
 
-			NetworkSync.Instance?.SendSpawnUnit(networkId, bonusUnits[i], TeamId,
-				unit.GlobalPosition.X, unit.GlobalPosition.Y, unit.GetCurrentHealth(), false);
+			if (!IsRelayModeActive())
+			{
+				NetworkSync.Instance?.SendSpawnUnit(networkId, bonusUnits[i], TeamId,
+					unit.GlobalPosition.X, unit.GlobalPosition.Y, unit.GetCurrentHealth(), false);
+			}
 		}
 	}
 }

@@ -11,6 +11,8 @@ public partial class NetworkSync : Node
 
 	private float _goldSyncTimer = 0f;
 	private const float GoldSyncInterval = 10f;
+	private float _relayGoldSnapshotTimer = 0f;
+	private const float RelayGoldSnapshotInterval = 1f;
 
 	public override void _Ready()
 	{
@@ -26,6 +28,17 @@ public partial class NetworkSync : Node
 	public override void _Process(double delta)
 	{
 		if (!IsMultiplayer()) return;
+
+		if (IsRelayMode())
+		{
+			_relayGoldSnapshotTimer += (float)delta;
+			if (_relayGoldSnapshotTimer >= RelayGoldSnapshotInterval)
+			{
+				_relayGoldSnapshotTimer = 0f;
+				GameManager.Instance?.BroadcastRelayGoldSnapshotForLocalTeam();
+			}
+			return;
+		}
 
 		_syncTimer += (float)delta;
 		if (_syncTimer >= SyncInterval)
@@ -49,10 +62,19 @@ public partial class NetworkSync : Node
 
 	public bool IsMultiplayer()
 	{
+		if (IsRelayMode())
+			return true;
+
 		// Utilise NetworkManager.IsConnected qui vérifie le peer ENet réel (_peer != null)
 		// L'OfflineMultiplayerPeer par défaut de Godot 4 trompe HasMultiplayerPeer()
 		var nm = GetNodeOrNull<NetworkManager>("/root/NetworkManager");
 		return nm?.IsConnected ?? false;
+	}
+
+	public bool IsRelayMode()
+	{
+		var gameState = GetNodeOrNull<GameState>("/root/GameState");
+		return gameState?.IsOnline == true && NakamaService.Instance?.IsSocketConnected == true;
 	}
 
 	public bool IsServer()

@@ -248,6 +248,44 @@ public partial class CampSimple
 		return true;
 	}
 
+	/// <summary>
+	/// Retourne le nombre de tuiles d'eau accessibles dans la meilleure direction (usage IA pour trier les camps).
+	/// </summary>
+	public int GetNearbyWaterCount()
+	{
+		if (_tileMapSol == null) return 0;
+		Vector2I campTile = _tileMapSol.LocalToMap(_tileMapSol.ToLocal(GlobalPosition));
+		Vector2I[] directions = { new Vector2I(0,-1), new Vector2I(0,1), new Vector2I(1,0), new Vector2I(-1,0) };
+		int best = 0;
+		foreach (var dir in directions)
+		{
+			int waterCount = 0;
+			for (int dist = 1; dist <= 8; dist++)
+				for (int offset = -2; offset <= 2; offset++)
+				{
+					Vector2I tilePos = dir.X == 0
+						? campTile + new Vector2I(offset, dir.Y * dist)
+						: campTile + new Vector2I(dir.X * dist, offset);
+					if (_tileMapSol.GetCellSourceId(tilePos) == 6)
+						waterCount++;
+				}
+			if (waterCount > best) best = waterCount;
+		}
+		return best;
+	}
+
+	/// <summary>
+	/// Achète et active un port (usage IA). Aucune condition de proximité d'eau.
+	/// TrySpawnPort() tente un placement visuel si de l'eau est trouvée.
+	/// </summary>
+	public bool AIBuyPort()
+	{
+		if (!CanBuyPort()) return false;
+		if (!GameManager.Instance.SpendGold(TeamId, PortCost)) return false;
+		HasPort = true;
+		return true;
+	}
+
 	public bool PlacePortAt(Vector2 worldPos)
 	{
 		if (_tileMapSol == null) return false;
@@ -358,7 +396,7 @@ public partial class CampSimple
 
 		const int TileSize = 128;
 		const float CampScale = 4.5f;
-		const float PortScale = 0.15f;
+		const float PortScale = 0.07f;
 		const float LandOverlap = 0.2f; // 20% du port sur terre, 80% dans l'eau
 		const float PortLongAxis = 1256f; // longueur en pixels des deux textures
 
@@ -381,7 +419,7 @@ public partial class CampSimple
 			int waterCount = 0;
 			Vector2I dir = directions[d];
 
-			for (int dist = 1; dist <= 8; dist++)
+			for (int dist = 1; dist <= 20; dist++)
 			{
 				for (int offset = -2; offset <= 2; offset++)
 				{
@@ -403,13 +441,13 @@ public partial class CampSimple
 			}
 		}
 
-		if (bestWaterCount < 3 || bestDirectionIndex < 0)
+		if (bestWaterCount < 1 || bestDirectionIndex < 0)
 			return;
 
 		// 2) Trouver la distance de la première tuile d'eau (ligne centrale, offset=0)
 		Vector2I bestDir = directions[bestDirectionIndex];
 		int waterDist = -1;
-		for (int dist = 1; dist <= 8; dist++)
+		for (int dist = 1; dist <= 20; dist++)
 		{
 			Vector2I tilePos;
 			if (bestDir.X == 0)

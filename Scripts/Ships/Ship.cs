@@ -170,7 +170,8 @@ public partial class Ship : CharacterBody2D
 	{
 		// Puppet : interpoler vers la position reseau, pas d'IA (multi seulement)
 		bool isMulti = NetworkSync.Instance?.IsMultiplayer() == true;
-		if (isMulti && !IsLocalAuthority)
+		bool isRelay = NetworkSync.Instance?.IsRelayMode() == true;
+		if (isMulti && !isRelay && !IsLocalAuthority)
 		{
 			if (_networkTargetPosition.HasValue)
 			{
