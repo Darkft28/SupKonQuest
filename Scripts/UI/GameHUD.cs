@@ -24,8 +24,13 @@ public partial class GameHUD : Control
 	private VBoxContainer _leaderboardVBox;
 	private Label _leaderboardTitle;
 	private Label _leaderboardRows;
+	private Button _leaderboardToggleBtn;
+	private HSeparator _leaderboardSeparator;
+	private bool _leaderboardExpanded = true;
 	private float _leaderboardRefreshTimer = 0f;
 	private const float LeaderboardRefreshInterval = 0.5f;
+	private const float LeaderboardExpandedBottom  = 310f;
+	private const float LeaderboardCollapsedHeight = 50f;
 
 		private static readonly string[] UnitTypes = new[]
 	{
@@ -164,27 +169,50 @@ public partial class GameHUD : Control
 		_leaderboardVBox.OffsetBottom = -8f;
 		_leaderboardVBox.AddThemeConstantOverride("separation", 5);
 
-		_leaderboardTitle.Text = LocalizationManager.Instance?.GetText("ranking_title") ?? "⚔  Classement";
-		_leaderboardTitle.AddThemeFontSizeOverride("font_size", 17);
-		_leaderboardTitle.AddThemeColorOverride("font_color", new Color(1f, 0.88f, 0.42f, 1f));
-		_leaderboardTitle.HorizontalAlignment = HorizontalAlignment.Center;
+		// Bouton-titre rétractable (remplace le label statique)
+		_leaderboardTitle.Visible = false;
+		string titleText = LocalizationManager.Instance?.GetText("ranking_title") ?? "⚔  Classement";
+		_leaderboardToggleBtn = new Button();
+		_leaderboardToggleBtn.Text = "▼  " + titleText;
+		UIStyle.ApplyStone(_leaderboardToggleBtn);
+		_leaderboardToggleBtn.AddThemeFontSizeOverride("font_size", 15);
+		_leaderboardToggleBtn.AddThemeColorOverride("font_color",         new Color(1f, 0.88f, 0.42f, 1f));
+		_leaderboardToggleBtn.AddThemeColorOverride("font_hover_color",   new Color(1f, 0.96f, 0.70f, 1f));
+		_leaderboardToggleBtn.AddThemeColorOverride("font_pressed_color", new Color(0.90f, 0.65f, 0.20f, 1f));
+		_leaderboardVBox.AddChild(_leaderboardToggleBtn);
+		_leaderboardVBox.MoveChild(_leaderboardToggleBtn, 0);
+		_leaderboardToggleBtn.Pressed += OnLeaderboardTogglePressed;
 
 		// Séparateur doré sous le titre
-		var separator = new HSeparator();
+		_leaderboardSeparator = new HSeparator();
 		var sepStyle = new StyleBoxFlat();
 		sepStyle.BgColor = new Color(1f, 0.88f, 0.42f, 0.55f);
 		sepStyle.ContentMarginTop    = 1f;
 		sepStyle.ContentMarginBottom = 1f;
-		separator.AddThemeStyleboxOverride("separator", sepStyle);
-		separator.AddThemeConstantOverride("separation", 2);
-		_leaderboardVBox.AddChild(separator);
-		_leaderboardVBox.MoveChild(separator, 1);
+		_leaderboardSeparator.AddThemeStyleboxOverride("separator", sepStyle);
+		_leaderboardSeparator.AddThemeConstantOverride("separation", 2);
+		_leaderboardVBox.AddChild(_leaderboardSeparator);
+		_leaderboardVBox.MoveChild(_leaderboardSeparator, 1);
 
 		_leaderboardRows.Text = "";
 		_leaderboardRows.AutowrapMode = TextServer.AutowrapMode.WordSmart;
 		_leaderboardRows.AddThemeFontSizeOverride("font_size", 14);
 		_leaderboardRows.AddThemeColorOverride("font_color", new Color(1f, 0.96f, 0.85f, 1f));
 		_leaderboardRows.VerticalAlignment = VerticalAlignment.Top;
+	}
+
+	private void OnLeaderboardTogglePressed()
+	{
+		_leaderboardExpanded = !_leaderboardExpanded;
+		_leaderboardRows.Visible      = _leaderboardExpanded;
+		_leaderboardSeparator.Visible = _leaderboardExpanded;
+
+		string titleText = LocalizationManager.Instance?.GetText("ranking_title") ?? "⚔  Classement";
+		_leaderboardToggleBtn.Text = (_leaderboardExpanded ? "▼  " : "▶  ") + titleText;
+
+		_leaderboardPanel.OffsetBottom = _leaderboardExpanded
+			? LeaderboardExpandedBottom
+			: _leaderboardPanel.OffsetTop + LeaderboardCollapsedHeight;
 	}
 
 	private void UpdatePriceLabels()
@@ -528,7 +556,8 @@ public partial class GameHUD : Control
 		string goldAbbr      = loc?.GetText("ranking_gold_abbr")     ?? "or";
 
 		var lines = new List<string>();
-		for (int i = 0; i < ranking.Count; i++)
+		int displayCount = Mathf.Min(ranking.Count, 5);
+		for (int i = 0; i < displayCount; i++)
 		{
 			var row = ranking[i];
 			string name  = ResolveLeaderboardName(row.teamId);
