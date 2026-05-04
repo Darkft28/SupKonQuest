@@ -142,10 +142,10 @@ public partial class GameHUD : Control
 		panelStyle.CornerRadiusTopRight    = 6;
 		panelStyle.CornerRadiusBottomLeft  = 6;
 		panelStyle.CornerRadiusBottomRight = 6;
-		panelStyle.ContentMarginLeft   = 12f;
-		panelStyle.ContentMarginTop    = 6f;
-		panelStyle.ContentMarginRight  = 12f;
-		panelStyle.ContentMarginBottom = 10f;
+		panelStyle.ContentMarginLeft   = 16f;
+		panelStyle.ContentMarginTop    = 8f;
+		panelStyle.ContentMarginRight  = 16f;
+		panelStyle.ContentMarginBottom = 14f;
 		_leaderboardPanel.AddThemeStyleboxOverride("panel", panelStyle);
 
 		_leaderboardVBox.AnchorLeft = 0f;
@@ -578,9 +578,9 @@ public partial class GameHUD : Control
 	private void UpdateLeaderboardPanelHeight(int lineCount)
 	{
 		if (_leaderboardPanel == null) return;
-		// bouton ~32px (font15 + margins4×2), séparateur ~4px, chaque ligne ~18px (font13), séparations 4px
-		float contentHeight = 32f + 4f + 4f + 4f + lineCount * 18f;
-		float totalHeight   = contentHeight + 16f; // panel ContentMargin (6 top + 10 bottom)
+		// bouton ~34px (font15 + margins4×2), séparateur ~4px, chaque ligne ~20px (font13 + line spacing), séparations 4px
+		float contentHeight = 34f + 4f + 4f + 4f + lineCount * 20f;
+		float totalHeight   = contentHeight + 22f; // panel ContentMargin (8 top + 14 bottom)
 		_leaderboardPanel.OffsetBottom = _leaderboardPanel.OffsetTop + totalHeight;
 	}
 
