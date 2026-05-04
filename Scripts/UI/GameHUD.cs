@@ -135,10 +135,10 @@ public partial class GameHUD : Control
 		var panelStyle = new StyleBoxTexture();
 		panelStyle.Texture = stoneTexture;
 		panelStyle.ModulateColor = new Color(0.20f, 0.15f, 0.08f, 0.95f);
-		panelStyle.ContentMarginLeft   = 12f;
-		panelStyle.ContentMarginTop    = 12f;
-		panelStyle.ContentMarginRight  = 12f;
-		panelStyle.ContentMarginBottom = 12f;
+		panelStyle.ContentMarginLeft   = 16f;
+		panelStyle.ContentMarginTop    = 16f;
+		panelStyle.ContentMarginRight  = 16f;
+		panelStyle.ContentMarginBottom = 16f;
 		_leaderboardPanel.AddThemeStyleboxOverride("panel", panelStyle);
 
 		// Bordure dorée (même couleur que le hover des boutons)
@@ -580,7 +580,7 @@ public partial class GameHUD : Control
 		if (_leaderboardPanel == null) return;
 		// bouton ~34px, séparateur ~6px, chaque ligne ~20px, séparations VBox 5px entre items
 		float contentHeight = 34f + 5f + 6f + 5f + lineCount * 20f;
-		float totalHeight   = contentHeight + 24f; // marges panel uniformes 12px × 2
+		float totalHeight   = contentHeight + 32f; // marges panel uniformes 16px × 2
 		_leaderboardPanel.OffsetBottom = _leaderboardPanel.OffsetTop + totalHeight;
 	}
 
