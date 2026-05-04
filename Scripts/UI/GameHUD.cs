@@ -122,20 +122,37 @@ public partial class GameHUD : Control
 		_leaderboardPanel.AnchorBottom = 0f;
 		_leaderboardPanel.OffsetLeft = 12f;
 		_leaderboardPanel.OffsetTop = 12f;
-		_leaderboardPanel.OffsetRight = 312f;
-		_leaderboardPanel.OffsetBottom = 300f;
+		_leaderboardPanel.OffsetRight = 320f;
+		_leaderboardPanel.OffsetBottom = 310f;
 
-		var panelStyle = new StyleBoxFlat();
-		panelStyle.BgColor = new Color(0f, 0f, 0f, 0.55f);
-		panelStyle.CornerRadiusTopLeft = 6;
-		panelStyle.CornerRadiusTopRight = 6;
-		panelStyle.CornerRadiusBottomLeft = 6;
-		panelStyle.CornerRadiusBottomRight = 6;
-		panelStyle.ContentMarginLeft = 14f;
-		panelStyle.ContentMarginTop = 10f;
-		panelStyle.ContentMarginRight = 14f;
+		// Fond pierre avec teinte sombre, comme les boutons du menu
+		var stoneTexture = GD.Load<Texture2D>("res://Assets/Menu/Texture/Button_stone.png");
+		var panelStyle = new StyleBoxTexture();
+		panelStyle.Texture = stoneTexture;
+		panelStyle.ModulateColor = new Color(0.20f, 0.15f, 0.08f, 0.95f);
+		panelStyle.ContentMarginLeft   = 14f;
+		panelStyle.ContentMarginTop    = 10f;
+		panelStyle.ContentMarginRight  = 14f;
 		panelStyle.ContentMarginBottom = 10f;
 		_leaderboardPanel.AddThemeStyleboxOverride("panel", panelStyle);
+
+		// Bordure dorée (même couleur que le hover des boutons)
+		var borderPanel = new Panel();
+		var borderStyle = new StyleBoxFlat();
+		borderStyle.BgColor = new Color(0f, 0f, 0f, 0f);
+		borderStyle.BorderColor = new Color(1f, 0.88f, 0.42f, 0.75f);
+		borderStyle.BorderWidthTop    = 2;
+		borderStyle.BorderWidthBottom = 2;
+		borderStyle.BorderWidthLeft   = 2;
+		borderStyle.BorderWidthRight  = 2;
+		borderStyle.CornerRadiusTopLeft     = 4;
+		borderStyle.CornerRadiusTopRight    = 4;
+		borderStyle.CornerRadiusBottomLeft  = 4;
+		borderStyle.CornerRadiusBottomRight = 4;
+		borderPanel.AddThemeStyleboxOverride("panel", borderStyle);
+		borderPanel.SetAnchorsPreset(Control.LayoutPreset.FullRect);
+		borderPanel.MouseFilter = Control.MouseFilterEnum.Ignore;
+		_leaderboardPanel.AddChild(borderPanel);
 
 		_leaderboardVBox.AnchorLeft = 0f;
 		_leaderboardVBox.AnchorTop = 0f;
@@ -145,17 +162,28 @@ public partial class GameHUD : Control
 		_leaderboardVBox.OffsetTop = 8f;
 		_leaderboardVBox.OffsetRight = -10f;
 		_leaderboardVBox.OffsetBottom = -8f;
-		_leaderboardVBox.AddThemeConstantOverride("separation", 6);
+		_leaderboardVBox.AddThemeConstantOverride("separation", 5);
 
-		_leaderboardTitle.Text = "Classement";
-		_leaderboardTitle.AddThemeFontSizeOverride("font_size", 16);
-		_leaderboardTitle.AddThemeColorOverride("font_color", new Color(1f, 0.92f, 0.6f, 1f));
-		_leaderboardTitle.HorizontalAlignment = HorizontalAlignment.Left;
+		_leaderboardTitle.Text = LocalizationManager.Instance?.GetText("ranking_title") ?? "⚔  Classement";
+		_leaderboardTitle.AddThemeFontSizeOverride("font_size", 17);
+		_leaderboardTitle.AddThemeColorOverride("font_color", new Color(1f, 0.88f, 0.42f, 1f));
+		_leaderboardTitle.HorizontalAlignment = HorizontalAlignment.Center;
+
+		// Séparateur doré sous le titre
+		var separator = new HSeparator();
+		var sepStyle = new StyleBoxFlat();
+		sepStyle.BgColor = new Color(1f, 0.88f, 0.42f, 0.55f);
+		sepStyle.ContentMarginTop    = 1f;
+		sepStyle.ContentMarginBottom = 1f;
+		separator.AddThemeStyleboxOverride("separator", sepStyle);
+		separator.AddThemeConstantOverride("separation", 2);
+		_leaderboardVBox.AddChild(separator);
+		_leaderboardVBox.MoveChild(separator, 1);
 
 		_leaderboardRows.Text = "";
 		_leaderboardRows.AutowrapMode = TextServer.AutowrapMode.WordSmart;
 		_leaderboardRows.AddThemeFontSizeOverride("font_size", 14);
-		_leaderboardRows.AddThemeColorOverride("font_color", new Color(1f, 1f, 1f, 1f));
+		_leaderboardRows.AddThemeColorOverride("font_color", new Color(1f, 0.96f, 0.85f, 1f));
 		_leaderboardRows.VerticalAlignment = VerticalAlignment.Top;
 	}
 
@@ -424,7 +452,7 @@ public partial class GameHUD : Control
 		var allCamps = GameManager.Instance.GetAllCamps();
 		if (allCamps == null || allCamps.Count == 0)
 		{
-			_leaderboardRows.Text = "Aucune donnée";
+			_leaderboardRows.Text = LocalizationManager.Instance?.GetText("ranking_no_data") ?? "Aucune donnée";
 			return;
 		}
 
@@ -493,12 +521,21 @@ public partial class GameHUD : Control
 			return a.teamId.CompareTo(b.teamId);
 		});
 
+		var loc = LocalizationManager.Instance;
+		string campSingular  = loc?.GetText("ranking_camps")         ?? "camp";
+		string campPlural    = loc?.GetText("ranking_camps_plural")  ?? "camps";
+		string regAbbr       = loc?.GetText("ranking_regions_abbr")  ?? "rég.";
+		string goldAbbr      = loc?.GetText("ranking_gold_abbr")     ?? "or";
+
 		var lines = new List<string>();
 		for (int i = 0; i < ranking.Count; i++)
 		{
 			var row = ranking[i];
-			string name = ResolveLeaderboardName(row.teamId);
-			lines.Add($"{i + 1}. {name}  |  Camps: {row.camps}  |  Territoires: {row.territories}");
+			string name  = ResolveLeaderboardName(row.teamId);
+			string medal = i == 0 ? "♛" : i == 1 ? "▸" : "  ";
+			string campLabel = row.camps > 1 ? campPlural : campSingular;
+			int gold = GameManager.Instance.GetGold(row.teamId);
+			lines.Add($"{medal} {i + 1}. {name}   {row.camps} {campLabel}  ·  {row.territories} {regAbbr}  ·  {gold} {goldAbbr}");
 		}
 
 		_leaderboardRows.Text = string.Join("\n", lines);
@@ -508,23 +545,27 @@ public partial class GameHUD : Control
 	{
 		var gameState = GetNodeOrNull<GameState>("/root/GameState");
 		int localTeamId = GetLocalTeamId();
+		var loc = LocalizationManager.Instance;
+		string playerLabel = loc?.GetText("ranking_player") ?? "Joueur";
+		string aiLabel     = loc?.GetText("ranking_ai")     ?? "IA";
+		string aiBossLabel = loc?.GetText("ranking_ai_boss") ?? "IA Boss";
 
 		if (teamId == localTeamId)
 		{
 			if (gameState?.IsOnline == true && !string.IsNullOrWhiteSpace(gameState.PlayerDisplayName))
 				return gameState.PlayerDisplayName;
-			return $"Joueur {teamId}";
+			return $"{playerLabel} {teamId}";
 		}
 
 		bool isAi = (gameState?.IsAIMode == true) || AIController.BossTeamIds.Contains(teamId);
 		if (isAi)
 		{
 			if (AIController.BossTeamIds.Contains(teamId))
-				return $"IA Boss {teamId}";
-			return $"IA {teamId}";
+				return $"{aiBossLabel} {teamId}";
+			return $"{aiLabel} {teamId}";
 		}
 
-		return $"Joueur {teamId}";
+		return $"{playerLabel} {teamId}";
 	}
 
 	private void UpdateUnitButtons()
