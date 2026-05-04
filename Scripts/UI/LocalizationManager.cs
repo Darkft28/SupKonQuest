@@ -244,6 +244,53 @@ public partial class LocalizationManager : Node
 			{ Language.EN, " (Host)" },
 			{ Language.ES, " (Anfitrión)" }
 		}},
+
+		// Classement en jeu
+		{ "ranking_title", new Dictionary<Language, string> {
+			{ Language.FR, "⚔  Classement" },
+			{ Language.EN, "⚔  Ranking" },
+			{ Language.ES, "⚔  Clasificación" }
+		}},
+		{ "ranking_camps", new Dictionary<Language, string> {
+			{ Language.FR, "camp" },
+			{ Language.EN, "camp" },
+			{ Language.ES, "campo" }
+		}},
+		{ "ranking_camps_plural", new Dictionary<Language, string> {
+			{ Language.FR, "camps" },
+			{ Language.EN, "camps" },
+			{ Language.ES, "campos" }
+		}},
+		{ "ranking_regions_abbr", new Dictionary<Language, string> {
+			{ Language.FR, "rég." },
+			{ Language.EN, "reg." },
+			{ Language.ES, "reg." }
+		}},
+		{ "ranking_gold_abbr", new Dictionary<Language, string> {
+			{ Language.FR, "or" },
+			{ Language.EN, "gold" },
+			{ Language.ES, "oro" }
+		}},
+		{ "ranking_no_data", new Dictionary<Language, string> {
+			{ Language.FR, "Aucune donnée" },
+			{ Language.EN, "No data" },
+			{ Language.ES, "Sin datos" }
+		}},
+		{ "ranking_player", new Dictionary<Language, string> {
+			{ Language.FR, "Joueur" },
+			{ Language.EN, "Player" },
+			{ Language.ES, "Jugador" }
+		}},
+		{ "ranking_ai", new Dictionary<Language, string> {
+			{ Language.FR, "IA" },
+			{ Language.EN, "AI" },
+			{ Language.ES, "IA" }
+		}},
+		{ "ranking_ai_boss", new Dictionary<Language, string> {
+			{ Language.FR, "IA Boss" },
+			{ Language.EN, "AI Boss" },
+			{ Language.ES, "IA Jefe" }
+		}},
 	};
 
 	public override void _Ready()
