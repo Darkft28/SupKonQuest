@@ -215,6 +215,8 @@ public partial class GameHUD : Control
 			UpdateLeaderboardPanelHeight(_leaderboardLastLineCount);
 		else
 			_leaderboardPanel.OffsetBottom = _leaderboardPanel.OffsetTop + LeaderboardCollapsedHeight;
+
+		_leaderboardToggleBtn.ReleaseFocus();
 	}
 
 	private void UpdatePriceLabels()
@@ -581,7 +583,7 @@ public partial class GameHUD : Control
 
 			// Colonne rang (largeur fixe) : médaille + numéro
 			var rankLabel = new Label();
-			rankLabel.CustomMinimumSize = new Vector2(36, 0);
+			rankLabel.CustomMinimumSize = new Vector2(30, 0);
 			string medal = i == 0 ? "♛" : "";
 			rankLabel.Text = $"{medal}{i + 1}.";
 			rankLabel.HorizontalAlignment = HorizontalAlignment.Right;
