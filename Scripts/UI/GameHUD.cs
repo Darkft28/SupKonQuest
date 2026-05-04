@@ -127,77 +127,77 @@ public partial class GameHUD : Control
 		_leaderboardPanel.AnchorBottom = 0f;
 		_leaderboardPanel.OffsetLeft = 12f;
 		_leaderboardPanel.OffsetTop = 12f;
-		_leaderboardPanel.OffsetRight = 320f;
+		_leaderboardPanel.OffsetRight = 316f;
 		_leaderboardPanel.OffsetBottom = _leaderboardPanel.OffsetTop + LeaderboardCollapsedHeight;
 
-		// Fond pierre avec teinte sombre, comme les boutons du menu
-		var stoneTexture = GD.Load<Texture2D>("res://Assets/Menu/Texture/Button_stone.png");
-		var panelStyle = new StyleBoxTexture();
-		panelStyle.Texture = stoneTexture;
-		panelStyle.ModulateColor = new Color(0.20f, 0.15f, 0.08f, 0.95f);
-		panelStyle.ContentMarginLeft   = 14f;
-		panelStyle.ContentMarginTop    = 10f;
-		panelStyle.ContentMarginRight  = 14f;
+		// Fond sombre chaud + bordure dorée nette (sans texture étirée)
+		var panelStyle = new StyleBoxFlat();
+		panelStyle.BgColor = new Color(0.07f, 0.05f, 0.03f, 0.92f);
+		panelStyle.BorderColor = new Color(1f, 0.88f, 0.42f, 1f);
+		panelStyle.BorderWidthLeft   = 2;
+		panelStyle.BorderWidthTop    = 2;
+		panelStyle.BorderWidthRight  = 2;
+		panelStyle.BorderWidthBottom = 2;
+		panelStyle.CornerRadiusTopLeft     = 6;
+		panelStyle.CornerRadiusTopRight    = 6;
+		panelStyle.CornerRadiusBottomLeft  = 6;
+		panelStyle.CornerRadiusBottomRight = 6;
+		panelStyle.ContentMarginLeft   = 12f;
+		panelStyle.ContentMarginTop    = 6f;
+		panelStyle.ContentMarginRight  = 12f;
 		panelStyle.ContentMarginBottom = 10f;
 		_leaderboardPanel.AddThemeStyleboxOverride("panel", panelStyle);
-
-		// Bordure dorée (même couleur que le hover des boutons)
-		var borderPanel = new Panel();
-		var borderStyle = new StyleBoxFlat();
-		borderStyle.BgColor = new Color(0f, 0f, 0f, 0f);
-		borderStyle.BorderColor = new Color(1f, 0.88f, 0.42f, 0.75f);
-		borderStyle.BorderWidthTop    = 2;
-		borderStyle.BorderWidthBottom = 2;
-		borderStyle.BorderWidthLeft   = 2;
-		borderStyle.BorderWidthRight  = 2;
-		borderStyle.CornerRadiusTopLeft     = 4;
-		borderStyle.CornerRadiusTopRight    = 4;
-		borderStyle.CornerRadiusBottomLeft  = 4;
-		borderStyle.CornerRadiusBottomRight = 4;
-		borderPanel.AddThemeStyleboxOverride("panel", borderStyle);
-		borderPanel.SetAnchorsPreset(Control.LayoutPreset.FullRect);
-		borderPanel.MouseFilter = Control.MouseFilterEnum.Ignore;
-		_leaderboardPanel.AddChild(borderPanel);
 
 		_leaderboardVBox.AnchorLeft = 0f;
 		_leaderboardVBox.AnchorTop = 0f;
 		_leaderboardVBox.AnchorRight = 1f;
 		_leaderboardVBox.AnchorBottom = 1f;
-		_leaderboardVBox.OffsetLeft = 10f;
-		_leaderboardVBox.OffsetTop = 8f;
-		_leaderboardVBox.OffsetRight = -10f;
-		_leaderboardVBox.OffsetBottom = -8f;
-		_leaderboardVBox.AddThemeConstantOverride("separation", 5);
+		_leaderboardVBox.OffsetLeft = 0f;
+		_leaderboardVBox.OffsetTop = 0f;
+		_leaderboardVBox.OffsetRight = 0f;
+		_leaderboardVBox.OffsetBottom = 0f;
+		_leaderboardVBox.AddThemeConstantOverride("separation", 4);
 
-		// Bouton-titre rétractable (remplace le label statique)
+		// Bouton-titre rétractable : transparent, hover gold subtil
 		_leaderboardTitle.Visible = false;
 		string titleText = LocalizationManager.Instance?.GetText("ranking_title") ?? "⚔  Classement";
 		_leaderboardToggleBtn = new Button();
 		_leaderboardToggleBtn.Text = "▼  " + titleText;
-		UIStyle.ApplyStone(_leaderboardToggleBtn);
 		_leaderboardToggleBtn.AddThemeFontSizeOverride("font_size", 15);
 		_leaderboardToggleBtn.AddThemeColorOverride("font_color",         new Color(1f, 0.88f, 0.42f, 1f));
-		_leaderboardToggleBtn.AddThemeColorOverride("font_hover_color",   new Color(1f, 0.96f, 0.70f, 1f));
-		_leaderboardToggleBtn.AddThemeColorOverride("font_pressed_color", new Color(0.90f, 0.65f, 0.20f, 1f));
+		_leaderboardToggleBtn.AddThemeColorOverride("font_hover_color",   new Color(1f, 0.97f, 0.75f, 1f));
+		_leaderboardToggleBtn.AddThemeColorOverride("font_pressed_color", new Color(0.88f, 0.62f, 0.18f, 1f));
+		var btnBase    = new StyleBoxFlat(); btnBase.BgColor    = new Color(0f, 0f, 0f, 0f);
+		var btnHover   = new StyleBoxFlat(); btnHover.BgColor   = new Color(1f, 0.88f, 0.42f, 0.10f);
+		var btnPressed = new StyleBoxFlat(); btnPressed.BgColor = new Color(1f, 0.88f, 0.42f, 0.18f);
+		btnBase.ContentMarginLeft   = btnHover.ContentMarginLeft   = btnPressed.ContentMarginLeft   = 4f;
+		btnBase.ContentMarginRight  = btnHover.ContentMarginRight  = btnPressed.ContentMarginRight  = 4f;
+		btnBase.ContentMarginTop    = btnHover.ContentMarginTop    = btnPressed.ContentMarginTop    = 4f;
+		btnBase.ContentMarginBottom = btnHover.ContentMarginBottom = btnPressed.ContentMarginBottom = 4f;
+		_leaderboardToggleBtn.AddThemeStyleboxOverride("normal",   btnBase);
+		_leaderboardToggleBtn.AddThemeStyleboxOverride("hover",    btnHover);
+		_leaderboardToggleBtn.AddThemeStyleboxOverride("pressed",  btnPressed);
+		_leaderboardToggleBtn.AddThemeStyleboxOverride("focus",    btnBase);
+		_leaderboardToggleBtn.AddThemeStyleboxOverride("disabled", btnBase);
 		_leaderboardVBox.AddChild(_leaderboardToggleBtn);
 		_leaderboardVBox.MoveChild(_leaderboardToggleBtn, 0);
 		_leaderboardToggleBtn.Pressed += OnLeaderboardTogglePressed;
 
-		// Séparateur doré sous le titre
+		// Séparateur doré
 		_leaderboardSeparator = new HSeparator();
 		var sepStyle = new StyleBoxFlat();
-		sepStyle.BgColor = new Color(1f, 0.88f, 0.42f, 0.55f);
+		sepStyle.BgColor = new Color(1f, 0.88f, 0.42f, 0.8f);
 		sepStyle.ContentMarginTop    = 1f;
 		sepStyle.ContentMarginBottom = 1f;
 		_leaderboardSeparator.AddThemeStyleboxOverride("separator", sepStyle);
-		_leaderboardSeparator.AddThemeConstantOverride("separation", 2);
+		_leaderboardSeparator.AddThemeConstantOverride("separation", 1);
 		_leaderboardVBox.AddChild(_leaderboardSeparator);
 		_leaderboardVBox.MoveChild(_leaderboardSeparator, 1);
 
 		_leaderboardRows.Text = "";
 		_leaderboardRows.AutowrapMode = TextServer.AutowrapMode.WordSmart;
-		_leaderboardRows.AddThemeFontSizeOverride("font_size", 14);
-		_leaderboardRows.AddThemeColorOverride("font_color", new Color(1f, 0.96f, 0.85f, 1f));
+		_leaderboardRows.AddThemeFontSizeOverride("font_size", 13);
+		_leaderboardRows.AddThemeColorOverride("font_color", new Color(0.94f, 0.91f, 0.80f, 1f));
 		_leaderboardRows.VerticalAlignment = VerticalAlignment.Top;
 	}
 
@@ -578,9 +578,9 @@ public partial class GameHUD : Control
 	private void UpdateLeaderboardPanelHeight(int lineCount)
 	{
 		if (_leaderboardPanel == null) return;
-		// bouton ~34px, séparateur ~6px, chaque ligne ~20px, séparations VBox 5px entre items
-		float contentHeight = 34f + 5f + 6f + 5f + lineCount * 20f;
-		float totalHeight   = contentHeight + 36f; // panel (10+10) + vbox (8+8)
+		// bouton ~32px (font15 + margins4×2), séparateur ~4px, chaque ligne ~18px (font13), séparations 4px
+		float contentHeight = 32f + 4f + 4f + 4f + lineCount * 18f;
+		float totalHeight   = contentHeight + 16f; // panel ContentMargin (6 top + 10 bottom)
 		_leaderboardPanel.OffsetBottom = _leaderboardPanel.OffsetTop + totalHeight;
 	}
 
