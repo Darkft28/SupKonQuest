@@ -27,9 +27,9 @@ public partial class GameHUD : Control
 	private Button _leaderboardToggleBtn;
 	private HSeparator _leaderboardSeparator;
 	private bool _leaderboardExpanded = true;
+	private int  _leaderboardLastLineCount = 0;
 	private float _leaderboardRefreshTimer = 0f;
 	private const float LeaderboardRefreshInterval = 0.5f;
-	private const float LeaderboardExpandedBottom  = 430f;
 	private const float LeaderboardCollapsedHeight = 50f;
 
 		private static readonly string[] UnitTypes = new[]
@@ -128,7 +128,7 @@ public partial class GameHUD : Control
 		_leaderboardPanel.OffsetLeft = 12f;
 		_leaderboardPanel.OffsetTop = 12f;
 		_leaderboardPanel.OffsetRight = 320f;
-		_leaderboardPanel.OffsetBottom = LeaderboardExpandedBottom;
+		_leaderboardPanel.OffsetBottom = _leaderboardPanel.OffsetTop + LeaderboardCollapsedHeight;
 
 		// Fond pierre avec teinte sombre, comme les boutons du menu
 		var stoneTexture = GD.Load<Texture2D>("res://Assets/Menu/Texture/Button_stone.png");
@@ -210,9 +210,10 @@ public partial class GameHUD : Control
 		string titleText = LocalizationManager.Instance?.GetText("ranking_title") ?? "⚔  Classement";
 		_leaderboardToggleBtn.Text = (_leaderboardExpanded ? "▼  " : "▶  ") + titleText;
 
-		_leaderboardPanel.OffsetBottom = _leaderboardExpanded
-			? LeaderboardExpandedBottom
-			: _leaderboardPanel.OffsetTop + LeaderboardCollapsedHeight;
+		if (_leaderboardExpanded)
+			UpdateLeaderboardPanelHeight(_leaderboardLastLineCount);
+		else
+			_leaderboardPanel.OffsetBottom = _leaderboardPanel.OffsetTop + LeaderboardCollapsedHeight;
 	}
 
 	private void UpdatePriceLabels()
@@ -568,6 +569,19 @@ public partial class GameHUD : Control
 		}
 
 		_leaderboardRows.Text = string.Join("\n", lines);
+		_leaderboardLastLineCount = lines.Count;
+		if (_leaderboardExpanded)
+			UpdateLeaderboardPanelHeight(lines.Count);
+	}
+
+	// Hauteur dynamique : bouton-titre + séparateur + lignes + marges
+	private void UpdateLeaderboardPanelHeight(int lineCount)
+	{
+		if (_leaderboardPanel == null) return;
+		// bouton ~34px, séparateur ~6px, chaque ligne ~20px, séparations VBox ~5px entre items
+		float contentHeight = 34f + 5f + 6f + 5f + lineCount * 20f;
+		float totalHeight   = contentHeight + 16f + 20f; // vbox offsets (8+8) + panel margins (10+10)
+		_leaderboardPanel.OffsetBottom = _leaderboardPanel.OffsetTop + totalHeight;
 	}
 
 	private string ResolveLeaderboardName(int teamId)
