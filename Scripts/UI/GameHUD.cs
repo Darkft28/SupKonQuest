@@ -24,6 +24,7 @@ public partial class GameHUD : Control
 	private VBoxContainer _leaderboardVBox;
 	private Label _leaderboardTitle;
 	private Label _leaderboardRows;
+	private VBoxContainer _leaderboardRowsContainer;
 	private Button _leaderboardToggleBtn;
 	private HSeparator _leaderboardSeparator;
 	private bool _leaderboardExpanded = true;
@@ -194,18 +195,18 @@ public partial class GameHUD : Control
 		_leaderboardVBox.AddChild(_leaderboardSeparator);
 		_leaderboardVBox.MoveChild(_leaderboardSeparator, 1);
 
-		_leaderboardRows.Text = "";
-		_leaderboardRows.AutowrapMode = TextServer.AutowrapMode.WordSmart;
-		_leaderboardRows.AddThemeFontSizeOverride("font_size", 13);
-		_leaderboardRows.AddThemeColorOverride("font_color", new Color(0.94f, 0.91f, 0.80f, 1f));
-		_leaderboardRows.VerticalAlignment = VerticalAlignment.Top;
+		// On cache le label original et on utilise un conteneur de lignes structurées
+		_leaderboardRows.Visible = false;
+		_leaderboardRowsContainer = new VBoxContainer();
+		_leaderboardRowsContainer.AddThemeConstantOverride("separation", 3);
+		_leaderboardVBox.AddChild(_leaderboardRowsContainer);
 	}
 
 	private void OnLeaderboardTogglePressed()
 	{
 		_leaderboardExpanded = !_leaderboardExpanded;
-		_leaderboardRows.Visible      = _leaderboardExpanded;
-		_leaderboardSeparator.Visible = _leaderboardExpanded;
+		_leaderboardRowsContainer.Visible = _leaderboardExpanded;
+		_leaderboardSeparator.Visible     = _leaderboardExpanded;
 
 		string titleText = LocalizationManager.Instance?.GetText("ranking_title") ?? "⚔  Classement";
 		_leaderboardToggleBtn.Text = (_leaderboardExpanded ? "▼  " : "▶  ") + titleText;
@@ -556,30 +557,66 @@ public partial class GameHUD : Control
 		string regAbbr       = loc?.GetText("ranking_regions_abbr")  ?? "rég.";
 		string goldAbbr      = loc?.GetText("ranking_gold_abbr")     ?? "or";
 
-		var lines = new List<string>();
+		// Vider les lignes précédentes
+		foreach (var child in _leaderboardRowsContainer.GetChildren())
+			child.QueueFree();
+
 		int displayCount = Mathf.Min(ranking.Count, 10);
 		for (int i = 0; i < displayCount; i++)
 		{
-			var row = ranking[i];
-			string name  = ResolveLeaderboardName(row.teamId);
-			string medal = i == 0 ? "♛" : i == 1 ? "▸" : "  ";
-			string campLabel = row.camps > 1 ? campPlural : campSingular;
-			int gold = GameManager.Instance.GetGold(row.teamId);
-			lines.Add($"{medal} {i + 1}. {name}   {row.camps} {campLabel}  ·  {row.territories} {regAbbr}  ·  {gold} {goldAbbr}");
+			var entry   = ranking[i];
+			string name = ResolveLeaderboardName(entry.teamId);
+			string campLabel = entry.camps > 1 ? campPlural : campSingular;
+			int gold = GameManager.Instance.GetGold(entry.teamId);
+
+			// Couleur selon le rang
+			Color rowColor = i == 0
+				? new Color(1f,    0.88f, 0.42f, 1f)   // or — 1er
+				: i == 1
+					? new Color(0.88f, 0.88f, 0.88f, 1f) // argent — 2e
+					: new Color(0.94f, 0.91f, 0.80f, 1f); // crème — reste
+
+			var hbox = new HBoxContainer();
+			hbox.AddThemeConstantOverride("separation", 0);
+
+			// Colonne rang (largeur fixe) : médaille + numéro
+			var rankLabel = new Label();
+			rankLabel.CustomMinimumSize = new Vector2(42, 0);
+			string medal = i == 0 ? "♛" : i == 1 ? "▸" : "";
+			rankLabel.Text = $"{medal}{i + 1}.";
+			rankLabel.HorizontalAlignment = HorizontalAlignment.Right;
+			rankLabel.AddThemeFontSizeOverride("font_size", 13);
+			rankLabel.AddThemeColorOverride("font_color", rowColor);
+			hbox.AddChild(rankLabel);
+
+			// Espace fixe entre rang et nom
+			var gap = new Label();
+			gap.CustomMinimumSize = new Vector2(8, 0);
+			gap.Text = "";
+			hbox.AddChild(gap);
+
+			// Colonne nom + stats (flexible)
+			var infoLabel = new Label();
+			infoLabel.Text = $"{name}   {entry.camps} {campLabel}  ·  {entry.territories} {regAbbr}  ·  {gold} {goldAbbr}";
+			infoLabel.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+			infoLabel.AddThemeFontSizeOverride("font_size", 13);
+			infoLabel.AddThemeColorOverride("font_color", rowColor);
+			hbox.AddChild(infoLabel);
+
+			_leaderboardRowsContainer.AddChild(hbox);
 		}
 
-		_leaderboardRows.Text = string.Join("\n", lines);
-		_leaderboardLastLineCount = lines.Count;
+		_leaderboardLastLineCount = displayCount;
 		if (_leaderboardExpanded)
-			UpdateLeaderboardPanelHeight(lines.Count);
+			UpdateLeaderboardPanelHeight(displayCount);
 	}
 
 	// Hauteur dynamique : bouton-titre + séparateur + lignes + marges uniformes 12px
 	private void UpdateLeaderboardPanelHeight(int lineCount)
 	{
 		if (_leaderboardPanel == null) return;
-		// bouton ~34px (font15 + margins4×2), séparateur ~4px, chaque ligne ~20px (font13 + line spacing), séparations 4px
-		float contentHeight = 34f + 4f + 4f + 4f + lineCount * 20f;
+		// bouton ~34px, séparateur ~4px, chaque ligne HBox ~22px (font13 + padding), séparations 4px + 3px
+		float contentHeight = 34f + 4f + 4f + 4f + lineCount * 22f + Mathf.Max(0, lineCount - 1) * 3f;
 		float totalHeight   = contentHeight + 22f; // panel ContentMargin (8 top + 14 bottom)
 		_leaderboardPanel.OffsetBottom = _leaderboardPanel.OffsetTop + totalHeight;
 	}
