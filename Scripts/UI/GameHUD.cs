@@ -142,7 +142,7 @@ public partial class GameHUD : Control
 		panelStyle.CornerRadiusTopRight    = 6;
 		panelStyle.CornerRadiusBottomLeft  = 6;
 		panelStyle.CornerRadiusBottomRight = 6;
-		panelStyle.ContentMarginLeft   = 16f;
+		panelStyle.ContentMarginLeft   = 20f;
 		panelStyle.ContentMarginTop    = 8f;
 		panelStyle.ContentMarginRight  = 16f;
 		panelStyle.ContentMarginBottom = 14f;
