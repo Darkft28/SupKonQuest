@@ -130,16 +130,34 @@ public partial class GameHUD : Control
 		_leaderboardPanel.OffsetRight = 320f;
 		_leaderboardPanel.OffsetBottom = LeaderboardExpandedBottom;
 
-		// Texture pierre, teinte normale (identique à l'état normal des boutons UIStyle.ApplyStone)
+		// Fond pierre avec teinte sombre, comme les boutons du menu
 		var stoneTexture = GD.Load<Texture2D>("res://Assets/Menu/Texture/Button_stone.png");
 		var panelStyle = new StyleBoxTexture();
 		panelStyle.Texture = stoneTexture;
-		panelStyle.ModulateColor = new Color(1f, 1f, 1f, 1f);
+		panelStyle.ModulateColor = new Color(0.20f, 0.15f, 0.08f, 0.95f);
 		panelStyle.ContentMarginLeft   = 14f;
 		panelStyle.ContentMarginTop    = 10f;
 		panelStyle.ContentMarginRight  = 14f;
 		panelStyle.ContentMarginBottom = 10f;
 		_leaderboardPanel.AddThemeStyleboxOverride("panel", panelStyle);
+
+		// Bordure dorée (même couleur que le hover des boutons)
+		var borderPanel = new Panel();
+		var borderStyle = new StyleBoxFlat();
+		borderStyle.BgColor = new Color(0f, 0f, 0f, 0f);
+		borderStyle.BorderColor = new Color(1f, 0.88f, 0.42f, 0.75f);
+		borderStyle.BorderWidthTop    = 2;
+		borderStyle.BorderWidthBottom = 2;
+		borderStyle.BorderWidthLeft   = 2;
+		borderStyle.BorderWidthRight  = 2;
+		borderStyle.CornerRadiusTopLeft     = 4;
+		borderStyle.CornerRadiusTopRight    = 4;
+		borderStyle.CornerRadiusBottomLeft  = 4;
+		borderStyle.CornerRadiusBottomRight = 4;
+		borderPanel.AddThemeStyleboxOverride("panel", borderStyle);
+		borderPanel.SetAnchorsPreset(Control.LayoutPreset.FullRect);
+		borderPanel.MouseFilter = Control.MouseFilterEnum.Ignore;
+		_leaderboardPanel.AddChild(borderPanel);
 
 		_leaderboardVBox.AnchorLeft = 0f;
 		_leaderboardVBox.AnchorTop = 0f;
