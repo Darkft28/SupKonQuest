@@ -135,10 +135,10 @@ public partial class GameHUD : Control
 		var panelStyle = new StyleBoxTexture();
 		panelStyle.Texture = stoneTexture;
 		panelStyle.ModulateColor = new Color(0.20f, 0.15f, 0.08f, 0.95f);
-		panelStyle.ContentMarginLeft   = 16f;
-		panelStyle.ContentMarginTop    = 16f;
-		panelStyle.ContentMarginRight  = 16f;
-		panelStyle.ContentMarginBottom = 16f;
+		panelStyle.ContentMarginLeft   = 14f;
+		panelStyle.ContentMarginTop    = 10f;
+		panelStyle.ContentMarginRight  = 14f;
+		panelStyle.ContentMarginBottom = 10f;
 		_leaderboardPanel.AddThemeStyleboxOverride("panel", panelStyle);
 
 		// Bordure dorée (même couleur que le hover des boutons)
@@ -163,10 +163,10 @@ public partial class GameHUD : Control
 		_leaderboardVBox.AnchorTop = 0f;
 		_leaderboardVBox.AnchorRight = 1f;
 		_leaderboardVBox.AnchorBottom = 1f;
-		_leaderboardVBox.OffsetLeft = 0f;
-		_leaderboardVBox.OffsetTop = 0f;
-		_leaderboardVBox.OffsetRight = 0f;
-		_leaderboardVBox.OffsetBottom = 0f;
+		_leaderboardVBox.OffsetLeft = 10f;
+		_leaderboardVBox.OffsetTop = 8f;
+		_leaderboardVBox.OffsetRight = -10f;
+		_leaderboardVBox.OffsetBottom = -8f;
 		_leaderboardVBox.AddThemeConstantOverride("separation", 5);
 
 		// Bouton-titre rétractable (remplace le label statique)
@@ -580,7 +580,7 @@ public partial class GameHUD : Control
 		if (_leaderboardPanel == null) return;
 		// bouton ~34px, séparateur ~6px, chaque ligne ~20px, séparations VBox 5px entre items
 		float contentHeight = 34f + 5f + 6f + 5f + lineCount * 20f;
-		float totalHeight   = contentHeight + 32f; // marges panel uniformes 16px × 2
+		float totalHeight   = contentHeight + 36f; // panel (10+10) + vbox (8+8)
 		_leaderboardPanel.OffsetBottom = _leaderboardPanel.OffsetTop + totalHeight;
 	}
 
