@@ -1,7 +1,7 @@
 # Godot 4+ specific ignores
 .godot/
 /android/
-
+*addons/
 # Documentation et fichiers de configuration personnels
 .claude/
 .copilot/
