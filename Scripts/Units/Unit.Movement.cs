@@ -196,6 +196,14 @@ public partial class Unit
 					}
 				}
 
+				if (_currentState == UnitState.AttackingCamp)
+				{
+					_campTarget = null;
+					ChangeState(UnitState.Idle);
+					_stuckFrames = 0;
+					return;
+				}
+
 				_targetPosition = null;
 				ChangeState(UnitState.Idle);
 			}

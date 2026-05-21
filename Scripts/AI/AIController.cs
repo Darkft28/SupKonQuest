@@ -638,7 +638,7 @@ public partial class AIController : Node
 		int homeRegion = GameManager.Instance.GetHomeRegion(_teamId);
 
 		var candidates = allCamps
-			.Where(c => c.GetTeamId() != _teamId)
+			.Where(c => c.GetTeamId() != _teamId && IsLandReachable(c))
 			.Select(c => (camp: c, score: ScoreCamp(c, tier, homeRegion)))
 			.OrderByDescending(x => x.score)
 			.ToList();
@@ -659,6 +659,9 @@ public partial class AIController : Node
 	{
 		float score = 0f;
 		Vector2 aiCenter = GetAICenter();
+
+		if (!IsLandReachable(camp))
+			score -= 10000f;
 
 		// ── Bonus : camp neutre (défenses limitées) ───────────────────────────
 		if (camp.IsNeutralCamp)
@@ -686,6 +689,26 @@ public partial class AIController : Node
 			score = -dist; // simplement le plus proche
 
 		return score;
+	}
+
+	private HashSet<int> GetReachableLandRegions()
+	{
+		var graph = MapGenerator.TerritoryGraph;
+		var ownedRegions = GetAICamps()
+			.Select(c => c.RegionId)
+			.Where(r => r > 0);
+		return TerritoryConnectivity.GetReachableRegions(graph, ownedRegions);
+	}
+
+	private bool IsLandReachable(CampSimple camp)
+	{
+		if (camp.RegionId <= 0)
+			return true;
+
+		if (MapGenerator.TerritoryGraph == null)
+			return true;
+
+		return GetReachableLandRegions().Contains(camp.RegionId);
 	}
 
 	// ── Défense ──────────────────────────────────────────────────────────────

@@ -70,6 +70,7 @@ public partial class CampSimple
 	private const int IdObjetArbreSpawn = 100;
 	private const int IdObjetMontagneSpawn = 101;
 	private const float SpawnRadius = 525f;
+	public const float DefenderRelevanceRadius = 1200f;
 
 	private bool IsSpawnBlocked(Vector2 worldPos)
 	{
@@ -238,10 +239,28 @@ public partial class CampSimple
 		return new System.Collections.Generic.List<Unit>(_defenders);
 	}
 
+	public bool IsRelevantDefender(Unit unit)
+	{
+		if (unit == null || !IsInstanceValid(unit) || unit.GetCurrentHealth() <= 0)
+			return false;
+
+		return GlobalPosition.DistanceTo(unit.GlobalPosition) <= DefenderRelevanceRadius;
+	}
+
+	public System.Collections.Generic.List<Unit> GetRelevantDefenders()
+	{
+		var relevant = new System.Collections.Generic.List<Unit>();
+		foreach (var unit in GetLiveDefenders())
+		{
+			if (IsRelevantDefender(unit))
+				relevant.Add(unit);
+		}
+		return relevant;
+	}
+
 	public bool AreAllUnitsDefeated()
 	{
-		CleanDeadUnits();
-		return _defenders.Count == 0;
+		return GetRelevantDefenders().Count == 0;
 	}
 
 	public int GetQueueCount()
