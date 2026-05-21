@@ -194,22 +194,36 @@ public partial class CampSimple
 
 	public bool CanBuyUnit(string unitType)
 	{
-		if (GameManager.Instance == null)
-			return false;
+		return GetBuyUnitDenyReason(unitType) == null;
+	}
 
-		// Limite globale : total d'unités de cette équipe sur toute la carte
-		if (GameManager.Instance.GetTeamUnitCount(TeamId) >= GameManager.Instance.GetMaxUnitsForTeam(TeamId))
-			return false;
+	/// <summary>Raison d'achat refusé, ou null si l'achat est possible.</summary>
+	public string GetBuyUnitDenyReason(string unitType)
+	{
+		if (GameManager.Instance == null)
+			return "Jeu non initialisé";
+
+		if (IsNeutralCamp)
+			return "Camp neutre";
+
+		int unitCount = GameManager.Instance.GetTeamUnitCount(TeamId);
+		int maxUnits = GameManager.Instance.GetMaxUnitsForTeam(TeamId);
+		if (unitCount >= maxUnits)
+			return $"Limite d'unités ({unitCount}/{maxUnits})";
 
 		int totalInQueue = _productionQueue.Count + (_currentProduction != null ? 1 : 0);
 		if (totalInQueue >= MaxQueueSize)
-			return false;
+			return "File de production pleine";
 
 		if (GameManager.Instance.GetUnlockedTier(TeamId) < GameManager.GetUnitTier(unitType))
-			return false;
+			return $"Palier {GameManager.GetUnitTier(unitType)} requis";
 
 		var stats = UnitStats.GetStats(unitType);
-		return GameManager.Instance.CanAfford(TeamId, stats.Price);
+		int gold = GameManager.Instance.GetGold(TeamId);
+		if (gold < stats.Price)
+			return $"Or insuffisant ({gold}g / {stats.Price}g)";
+
+		return null;
 	}
 
 	private void CleanDeadUnits()

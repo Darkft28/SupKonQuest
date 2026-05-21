@@ -34,6 +34,8 @@ public partial class Ship
 	{
 		if (target == null || !IsInstanceValid(target) || !target.IsInsideTree()) return;
 		if (target.GetCurrentHealth() <= 0) return;
+		if (target.GetTeamId() == TeamId) return;
+		if (target.GetShipType() == "Transport") return;
 
 		SpawnProjectile(target);
 	}
@@ -42,7 +44,12 @@ public partial class Ship
 	{
 		var projectile = ShipProjectileScene?.Instantiate<ShipProjectile>() ?? new ShipProjectile();
 		GetTree().CurrentScene.AddChild(projectile);
-		projectile.Initialize(GlobalPosition, target, _stats.Attack, TeamId, 300f);
+
+		bool isDestroyer = ShipType == "Destroyer";
+		var type = isDestroyer ? ShipProjectile.ShipProjectileType.Cannonball : ShipProjectile.ShipProjectileType.Arrow;
+		float speed = isDestroyer ? 300f : 500f;
+
+		projectile.Initialize(GlobalPosition, target, _stats.Attack, TeamId, type, speed, isDestroyer);
 	}
 
 	public void TakeDamage(float damage)
@@ -79,23 +86,25 @@ public partial class Ship
 
 	private void OnBodyEnteredDetectionZone(Node2D body)
 	{
-		// Transport ne combat pas
 		if (ShipType == "Transport") return;
+		if (body is Unit) return;
 
 		if (body is Ship otherShip)
 		{
-			if (otherShip.GetTeamId() != TeamId && otherShip.GetCurrentHealth() > 0)
-			{
-				if (_currentTarget == null && _currentState == ShipState.Idle)
-				{
-					SetNewTarget(otherShip);
-				}
-			}
+			if (otherShip.GetTeamId() == TeamId) return;
+			if (otherShip.GetShipType() == "Transport") return;
+			if (otherShip.GetCurrentHealth() <= 0) return;
+
+			if (_currentTarget == null && _currentState == ShipState.Idle)
+				SetNewTarget(otherShip);
 		}
 	}
 
 	private void SetNewTarget(Ship target)
 	{
+		if (target.GetTeamId() == TeamId) return;
+		if (target.GetShipType() == "Transport") return;
+
 		_currentTarget = target;
 		float distanceToTarget = GlobalPosition.DistanceTo(target.GlobalPosition);
 
@@ -115,6 +124,8 @@ public partial class Ship
 		if (!IsInstanceValid(_currentTarget)) return false;
 		if (!_currentTarget.IsInsideTree()) return false;
 		if (_currentTarget.GetCurrentHealth() <= 0) return false;
+		if (_currentTarget.GetTeamId() == TeamId) return false;
+		if (_currentTarget.GetShipType() == "Transport") return false;
 		return true;
 	}
 
@@ -130,6 +141,7 @@ public partial class Ship
 			if (node is Ship otherShip)
 			{
 				if (otherShip.GetTeamId() == TeamId) continue;
+				if (otherShip.GetShipType() == "Transport") continue;
 				if (otherShip.GetCurrentHealth() <= 0) continue;
 
 				float distance = GlobalPosition.DistanceTo(otherShip.GlobalPosition);

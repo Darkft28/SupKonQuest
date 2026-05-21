@@ -37,7 +37,7 @@ public static class ShipStats
 			Attack = 20f,
 			Defense = 15f,
 			Speed = 100f,
-			Range = 250f,
+			Range = 300f,
 			Price = 200,
 			ProductionTime = 5f,
 			Capacity = 0
@@ -55,6 +55,28 @@ public static class ShipStats
 			Capacity = 0
 		}
 	};
+
+	public const int MaxActiveShipsPerTeam = 5;
+
+	public static int CountActiveShipsForTeam(int teamId, SceneTree tree)
+	{
+		if (tree == null || teamId <= 0)
+			return 0;
+
+		int count = 0;
+		foreach (var node in tree.GetNodesInGroup("ships"))
+		{
+			if (node is Ship ship && ship.GetTeamId() == teamId && ship.GetCurrentHealth() > 0)
+				count++;
+		}
+
+		return count;
+	}
+
+	public static bool IsFleetAtCapacity(int teamId, SceneTree tree)
+	{
+		return CountActiveShipsForTeam(teamId, tree) >= MaxActiveShipsPerTeam;
+	}
 
 	public static ShipStatsData GetStats(string shipType)
 	{

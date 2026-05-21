@@ -29,34 +29,11 @@ public partial class NetworkSync : Node
 	{
 		if (!IsMultiplayer()) return;
 
-		if (IsRelayMode())
-		{
-			_relayGoldSnapshotTimer += (float)delta;
-			if (_relayGoldSnapshotTimer >= RelayGoldSnapshotInterval)
-			{
-				_relayGoldSnapshotTimer = 0f;
-				GameManager.Instance?.BroadcastRelayGoldSnapshotForLocalTeam();
-			}
-			return;
-		}
-
 		_syncTimer += (float)delta;
 		if (_syncTimer >= SyncInterval)
 		{
 			_syncTimer = 0f;
 			SendEntityStatesBatch();
-		}
-
-		if (Multiplayer.IsServer())
-		{
-			_goldSyncTimer += (float)delta;
-			if (_goldSyncTimer >= GoldSyncInterval)
-			{
-				_goldSyncTimer = 0f;
-				int team1Gold = GameManager.Instance?.GetGold(1) ?? 0;
-				int team2Gold = GameManager.Instance?.GetGold(2) ?? 0;
-				Rpc(nameof(RpcSyncGold), team1Gold, team2Gold);
-			}
 		}
 	}
 
@@ -134,6 +111,7 @@ public partial class NetworkSync : Node
 		ship.IsLocalAuthority = false;
 
 		GetTree().CurrentScene.AddChild(ship);
+		ship.SetCurrentHealth(health);
 	}
 
 	// =============================================
@@ -387,17 +365,5 @@ public partial class NetworkSync : Node
 				ship.ApplyNetworkState(new Vector2(posXs[i], posYs[i]), healths[i]);
 			}
 		}
-	}
-
-	// =============================================
-	// SYNC OR (Reliable, toutes les 10s, serveur -> clients)
-	// =============================================
-
-	[Rpc(MultiplayerApi.RpcMode.Authority, CallLocal = false, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
-	private void RpcSyncGold(int team1Gold, int team2Gold)
-	{
-		// Correction légère : seulement si écart > 5 or pour éviter les micro-corrections
-		GameManager.Instance?.SyncGold(1, team1Gold);
-		GameManager.Instance?.SyncGold(2, team2Gold);
 	}
 }

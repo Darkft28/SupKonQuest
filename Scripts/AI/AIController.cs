@@ -39,6 +39,9 @@ public partial class AIController : Node
 	private static readonly int[]   MinRallyUnits    = { 1,   4,    6   };
 	// Rayon pour considérer une unité comme "arrivée" au point de ralliement
 	private static readonly float[] RallyArrivalRadius = { 0f, 600f, 500f };
+	// Offensive navale Hard avant home region complète : chance par tick + cooldown min entre vagues
+	private static readonly float[] NavalEarlyAttackChance = { 0f,  0f,   0.20f };
+	private static readonly float[] NavalAttackCooldown    = { 0f,  0f,   30f  };
 
 	// ── Composition d'armée cible (ratio par type) ────────────────────────────
 	// Easy : spam Infantry, jamais de soutien
@@ -83,6 +86,7 @@ public partial class AIController : Node
 	private float _tickTimer;
 	private float _gameTimer;
 	private float _lastAttackTimer;
+	private float _lastNavalAttackTimer;
 
 	private bool  _reactionPending;
 	private float _reactionTimer;
@@ -107,8 +111,9 @@ public partial class AIController : Node
 	public override void _Process(double delta)
 	{
 		float dt = (float)delta;
-		_gameTimer      += dt;
-		_lastAttackTimer += dt;
+		_gameTimer           += dt;
+		_lastAttackTimer     += dt;
+		_lastNavalAttackTimer += dt;
 
 		// Réaction différée en cours
 		if (_reactionPending)
@@ -165,9 +170,11 @@ public partial class AIController : Node
 			return; // on attend le prochain tick pour produire
 		}
 
-		// Medium/Hard : achète un port dès qu'une région entière est contrôlée
 		if (_diffIdx > 0)
 			ManagePortBuying(aiCamps, gold);
+
+		if (_diffIdx > 0)
+			ManageShipProduction(aiCamps, tier, gold);
 
 		// Easy : dépense tout sans réfléchir
 		// Medium/Hard : économise si on approche du seuil tier 2
@@ -213,10 +220,10 @@ public partial class AIController : Node
 
 	// Achète un port uniquement si l'équipe contrôle entièrement au moins une région.
 	// Choisit le camp le plus proche de l'eau dont la côte est dans le territoire de l'équipe.
-	private void ManagePortBuying(System.Collections.Generic.List<CampSimple> aiCamps, int gold)
+	private void ManagePortBuying(List<CampSimple> aiCamps, int gold)
 	{
 		if (gold < CampSimple.PortCost) return;
-		if (!ControlsAnyFullRegion()) return;
+		if (!CanBuildPort()) return;
 
 		var sorted = aiCamps
 			.Where(c => c.CanBuyPort())
@@ -225,12 +232,76 @@ public partial class AIController : Node
 
 		foreach (var camp in sorted)
 		{
-			if (camp.AIBuyPort())
+			if (camp.TryAIPlacePort())
 			{
 				GD.Print($"[IA team {_teamId}] Port construit au camp #{camp.CampId}");
 				return;
 			}
 		}
+	}
+
+	private bool CanBuildPort()
+	{
+		if (_diffIdx == 1) return ControlsHomeRegionFully();
+		if (_diffIdx >= 2) return ControlsAnyFullRegion();
+		return false;
+	}
+
+	private bool CanProduceShips()
+	{
+		if (_diffIdx == 1) return ControlsHomeRegionFully();
+		if (_diffIdx >= 2) return ControlsHomeRegionFully() || ControlsAnyFullRegion();
+		return false;
+	}
+
+	private void ManageShipProduction(List<CampSimple> aiCamps, int tier, int gold)
+	{
+		if (!CanProduceShips()) return;
+
+		var portCamps = aiCamps.Where(c => c.HasPort).ToList();
+		if (portCamps.Count == 0) return;
+
+		string shipType = PickShipToBuy(tier, gold);
+		if (shipType == null) return;
+
+		var camp = portCamps
+			.Where(c => c.CanBuyShip(shipType))
+			.OrderBy(c => c.GetShipQueueCount())
+			.FirstOrDefault();
+
+		if (camp != null)
+		{
+			camp.BuyShip(shipType);
+			GD.Print($"[IA team {_teamId}] Achat bateau {shipType} (tier {tier})");
+		}
+	}
+
+	private string PickShipToBuy(int tier, int gold)
+	{
+		if (_diffIdx == 1)
+		{
+			if (tier >= 3 && gold >= ShipStats.GetStats("Destroyer").Price
+				&& GameManager.GetShipTier("Destroyer") <= tier)
+				return "Destroyer";
+			if (GameManager.GetShipTier("Fregate") <= tier)
+				return "Fregate";
+			return null;
+		}
+
+		if (_diffIdx >= 2)
+		{
+			if (_rng.NextDouble() < 0.15 && GameManager.GetShipTier("Transport") <= tier)
+				return "Transport";
+
+			if (tier >= 3 && gold >= ShipStats.GetStats("Destroyer").Price
+				&& _rng.NextDouble() < 0.4f)
+				return "Destroyer";
+
+			if (GameManager.GetShipTier("Fregate") <= tier)
+				return "Fregate";
+		}
+
+		return null;
 	}
 
 	// Vrai si l'équipe contrôle 100% des camps d'au moins une région.
@@ -256,6 +327,21 @@ public partial class AIController : Node
 				return true;
 		}
 		return false;
+	}
+
+	private bool ControlsHomeRegionFully()
+	{
+		if (GameManager.Instance == null) return false;
+		int homeRegion = GameManager.Instance.GetHomeRegion(_teamId);
+		if (homeRegion <= 0) return false;
+
+		var allCamps = GameManager.Instance.GetAllCamps();
+		if (allCamps == null) return false;
+
+		var homeCamps = allCamps.Where(c => c.RegionId == homeRegion).ToList();
+		if (homeCamps.Count == 0) return false;
+
+		return homeCamps.TrueForAll(c => c.GetTeamId() == _teamId && !c.IsNeutralCamp);
 	}
 
 	/// <summary>
@@ -351,6 +437,9 @@ public partial class AIController : Node
 	private void ManageCombat(int tier, int gold)
 	{
 		if (_gameTimer < FirstAttackDelay[_diffIdx]) return;
+
+		if (_diffIdx > 0)
+			ManageNavalCombat(tier);
 
 		bool forceAttack = _lastAttackTimer >= ForcedAttackDelay[_diffIdx];
 
@@ -463,6 +552,75 @@ public partial class AIController : Node
 		}
 		_lastAttackTimer = 0f;
 		GD.Print($"[IA] {units.Count} unités → camp #{target.CampId} (team {target.GetTeamId()})");
+	}
+
+	// ── Combat naval (Medium / Hard) ─────────────────────────────────────────
+
+	private void ManageNavalCombat(int tier)
+	{
+		if (!CanRunNavalOffensive()) return;
+
+		var combatShips = GetIdleCombatShips();
+		if (combatShips.Count == 0) return;
+
+		var targetCamp = ChooseNavalTarget();
+		if (targetCamp == null) return;
+
+		var anchorCamp = GetAICamps().FirstOrDefault(c => c.HasPort) ?? GetAICamps().FirstOrDefault();
+		if (anchorCamp == null) return;
+
+		Vector2 moveTarget = anchorCamp.FindWaterApproachNear(targetCamp.GlobalPosition);
+		if (!anchorCamp.IsWaterAtWorldPos(moveTarget))
+			return;
+
+		foreach (var ship in combatShips)
+			ship.MoveTo(moveTarget + RandomOffset(120f));
+
+		_lastNavalAttackTimer = 0f;
+		GD.Print($"[IA team {_teamId}] {combatShips.Count} bateaux → eau près camp #{targetCamp.CampId}");
+	}
+
+	private bool CanRunNavalOffensive()
+	{
+		if (_diffIdx <= 0) return false;
+		if (ControlsHomeRegionFully()) return true;
+		if (_diffIdx < 2) return false;
+
+		if (_lastNavalAttackTimer < NavalAttackCooldown[_diffIdx])
+			return false;
+
+		return _rng.NextDouble() < NavalEarlyAttackChance[_diffIdx];
+	}
+
+	private CampSimple ChooseNavalTarget()
+	{
+		var allCamps = GameManager.Instance?.GetAllCamps();
+		if (allCamps == null) return null;
+
+		var coastalEnemies = allCamps
+			.Where(c => c.GetTeamId() != _teamId && c.GetNearbyWaterCount() > 0)
+			.OrderBy(c => GetAICenter().DistanceTo(c.GlobalPosition))
+			.ToList();
+
+		if (coastalEnemies.Count == 0) return null;
+
+		int pick = ErrorRate[_diffIdx] > 0f && _rng.NextDouble() < ErrorRate[_diffIdx] * 0.5f
+			? _rng.Next(Mathf.Min(coastalEnemies.Count, 3))
+			: 0;
+
+		return coastalEnemies[pick];
+	}
+
+	private List<Ship> GetIdleCombatShips()
+	{
+		return GetTree().GetNodesInGroup("ships")
+			.OfType<Ship>()
+			.Where(s => IsInstanceValid(s)
+				&& s.GetTeamId() == _teamId
+				&& s.GetCurrentHealth() > 0
+				&& s.GetShipType() != "Transport"
+				&& !s.GetIsMoving())
+			.ToList();
 	}
 
 	// ── Ciblage (Utility Scoring) ─────────────────────────────────────────────

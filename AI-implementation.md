@@ -1,8 +1,6 @@
 # Idées d'implémentation IA — SupKonQuest
 
-## Problème actuel
-
-En mode FFA avec plusieurs IA Easy, les combats entre bots sont des stalemates infinis : toutes les IAs ont le même niveau, aucune ne prend l'avantage. Le joueur n'est jamais forcé de s'engager au-delà de sa région.
+## Une partie de ces idées sont déja implémentées
 
 ---
 

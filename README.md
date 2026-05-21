@@ -37,6 +37,7 @@ Si vous n'avez pas encore de serveur, le mode solo fonctionne sans Nakama.
 Pour tester le mode en ligne (auth guest + matchmaking + lobby), lancez un Nakama local.
 
 Prerequis minimaux:
+
 - Docker Desktop
 
 Commandes (PowerShell):
@@ -48,6 +49,7 @@ docker run --name nakama --network nakama-net -p 7350:7350 -p 7349:7349 -d heroi
 ```
 
 Le projet utilise par defaut ces valeurs dans `project.godot`:
+
 - `nakama/scheme = "http"`
 - `nakama/host = "127.0.0.1"`
 - `nakama/port = 7350`
@@ -152,14 +154,16 @@ Le serveur genere un seed aleatoire, l'envoie via RPC aux clients. Les positions
 
 ### Tuiles
 
-| ID | Biome | Praticable |
-|----|-------|-----------|
-| 6 | Eau | Non (navires seulement) |
-| 1 | Sable | Oui |
-| 0 | Herbe | Oui |
-| 3 | Foret | Oui |
-| 5 | Roche | Non |
-| 4 | Neige | Non |
+
+| ID  | Biome | Praticable              |
+| --- | ----- | ----------------------- |
+| 6   | Eau   | Non (navires seulement) |
+| 1   | Sable | Oui                     |
+| 0   | Herbe | Oui                     |
+| 3   | Foret | Oui                     |
+| 5   | Roche | Non                     |
+| 4   | Neige | Non                     |
+
 
 Carte : 256x256 tuiles de 128px = ~32 000 x 32 000 px.
 
@@ -197,16 +201,18 @@ Detectection de blocage : si vitesse reelle < 10% de la vitesse attendue pendant
 
 ### Stats des unites
 
-| Type | Tier | Prix | PV | Attaque | Defense | Vitesse | Portee | Production |
-|------|------|------|----|---------|---------|---------|--------|------------|
-| Infantry | 1 | 50g | 100 | 15 | 10 | 150 | 100 | 2s |
-| Support | 1 | 75g | 80 | 8 | 5 | 120 | 100 | 3s |
-| Range | 1 | 80g | 70 | 20 | 5 | 100 | 300 | 3s |
-| Heal | 2 | 100g | 60 | 0 | 3 | 100 | 150 | 3s |
-| AntiArmor | 2 | 120g | 80 | 35 | 8 | 90 | 120 | 4s |
-| Mortar | 3 | 130g | 50 | 40 | 3 | 60 | 400 | 4s |
-| Heavy | 3 | 150g | 150 | 25 | 20 | 70 | 100 | 5s |
-| Tank | 3 | 200g | 200 | 30 | 25 | 50 | 100 | 6s |
+
+| Type      | Tier | Prix | PV  | Attaque | Defense | Vitesse | Portee | Production |
+| --------- | ---- | ---- | --- | ------- | ------- | ------- | ------ | ---------- |
+| Infantry  | 1    | 50g  | 100 | 15      | 10      | 150     | 100    | 2s         |
+| Support   | 1    | 75g  | 80  | 8       | 5       | 120     | 100    | 3s         |
+| Range     | 1    | 80g  | 70  | 20      | 5       | 100     | 300    | 3s         |
+| Heal      | 2    | 100g | 60  | 0       | 3       | 100     | 150    | 3s         |
+| AntiArmor | 2    | 120g | 80  | 35      | 8       | 90      | 120    | 4s         |
+| Mortar    | 3    | 130g | 50  | 40      | 3       | 60      | 400    | 4s         |
+| Heavy     | 3    | 150g | 150 | 25      | 20      | 70      | 100    | 5s         |
+| Tank      | 3    | 200g | 200 | 30      | 25      | 50      | 100    | 6s         |
+
 
 ### Formule de degats
 
@@ -227,11 +233,13 @@ Formule scalaire — la defense reduit progressivement (100 defense = 50% reduct
 
 **Scripts :** `Scripts/Ships/`
 
-| Type | Tier | PV | Attaque | Defense | Vitesse | Portee | Prix | Production | Capacite |
-|------|------|-----|---------|---------|---------|--------|------|-----------|---------|
-| Transport | 1 | 200 | 0 | 10 | 120 | - | 150g | 5s | 10 unites |
-| Fregate | 3 | 180 | 20 | 15 | 100 | 250 | 200g | 5s | - |
-| Destroyer | 3 | 250 | 35 | 20 | 80 | 350 | 300g | 7s | - |
+
+| Type      | Tier | PV  | Attaque | Defense | Vitesse | Portee | Prix | Production | Capacite  |
+| --------- | ---- | --- | ------- | ------- | ------- | ------ | ---- | ---------- | --------- |
+| Transport | 1    | 200 | 0       | 10      | 120     | -      | 150g | 5s         | 10 unites |
+| Fregate   | 3    | 180 | 20      | 15      | 100     | 250    | 200g | 5s         | -         |
+| Destroyer | 3    | 250 | 35      | 20      | 80      | 350    | 300g | 7s         | -         |
+
 
 Un **port** s'achete manuellement depuis le HUD (bouton **⚓ Port — 500g**) puis le joueur clique sur une tuile cotiere pour le poser. L'orientation est auto-detectee selon la direction de l'eau adjacente. Le port dispose de sa propre file de production (max 5 navires). Le Transport peut embarquer jusqu'a 10 unites terrestres et les debarquer sur une cote. Le placement peut etre annule (or rembourse).
 
@@ -239,8 +247,8 @@ Un **port** s'achete manuellement depuis le HUD (bouton **⚓ Port — 500g**) p
 
 **Script :** `Scripts/Camps/CampSimple.cs` + partials
 
-- 750 PV, genere 500 or/sec
-- **Tourelle defensive** : 15 degats/sec a 600px (active contre les ennemis)
+- 600 PV, genere 500 or/sec
+- **Tourelle defensive** : 5 degats/sec a 600px (active contre les ennemis)
 - **File de production** : `Queue<string>` max 7 unites, un seul type produit a la fois
 
 ### Capture (deux phases)
@@ -254,13 +262,15 @@ Recompenses : +50 or instantane, 3 unites bonus spawnees (Infantry, Range, Infan
 
 ### Sources d'or
 
-| Source | Montant |
-|--------|---------|
-| Passif joueur | +500 or/sec |
-| Par camp possede | +50 or/sec |
-| Capture d'un camp | +50 or instantane |
-| Or stocke dans camp neutre | Transfere au moment de la capture |
-| Bonus region (region entiere controlee) | +30 or/sec |
+
+| Source                                  | Montant                           |
+| --------------------------------------- | --------------------------------- |
+| Passif joueur                           | +500 or/sec                       |
+| Par camp possede                        | +50 or/sec                        |
+| Capture d'un camp                       | +50 or instantane                 |
+| Or stocke dans camp neutre              | Transfere au moment de la capture |
+| Bonus region (region entiere controlee) | +30 or/sec                        |
+
 
 Or de depart : 100 or.
 
@@ -272,11 +282,13 @@ La carte est divisee en regions (3 sur Irridium, 4 sur Alabasta). Si une equipe 
 
 Chaque equipe progresse sur 3 paliers de production :
 
-| Palier | Condition de deblocage | Unites disponibles |
-|--------|------------------------|-------------------|
-| Tier 1 | Depart | Infantry, Support, Range, Transport |
-| Tier 2 | Achat 1500 or | + Heal, AntiArmor |
+
+| Palier | Condition de deblocage                          | Unites disponibles                        |
+| ------ | ----------------------------------------------- | ----------------------------------------- |
+| Tier 1 | Depart                                          | Infantry, Support, Range, Transport       |
+| Tier 2 | Achat 1500 or                                   | + Heal, AntiArmor                         |
 | Tier 3 | Controler tous les camps de sa region d'origine | + Mortar, Heavy, Tank, Fregate, Destroyer |
+
 
 Le bouton de deblocage tier 2 est visible dans le HUD quand un camp est selectionne.
 
@@ -290,21 +302,25 @@ Controler 100% des camps non-neutres. Verifie chaque seconde par `VictoryManager
 
 L'IA controle les equipes bot (mode solo ou FFA). Architecture **Utility AI** : chaque tick, l'IA score ses options (production, attaque, defense) et choisit la meilleure. Une instance `AIController` est creee par equipe bot dans `MapGenerator.InitAIController()`.
 
-| Parametre | Easy | Medium | Hard |
-|-----------|------|--------|------|
-| Tick de decision | 6s | 3.5s | 2s |
-| Max unites | 8 | 16 | 28 |
-| Delai premiere attaque | 20s | 12s | 5s |
-| Delai de reaction | 5s | 1.5s | 0.3s |
-| Taux d'erreur cible | 40% | 15% | 0% |
-| Ratio defense | 0% | 25% | 30% |
+
+| Parametre              | Easy | Medium | Hard |
+| ---------------------- | ---- | ------ | ---- |
+| Tick de decision       | 6s   | 3.5s   | 2s   |
+| Max unites             | 8    | 16     | 28   |
+| Delai premiere attaque | 20s  | 12s    | 5s   |
+| Delai de reaction      | 5s   | 1.5s   | 0.3s |
+| Taux d'erreur cible    | 40%  | 15%    | 0%   |
+| Ratio defense          | 0%   | 25%    | 30%  |
+
 
 **Comportement par niveau :**
+
 - **Easy** : spam Infantry, attaque le camp le plus proche, pas de defense reactiva
 - **Medium** : composition equilibree (Infantry 45%, Range 35%, Support 20%), economise pour tier 2, defense reactive si camp menace
 - **Hard** : composition adaptative (contre AntiArmor si ennemi a >3 Heavy), vise tier 3 en controlant sa region d'origine
 
 **Tiers IA :**
+
 - Tier 1 (depart) : Infantry, Support, Range
 - Tier 2 (achat 1500 or) : + Heal, AntiArmor
 - Tier 3 (controle region d'origine) : + Mortar, Heavy, Tank
@@ -352,16 +368,18 @@ Un clic droit deplace les unites selectionnees. Clic droit sur un Transport alli
 
 ### RPCs
 
-| RPC | Mode | Fiabilite | Usage |
-|-----|------|-----------|-------|
-| RpcReceiveSeedAndStart | Authority | Reliable | Serveur → Clients : seed + debut |
-| RpcSyncCampAssignments | Authority | Reliable | Attribution camps/joueurs |
-| RpcSpawnUnit / RpcSpawnShip | AnyPeer | Reliable | Creation entite distante |
-| RpcEntityDied | AnyPeer | Reliable | Destruction puppet |
-| RpcApplyUnitDamage / Camp / Ship | AnyPeer | Reliable | Degats (appliques uniquement par le peer proprietaire) |
-| RpcCampCaptured | AnyPeer | Reliable | Synchronisation capture |
-| RpcUnitBoarded / RpcTransportUnloaded | AnyPeer | Reliable | Transport naval |
-| RpcSyncEntityStates | AnyPeer | Unreliable | 20Hz : positions/sante/etats |
+
+| RPC                                   | Mode      | Fiabilite  | Usage                                                  |
+| ------------------------------------- | --------- | ---------- | ------------------------------------------------------ |
+| RpcReceiveSeedAndStart                | Authority | Reliable   | Serveur → Clients : seed + debut                       |
+| RpcSyncCampAssignments                | Authority | Reliable   | Attribution camps/joueurs                              |
+| RpcSpawnUnit / RpcSpawnShip           | AnyPeer   | Reliable   | Creation entite distante                               |
+| RpcEntityDied                         | AnyPeer   | Reliable   | Destruction puppet                                     |
+| RpcApplyUnitDamage / Camp / Ship      | AnyPeer   | Reliable   | Degats (appliques uniquement par le peer proprietaire) |
+| RpcCampCaptured                       | AnyPeer   | Reliable   | Synchronisation capture                                |
+| RpcUnitBoarded / RpcTransportUnloaded | AnyPeer   | Reliable   | Transport naval                                        |
+| RpcSyncEntityStates                   | AnyPeer   | Unreliable | 20Hz : positions/sante/etats                           |
+
 
 ### Determinisme
 
@@ -377,15 +395,17 @@ Un clic droit deplace les unites selectionnees. Clic droit sur un Transport alli
 
 ## Controles
 
-| Action | Controle |
-|--------|----------|
-| Deplacer la camera | ZQSD / Fleches |
-| Zoom | Molette souris |
-| Drag camera | Clic droit maintenu |
-| Selectionner | Clic gauche |
-| Selection multiple | Clic gauche + glisser |
-| Deplacer les unites | Clic droit |
-| Recentrer camera | C / Home |
+
+| Action              | Controle              |
+| ------------------- | --------------------- |
+| Deplacer la camera  | ZQSD / Fleches        |
+| Zoom                | Molette souris        |
+| Drag camera         | Clic droit maintenu   |
+| Selectionner        | Clic gauche           |
+| Selection multiple  | Clic gauche + glisser |
+| Deplacer les unites | Clic droit            |
+| Recentrer camera    | C / Home              |
+
 
 ## Conventions de code
 
@@ -399,11 +419,13 @@ Un clic droit deplace les unites selectionnees. Clic droit sur un Transport alli
 
 ### Branches
 
-| Branche | Role | Protection |
-|---------|------|------------|
-| `main` | Version stable (releases) | PR obligatoire + 1 approbation + no force push |
-| `develop` | Integration (code teste) | PR obligatoire + 1 approbation + no force push |
-| `feature/*` | Developpement quotidien | Aucune restriction |
+
+| Branche     | Role                      | Protection                                     |
+| ----------- | ------------------------- | ---------------------------------------------- |
+| `main`      | Version stable (releases) | PR obligatoire + 1 approbation + no force push |
+| `develop`   | Integration (code teste)  | PR obligatoire + 1 approbation + no force push |
+| `feature/`* | Developpement quotidien   | Aucune restriction                             |
+
 
 ### Workflow
 
@@ -449,16 +471,19 @@ git push origin feature/nom-de-la-feature
 
 ### Convention de commits
 
-| Prefixe | Usage |
-|---------|-------|
-| `feat:` | Nouvelle fonctionnalite |
-| `fix:` | Correction de bug |
-| `refactor:` | Reorganisation du code |
-| `docs:` | Documentation |
-| `style:` | Formatage, pas de changement logique |
-| `test:` | Ajout ou modification de tests |
+
+| Prefixe     | Usage                                |
+| ----------- | ------------------------------------ |
+| `feat:`     | Nouvelle fonctionnalite              |
+| `fix:`      | Correction de bug                    |
+| `refactor:` | Reorganisation du code               |
+| `docs:`     | Documentation                        |
+| `style:`    | Formatage, pas de changement logique |
+| `test:`     | Ajout ou modification de tests       |
+
 
 ## Auteurs
 
 - **Darkft28** - [GitHub](https://github.com/Darkft28)
 - **Louis27940** - [GitHub](https://github.com/Louis27940)
+

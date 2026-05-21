@@ -1,4 +1,5 @@
 using Godot;
+using System.Collections.Generic;
 
 public partial class CampSimple
 {
@@ -25,7 +26,7 @@ public partial class CampSimple
 	private void ProcessShipProductionQueue(double delta)
 	{
 		if (!HasPort) return;
-		if (!IsLocallyOwned()) return;
+		if (!IsRelayModeActive() && !IsLocallyOwned()) return;
 
 		if (_currentShipProduction == null && _shipProductionQueue.Count > 0)
 		{
@@ -48,6 +49,7 @@ public partial class CampSimple
 	public bool BuyShip(string shipType)
 	{
 		if (!HasPort) return false;
+		if (ShipStats.IsFleetAtCapacity(TeamId, GetTree())) return false;
 
 		var stats = ShipStats.GetStats(shipType);
 		int price = stats.Price;
@@ -78,6 +80,7 @@ public partial class CampSimple
 	{
 		if (!HasPort) return false;
 		if (GameManager.Instance == null) return false;
+		if (ShipStats.IsFleetAtCapacity(TeamId, GetTree())) return false;
 
 		int totalInQueue = _shipProductionQueue.Count + (_currentShipProduction != null ? 1 : 0);
 		if (totalInQueue >= MaxShipQueueSize) return false;
@@ -86,6 +89,19 @@ public partial class CampSimple
 
 		var stats = ShipStats.GetStats(shipType);
 		return GameManager.Instance.CanAfford(TeamId, stats.Price);
+	}
+
+	public bool ApplyRelayBuyShip(string shipType)
+	{
+		if (!HasPort) return false;
+		if (ShipStats.IsFleetAtCapacity(TeamId, GetTree())) return false;
+
+		int totalInQueue = _shipProductionQueue.Count + (_currentShipProduction != null ? 1 : 0);
+		if (totalInQueue >= MaxShipQueueSize)
+			return false;
+
+		_shipProductionQueue.Enqueue(shipType);
+		return true;
 	}
 
 	private void SpawnShip(string shipType)
@@ -123,16 +139,37 @@ public partial class CampSimple
 			ship.SetTileMapSol(_tileMapSol);
 		}
 
-		// Reseau : assigner un NetworkId et broadcaster le spawn
-		string networkId = NetworkEntityRegistry.GenerateId();
+		int spawnSequence = ++_dynamicShipSpawnSequence;
+		string networkId = BuildDynamicShipNetworkId(spawnSequence);
 		ship.NetworkId = networkId;
 		ship.IsLocalAuthority = true;
 
 		GetParent().AddChild(ship);
 		_spawnedShips.Add(ship);
 
-		NetworkSync.Instance?.SendSpawnShip(networkId, shipType, TeamId,
-			ship.GlobalPosition.X, ship.GlobalPosition.Y, ship.GetCurrentHealth());
+		if (!IsRelayModeActive())
+		{
+			NetworkSync.Instance?.SendSpawnShip(networkId, shipType, TeamId,
+				ship.GlobalPosition.X, ship.GlobalPosition.Y, ship.GetCurrentHealth());
+		}
+	}
+
+	private string BuildDynamicShipNetworkId(int spawnSequence)
+	{
+		return $"camp_{CampId}_ship_{spawnSequence}";
+	}
+
+	/// <summary>Point d'eau navigable proche d'une position monde (usage IA offensive navale).</summary>
+	public Vector2 FindWaterApproachNear(Vector2 nearWorldPos)
+	{
+		return FindWaterSpawnPosition(nearWorldPos);
+	}
+
+	public bool IsWaterAtWorldPos(Vector2 worldPos)
+	{
+		if (_tileMapSol == null) return false;
+		Vector2I tileCoords = _tileMapSol.LocalToMap(_tileMapSol.ToLocal(worldPos));
+		return _tileMapSol.GetCellSourceId(tileCoords) == 6;
 	}
 
 	private Vector2 FindWaterSpawnPosition(Vector2 portPos)
@@ -275,15 +312,77 @@ public partial class CampSimple
 	}
 
 	/// <summary>
-	/// Achète et active un port (usage IA). Aucune condition de proximité d'eau.
-	/// TrySpawnPort() tente un placement visuel si de l'eau est trouvée.
+	/// Placement port IA : même validation que le joueur (PlacePortAt + territoire côtier).
 	/// </summary>
-	public bool AIBuyPort()
+	public bool TryAIPlacePort()
 	{
 		if (!CanBuyPort()) return false;
-		if (!GameManager.Instance.SpendGold(TeamId, PortCost)) return false;
-		HasPort = true;
-		return true;
+		if (_tileMapSol == null) return false;
+		if (!BuyPort()) return false;
+
+		foreach (Vector2 worldPos in EnumerateShorelineCandidatePositions())
+		{
+			if (TerritoryManager.Instance != null
+				&& TerritoryManager.Instance.GetTeamAtWorldPos(worldPos) != TeamId)
+				continue;
+
+			if (PlacePortAt(worldPos))
+				return true;
+		}
+
+		GameManager.Instance?.AddGold(TeamId, PortCost);
+		return false;
+	}
+
+	/// <summary>Alias legacy — redirige vers TryAIPlacePort.</summary>
+	public bool AIBuyPort() => TryAIPlacePort();
+
+	private IEnumerable<Vector2> EnumerateShorelineCandidatePositions()
+	{
+		Vector2I campTile = _tileMapSol.LocalToMap(_tileMapSol.ToLocal(GlobalPosition));
+		Vector2I[] directions = { new Vector2I(0, -1), new Vector2I(0, 1), new Vector2I(1, 0), new Vector2I(-1, 0) };
+		const int radius = 5;
+
+		var scored = new List<(Vector2 worldPos, int score)>();
+
+		for (int dx = -radius; dx <= radius; dx++)
+		{
+			for (int dy = -radius; dy <= radius; dy++)
+			{
+				Vector2I tile = campTile + new Vector2I(dx, dy);
+				if (_tileMapSol.GetCellSourceId(tile) == 6)
+					continue;
+
+				bool hasAdjacentWater = false;
+				int waterScore = 0;
+				foreach (var dir in directions)
+				{
+					if (_tileMapSol.GetCellSourceId(tile + dir) != 6)
+						continue;
+
+					hasAdjacentWater = true;
+					for (int dist = 1; dist <= 8; dist++)
+						for (int offset = -2; offset <= 2; offset++)
+						{
+							Vector2I tilePos = dir.X == 0
+								? tile + new Vector2I(offset, dir.Y * dist)
+								: tile + new Vector2I(dir.X * dist, offset);
+							if (_tileMapSol.GetCellSourceId(tilePos) == 6)
+								waterScore++;
+						}
+				}
+
+				if (!hasAdjacentWater || waterScore < 1)
+					continue;
+
+				Vector2 worldPos = _tileMapSol.ToGlobal(_tileMapSol.MapToLocal(tile));
+				scored.Add((worldPos, waterScore));
+			}
+		}
+
+		scored.Sort((a, b) => b.score.CompareTo(a.score));
+		foreach (var entry in scored)
+			yield return entry.worldPos;
 	}
 
 	public bool PlacePortAt(Vector2 worldPos)

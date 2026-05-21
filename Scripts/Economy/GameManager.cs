@@ -331,7 +331,6 @@ public partial class GameManager : Node
 
 		_teamGold[teamId] -= amount;
 		int version = IncrementGoldVersion(teamId);
-		TrySendRelayGoldSnapshot(teamId, version, "spend");
 		return true;
 	}
 
@@ -343,67 +342,11 @@ public partial class GameManager : Node
 		}
 		_teamGold[teamId] += amount;
 		int version = IncrementGoldVersion(teamId);
-		TrySendRelayGoldSnapshot(teamId, version, "add");
-	}
-
-	private void TrySendRelayGoldSnapshot(int teamId, int version, string reason)
-	{
-		if (!IsNakamaRelayMode())
-			return;
-
-		if (!IsLocalTeam(teamId))
-			return;
-
-		NetworkCommandRouter.SendGoldSnapshot(teamId, GetGold(teamId), version, reason);
 	}
 
 	public void GiveCaptureBonus(int teamId)
 	{
 		AddGold(teamId, CaptureBonus);
-	}
-
-	public int GetGoldVersion(int teamId)
-	{
-		return _teamGoldVersion.TryGetValue(teamId, out int version) ? version : 0;
-	}
-
-	public void BroadcastRelayGoldSnapshotForLocalTeam(string reason = "periodic")
-	{
-		if (!IsNakamaRelayMode())
-			return;
-
-		int localTeamId = GetLocalTeamId();
-		if (localTeamId <= 0 || !_teamGold.ContainsKey(localTeamId))
-			return;
-
-		NetworkCommandRouter.SendGoldSnapshot(localTeamId, _teamGold[localTeamId], GetGoldVersion(localTeamId), reason);
-	}
-
-	public void ApplyRelayGoldSnapshot(int teamId, int authoritativeGold, int version, string senderUserId)
-	{
-		if (teamId <= 0)
-			return;
-
-		if (!IsNakamaRelayMode())
-			return;
-
-		if (IsLocalTeam(teamId))
-			return;
-
-		if (!_teamGold.ContainsKey(teamId))
-			_teamGold[teamId] = authoritativeGold;
-
-		int localVersion = GetGoldVersion(teamId);
-		if (version < localVersion)
-			return;
-
-		if (_teamGold[teamId] != authoritativeGold)
-		{
-			GD.Print($"[RELAY][GOLD] Reconcile team {teamId}: {_teamGold[teamId]} -> {authoritativeGold} (v{version}, from {senderUserId})");
-			_teamGold[teamId] = authoritativeGold;
-		}
-
-		_teamGoldVersion[teamId] = version;
 	}
 
 	public float GetSpeedMultiplier(int teamId)
@@ -467,7 +410,7 @@ public partial class GameManager : Node
 	public static int GetShipTier(string shipType) => shipType switch
 	{
 		"Transport" => 1,
-		"Fregate" or "Destroyer" => 3,
+		"Fregate" or "Destroyer" => 2,
 		_ => 1
 	};
 
