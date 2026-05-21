@@ -109,6 +109,61 @@ public partial class TerritoryManager : Node2D
 		return _territoryMap[tx, ty];
 	}
 
+	/// <summary>
+	/// Tuiles côtières du territoire d'une équipe (terre adjacente à l'eau), triées par qualité d'accès maritime.
+	/// Utilisé par l'IA pour placer un port n'importe où sur son territoire, pas seulement près d'un camp.
+	/// </summary>
+	public IEnumerable<Vector2> EnumerateShorelinePositionsForTeam(int teamId)
+	{
+		if (_solLayer == null || teamId <= 0)
+			yield break;
+
+		Vector2I[] directions = { new Vector2I(0, -1), new Vector2I(0, 1), new Vector2I(1, 0), new Vector2I(-1, 0) };
+		var scored = new List<(Vector2 worldPos, int score)>();
+
+		for (int tx = 0; tx < MapWidth; tx++)
+		{
+			for (int ty = 0; ty < MapHeight; ty++)
+			{
+				if (_territoryMap[tx, ty] != teamId)
+					continue;
+
+				Vector2I tile = new Vector2I(tx - HalfWidth, ty - HalfHeight);
+				if (_solLayer.GetCellSourceId(tile) == 6)
+					continue;
+
+				bool hasAdjacentWater = false;
+				int waterScore = 0;
+				foreach (var dir in directions)
+				{
+					if (_solLayer.GetCellSourceId(tile + dir) != 6)
+						continue;
+
+					hasAdjacentWater = true;
+					for (int dist = 1; dist <= 8; dist++)
+						for (int offset = -2; offset <= 2; offset++)
+						{
+							Vector2I tilePos = dir.X == 0
+								? tile + new Vector2I(offset, dir.Y * dist)
+								: tile + new Vector2I(dir.X * dist, offset);
+							if (_solLayer.GetCellSourceId(tilePos) == 6)
+								waterScore++;
+						}
+				}
+
+				if (!hasAdjacentWater || waterScore < 1)
+					continue;
+
+				Vector2 worldPos = _solLayer.ToGlobal(_solLayer.MapToLocal(tile));
+				scored.Add((worldPos, waterScore));
+			}
+		}
+
+		scored.Sort((a, b) => b.score.CompareTo(a.score));
+		foreach (var entry in scored)
+			yield return entry.worldPos;
+	}
+
 	public void SetTerritoryGrid(int[,] grid)
 	{
 		_territoryGrid = grid;

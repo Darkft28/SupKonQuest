@@ -312,7 +312,7 @@ public partial class CampSimple
 	}
 
 	/// <summary>
-	/// Placement port IA : même validation que le joueur (PlacePortAt + territoire côtier).
+	/// Placement port IA : même validation que le joueur (PlacePortAt + territoire côtier sur toute la carte).
 	/// </summary>
 	public bool TryAIPlacePort()
 	{
@@ -320,14 +320,14 @@ public partial class CampSimple
 		if (_tileMapSol == null) return false;
 		if (!BuyPort()) return false;
 
-		foreach (Vector2 worldPos in EnumerateShorelineCandidatePositions())
+		var shoreline = TerritoryManager.Instance?.EnumerateShorelinePositionsForTeam(TeamId);
+		if (shoreline != null)
 		{
-			if (TerritoryManager.Instance != null
-				&& TerritoryManager.Instance.GetTeamAtWorldPos(worldPos) != TeamId)
-				continue;
-
-			if (PlacePortAt(worldPos))
-				return true;
+			foreach (Vector2 worldPos in shoreline)
+			{
+				if (PlacePortAt(worldPos))
+					return true;
+			}
 		}
 
 		GameManager.Instance?.AddGold(TeamId, PortCost);
@@ -336,54 +336,6 @@ public partial class CampSimple
 
 	/// <summary>Alias legacy — redirige vers TryAIPlacePort.</summary>
 	public bool AIBuyPort() => TryAIPlacePort();
-
-	private IEnumerable<Vector2> EnumerateShorelineCandidatePositions()
-	{
-		Vector2I campTile = _tileMapSol.LocalToMap(_tileMapSol.ToLocal(GlobalPosition));
-		Vector2I[] directions = { new Vector2I(0, -1), new Vector2I(0, 1), new Vector2I(1, 0), new Vector2I(-1, 0) };
-		const int radius = 5;
-
-		var scored = new List<(Vector2 worldPos, int score)>();
-
-		for (int dx = -radius; dx <= radius; dx++)
-		{
-			for (int dy = -radius; dy <= radius; dy++)
-			{
-				Vector2I tile = campTile + new Vector2I(dx, dy);
-				if (_tileMapSol.GetCellSourceId(tile) == 6)
-					continue;
-
-				bool hasAdjacentWater = false;
-				int waterScore = 0;
-				foreach (var dir in directions)
-				{
-					if (_tileMapSol.GetCellSourceId(tile + dir) != 6)
-						continue;
-
-					hasAdjacentWater = true;
-					for (int dist = 1; dist <= 8; dist++)
-						for (int offset = -2; offset <= 2; offset++)
-						{
-							Vector2I tilePos = dir.X == 0
-								? tile + new Vector2I(offset, dir.Y * dist)
-								: tile + new Vector2I(dir.X * dist, offset);
-							if (_tileMapSol.GetCellSourceId(tilePos) == 6)
-								waterScore++;
-						}
-				}
-
-				if (!hasAdjacentWater || waterScore < 1)
-					continue;
-
-				Vector2 worldPos = _tileMapSol.ToGlobal(_tileMapSol.MapToLocal(tile));
-				scored.Add((worldPos, waterScore));
-			}
-		}
-
-		scored.Sort((a, b) => b.score.CompareTo(a.score));
-		foreach (var entry in scored)
-			yield return entry.worldPos;
-	}
 
 	public bool PlacePortAt(Vector2 worldPos)
 	{
