@@ -452,16 +452,4 @@ public partial class GameManager : Node
 		return 2;
 	}
 
-	// Correction légère de l'or en multijoueur (évite micro-corrections sous 5 or d'écart)
-	public void SyncGold(int teamId, int authorativeGold)
-	{
-		if (!_teamGold.ContainsKey(teamId)) return;
-
-		int diff = Mathf.Abs(_teamGold[teamId] - authorativeGold);
-		if (diff > 5)
-		{
-			_teamGold[teamId] = authorativeGold;
-			IncrementGoldVersion(teamId);
-		}
-	}
 }

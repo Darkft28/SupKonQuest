@@ -12,8 +12,6 @@ public partial class GameHUD : Control
 	private HBoxContainer _unitsContainer;
 	private HBoxContainer _shipsContainer;
 	private Button _quitButton;
-	private Button _territoryButton;
-	private HBoxContainer _brushSizeContainer;
 	private Button _portButton;
 	private Label _tierInfoLabel;
 	private Button _unlockTier2Button;
@@ -75,8 +73,6 @@ public partial class GameHUD : Control
 	private void BindSceneHudControls()
 	{
 		_quitButton = GetNode<Button>("QuitButton");
-		_territoryButton = GetNode<Button>("TerritoryButton");
-		_brushSizeContainer = GetNode<HBoxContainer>("BrushSizeContainer");
 		_portButton = GetNode<Button>("PortButton");
 		_disconnectPanel = GetNode<Panel>("DisconnectPanel");
 		_disconnectLabel = GetNode<Label>("DisconnectPanel/DisconnectLabel");
@@ -88,21 +84,6 @@ public partial class GameHUD : Control
 		_quitButton.Text = "✕ Menu";
 		UIStyle.ApplyStone(_quitButton);
 		_quitButton.Pressed += OnQuitButtonPressed;
-
-		_territoryButton.Text = $"🗺 Territoire ({TerritoryManager.TileCost}g/tuile)";
-		_territoryButton.ToggleMode = true;
-		UIStyle.ApplyStone(_territoryButton);
-		_territoryButton.Toggled += OnTerritoryButtonToggled;
-
-		var brush1 = _brushSizeContainer.GetNode<Button>("Brush1Button");
-		var brush3 = _brushSizeContainer.GetNode<Button>("Brush3Button");
-		var brush5 = _brushSizeContainer.GetNode<Button>("Brush5Button");
-		UIStyle.ApplyStone(brush1);
-		UIStyle.ApplyStone(brush3);
-		UIStyle.ApplyStone(brush5);
-		brush1.Pressed += () => OnBrushSizeButtonPressed(1);
-		brush3.Pressed += () => OnBrushSizeButtonPressed(3);
-		brush5.Pressed += () => OnBrushSizeButtonPressed(5);
 
 		_portButton.Text = $"⚓ Port ({CampSimple.PortCost}g)";
 		UIStyle.ApplyStone(_portButton);
@@ -251,21 +232,9 @@ public partial class GameHUD : Control
 
 	private void OnQuitButtonPressed()
 	{
-		TerritoryManager.Instance?.SetBuyMode(false);
 		TerritoryManager.Instance?.CancelPortPlacement();
 		GetTree().Paused = false;
 		GetTree().ChangeSceneToFile("res://Scenes/MainMenu.tscn");
-	}
-
-	private void OnTerritoryButtonToggled(bool pressed)
-	{
-		TerritoryManager.Instance?.SetBuyMode(pressed);
-		_brushSizeContainer.Visible = pressed;
-	}
-
-	private void OnBrushSizeButtonPressed(int size)
-	{
-		TerritoryManager.Instance?.SetBrushSize(size);
 	}
 
 	private void OnPortButtonPressed()
