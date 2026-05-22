@@ -1,4 +1,5 @@
 using Godot;
+using System;
 using System.Collections.Generic;
 
 public partial class GameManager : Node
@@ -30,7 +31,7 @@ public partial class GameManager : Node
 	// Équipes ayant acheté le palier 2
 	private HashSet<int> _tier2Unlocked = new HashSet<int>();
 
-	private const int NumberOfPlayers = 2;
+	private const int MaxHumanPlayers = 8;
 
 	private VictoryManager _victoryManager;
 
@@ -92,10 +93,15 @@ public partial class GameManager : Node
 		}
 		else
 		{
-			int campsPerPlayer = shuffledCamps.Count / NumberOfPlayers;
+			int playerCount = gameState?.IsOnline == true
+				? Math.Max(2, Math.Min(MaxHumanPlayers, gameState.ActivePlayerCount))
+				: 2;
+
+			playerCount = Math.Min(playerCount, shuffledCamps.Count);
+			const int campsPerPlayer = 1;
 			int campIndex = 0;
 
-			for (int playerId = 1; playerId <= NumberOfPlayers; playerId++)
+			for (int playerId = 1; playerId <= playerCount; playerId++)
 			{
 				bool firstCamp = true;
 				for (int i = 0; i < campsPerPlayer; i++)
@@ -409,8 +415,8 @@ public partial class GameManager : Node
 
 	public static int GetShipTier(string shipType) => shipType switch
 	{
-		"Transport" => 1,
-		"Fregate" or "Destroyer" => 2,
+		"Transport" => 3,
+		"Fregate" or "Destroyer" => 3,
 		_ => 1
 	};
 

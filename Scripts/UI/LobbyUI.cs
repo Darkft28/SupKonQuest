@@ -1,5 +1,4 @@
 using Godot;
-using System;
 using System.Threading.Tasks;
 
 public partial class LobbyUI : Control
@@ -21,6 +20,7 @@ public partial class LobbyUI : Control
 	private GameState _gameState;
 	private bool _isAuthReady;
 	private bool _isMatchmaking;
+	private bool _inMatchLobby;
 
 	public override void _Ready()
 	{
@@ -49,7 +49,9 @@ public partial class LobbyUI : Control
 		_nakamaService.AuthenticationFailed += OnAuthenticationFailed;
 		_nakamaService.MatchmakingStarted += OnMatchmakingStarted;
 		_nakamaService.MatchmakingFailed += OnMatchmakingFailed;
-		_nakamaService.MatchJoined += OnMatchJoined;
+		_nakamaService.MatchLobbyEntered += OnMatchLobbyEntered;
+		_nakamaService.MatchLobbyTick += OnMatchLobbyTick;
+		_nakamaService.MatchStarting += OnMatchStarting;
 		_nakamaService.Disconnected += OnDisconnected;
 
 		if (LocalizationManager.Instance != null)
@@ -77,7 +79,9 @@ public partial class LobbyUI : Control
 			_nakamaService.AuthenticationFailed -= OnAuthenticationFailed;
 			_nakamaService.MatchmakingStarted -= OnMatchmakingStarted;
 			_nakamaService.MatchmakingFailed -= OnMatchmakingFailed;
-			_nakamaService.MatchJoined -= OnMatchJoined;
+			_nakamaService.MatchLobbyEntered -= OnMatchLobbyEntered;
+			_nakamaService.MatchLobbyTick -= OnMatchLobbyTick;
+			_nakamaService.MatchStarting -= OnMatchStarting;
 			_nakamaService.Disconnected -= OnDisconnected;
 		}
 
@@ -115,8 +119,8 @@ public partial class LobbyUI : Control
 
 	private void SetButtonsEnabled(bool enabled)
 	{
-		_hostButton.Disabled = !enabled;
-		_joinButton.Disabled = !enabled || _isMatchmaking || !_isAuthReady;
+		_hostButton.Disabled = !enabled || _inMatchLobby;
+		_joinButton.Disabled = !enabled || _isMatchmaking || !_isAuthReady || _inMatchLobby;
 	}
 
 	private void OnLangPressed()
@@ -173,6 +177,7 @@ public partial class LobbyUI : Control
 			_nakamaService.Disconnect();
 		}
 
+		_inMatchLobby = false;
 		_gameState?.ClearOnlineSession();
 		GetTree().ChangeSceneToFile("res://Scenes/GameModeMenu.tscn");
 	}
@@ -191,6 +196,7 @@ public partial class LobbyUI : Control
 	{
 		_isAuthReady = false;
 		_isMatchmaking = false;
+		_inMatchLobby = false;
 		SetButtonsEnabled(true);
 
 		string hint = "";
@@ -210,22 +216,52 @@ public partial class LobbyUI : Control
 	private void OnMatchmakingFailed(string reason)
 	{
 		_isMatchmaking = false;
+		_inMatchLobby = false;
 		SetButtonsEnabled(true);
 		UpdateStatus($"{GetText("connection_failed")} : {reason}");
 	}
 
-	private void OnMatchJoined(string matchId, int localTeamId, int seed)
+	private void OnMatchLobbyEntered(string matchId, int pendingSeed)
 	{
 		_isMatchmaking = false;
+		_inMatchLobby = true;
+		SetButtonsEnabled(false);
+		UpdatePlayerList();
+		UpdateStatus($"{GetText("match_found")} — {GetText("waiting_players")}");
+		GD.Print($"[LOBBY] In-match lobby matchId={matchId} seed={pendingSeed}");
+	}
+
+	private void OnMatchLobbyTick(int secondsRemaining, int playerCount)
+	{
+		UpdatePlayerList();
+		string countdown = secondsRemaining < 0
+			? GetText("waiting_server")
+			: secondsRemaining > 0
+				? $"{GetText("starting_in")} {secondsRemaining}s"
+				: GetText("starting_soon");
+		UpdateStatus($"{playerCount}/{NakamaService.MaxMatchPlayers} {GetText("players_connected").ToLower()} — {countdown}");
+	}
+
+	private void OnMatchStarting(string matchId, int localTeamId, int seed, int playerCount)
+	{
+		_isMatchmaking = false;
+		_inMatchLobby = false;
 		SetButtonsEnabled(true);
-		UpdateStatus(GetText("match_found"));
-		_gameState?.StartOnlineGameFromMatch(matchId, localTeamId, seed, _nakamaService.UserId, _nakamaService.DisplayName);
+		UpdateStatus(GetText("starting_soon"));
+		_gameState?.StartOnlineGameFromMatch(
+			matchId,
+			localTeamId,
+			seed,
+			playerCount,
+			_nakamaService.UserId,
+			_nakamaService.DisplayName);
 	}
 
 	private void OnDisconnected()
 	{
 		_isAuthReady = false;
 		_isMatchmaking = false;
+		_inMatchLobby = false;
 		_codeDisplayLabel.Text = "";
 		_playerList.Clear();
 		SetButtonsEnabled(true);

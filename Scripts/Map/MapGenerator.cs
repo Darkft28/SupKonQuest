@@ -518,7 +518,7 @@ public partial class MapGenerator : Node
 	private void InitAIController()
 	{
 		var gameState = GetNodeOrNull<GameState>("/root/GameState");
-		if (gameState == null || !gameState.IsAIMode) return;
+		if (gameState == null || !gameState.IsAIMode || gameState.IsOnline) return;
 
 		// Supprimer les anciens AIControllers
 		for (int i = GetChildCount() - 1; i >= 0; i--)

@@ -4,7 +4,7 @@ Jeu de strategie et de conquete en temps reel developpe avec Godot 4.5 et C# (.N
 
 ## Description
 
-SupKonQuest est un RTS (Real-Time Strategy) ou le joueur doit capturer des camps sur une carte predéfinie. On commence avec un camp et un peu d'or, on produit des unites terrestres et navales, et on part a la conquete des camps adverses. Le jeu propose un mode solo, un mode contre IA (3 niveaux) et un mode multijoueur en reseau local en format "chacun pour soi".
+SupKonQuest est un RTS (Real-Time Strategy) ou le joueur doit capturer des camps sur une carte predéfinie. On commence avec un camp et un peu d'or, on produit des unites terrestres et navales, et on part a la conquete des camps adverses. Le jeu propose un mode solo contre IA (3 niveaux, 1 camp par faction) et un mode multijoueur en ligne PvP (2 a 8 joueurs, 1 camp de depart par joueur, camps restants neutres).
 
 Le principe : chaque camp genere de l'or passivement, cet or permet d'acheter des unites, et ces unites servent a capturer d'autres camps. Controler une region entiere rapporte un bonus. Le joueur qui controle tous les camps gagne.
 
@@ -34,7 +34,7 @@ Ensuite ouvrir le projet dans Godot 4.5 et lancer avec F5.
 ## Serveur Nakama local (pour le mode en ligne)
 
 Si vous n'avez pas encore de serveur, le mode solo fonctionne sans Nakama.
-Pour tester le mode en ligne (auth guest + matchmaking + lobby), lancez un Nakama local.
+Pour tester le mode en ligne (auth guest + matchmaking 2-8 + lobby in-match), lancez un Nakama local **et** le module relay (projet serveur separe) qui pilote le countdown et le demarrage de partie.
 
 Prerequis minimaux:
 
@@ -76,7 +76,7 @@ SupKonQuest/
 ├── Scenes/
 │   ├── MainMenu.tscn
 │   ├── GameModeMenu.tscn       # Choix mode (Solo / Multi / IA)
-│   ├── Lobby.tscn              # Lobby multijoueur LAN
+│   ├── Lobby.tscn              # Lobby multijoueur (Nakama matchmaking)
 │   ├── Game.tscn               # Scene principale du jeu
 │   ├── GameHUD.tscn            # Interface HUD (or, boutons d'achat)
 │   ├── Unit.tscn               # Prefab unite terrestre
@@ -368,15 +368,47 @@ Un clic droit deplace les unites selectionnees. Clic droit sur un Transport alli
 
 **Scripts :** `Scripts/Network/`
 
-### Architecture relay Nakama
+### Mode en ligne (Nakama + relay)
 
-- Match "chacun pour soi" : chaque joueur est un slot d'ownership indépendant, sans alliance d'equipe
-- Connexion via code salon 6 caracteres (decouverte UDP broadcast sur port 7778) pour l'ancienne voie ENet; Nakama gere l'authentification et le relay des commandes en ligne
+- **PvP uniquement** : pas d'IA en multijoueur (`IsAIMode = false` force a l'entree du lobby/match).
+- **Matchmaking** : 2 a 8 joueurs (`AddMatchmakerAsync` min 2 / max 8).
+- **Camps** : 1 camp de depart par joueur humain ; les autres camps preset restent **neutres** (defenseurs 1,5x HP).
+- **Equipes** : `LocalTeamId` = index dans la liste triee des `userId` Nakama + 1 ; `ActivePlayerCount` fige au demarrage.
+- **Lobby in-match** : apres `JoinMatch` (>= 2 joueurs), le client affiche la liste des joueurs et attend le **serveur relay** — pas de demarrage automatique cote client.
+- **Test local multi-instance** : lancer chaque client avec un slot device distinct, ex. `--nakama-slot=1` et `--nakama-slot=2`, pour eviter le meme `userId` Nakama.
+
+### Contrat relay (module serveur externe)
+
+Le module relay Nakama vit dans un **autre depot**. Il doit broadcaster :
+
+| Opcode | Nom | Payload JSON (camelCase) |
+| ------ | --- | ------------------------ |
+| `4001` | LobbyTick | `{ "secondsRemaining": int, "playerCount": int }` — environ chaque seconde pendant l'attente |
+| `4002` | MatchStart | `{ "seed": int, "orderedUserIds": ["userId1", ...] }` — liste triee par `userId` (meme regle que le client) |
+
+Regles serveur attendues :
+
+- Countdown **~20 s** des l'arrivee du 2e joueur.
+- **+5 s** au temps restant a chaque nouveau joueur (jusqu'a 8).
+- Demarrage immediat si **8 joueurs** dans le match.
+- Seul `MatchStart` declenche le chargement de `Game.tscn` sur tous les clients.
+
+Constantes client : `NetworkCommandRouter.OpcodeLobbyTick` / `OpcodeMatchStart`.
+
+### Architecture legacy ENet (non utilise par l'UI actuelle)
+
+- Code conserve dans `NetworkManager` (port 7777, decouverte LAN 7778, max 8 peers).
+- L'UI lobby actuelle passe par `NakamaService` + `LobbyUI` uniquement.
+
+### Gameplay relay (opcodes 1001-3001)
+
+- `NetworkCommandRouter` : achats, deplacements, attaques, captures, or (snapshots).
 - `NetworkEntityRegistry` : dictionnaire statique `NetworkId → Node`
   - IDs dynamiques : `"{peerId}_{counter}"`
   - IDs deterministes des defenseurs initiaux : `"camp_{campId}_unit_{index}"`
+- Camps neutres en relay : simulation locale sur **tous** les peers (`CampSimple.IsLocallyOwned`).
 
-### RPCs
+### RPCs Godot (ENet legacy)
 
 
 | RPC                                   | Mode      | Fiabilite  | Usage                                                  |

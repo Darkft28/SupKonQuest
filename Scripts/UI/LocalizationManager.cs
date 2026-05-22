@@ -194,6 +194,26 @@ public partial class LocalizationManager : Node
 			{ Language.EN, "Match found!" },
 			{ Language.ES, "¡Partida encontrada!" }
 		}},
+		{ "waiting_players", new Dictionary<Language, string> {
+			{ Language.FR, "En attente de joueurs" },
+			{ Language.EN, "Waiting for players" },
+			{ Language.ES, "Esperando jugadores" }
+		}},
+		{ "starting_in", new Dictionary<Language, string> {
+			{ Language.FR, "Démarrage dans" },
+			{ Language.EN, "Starting in" },
+			{ Language.ES, "Inicio en" }
+		}},
+		{ "starting_soon", new Dictionary<Language, string> {
+			{ Language.FR, "Démarrage..." },
+			{ Language.EN, "Starting..." },
+			{ Language.ES, "Iniciando..." }
+		}},
+		{ "waiting_server", new Dictionary<Language, string> {
+			{ Language.FR, "En attente du serveur..." },
+			{ Language.EN, "Waiting for server..." },
+			{ Language.ES, "Esperando al servidor..." }
+		}},
 		{ "match_joined", new Dictionary<Language, string> {
 			{ Language.FR, "Connexion au match..." },
 			{ Language.EN, "Joining match..." },

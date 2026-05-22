@@ -14,6 +14,8 @@ public static class NetworkCommandRouter
 	public const long OpcodeCampCaptured = 2003;
 	public const long OpcodeMoveShips = 2004;
 	public const long OpcodeGoldSnapshot = 3001;
+	public const long OpcodeLobbyTick = 4001;
+	public const long OpcodeMatchStart = 4002;
 	private static readonly JsonSerializerOptions RelayJsonOptions = new()
 	{
 		PropertyNamingPolicy = JsonNamingPolicy.CamelCase,

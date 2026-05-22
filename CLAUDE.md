@@ -57,9 +57,9 @@ godot --path . --run
 Autoloads in `project.godot`:
 
 - **GameManager** - Gold economy, tiers, victory hooks (`GameManager.Instance`)
-- **NetworkManager** - ENet legacy multiplayer (hosting, joining, port 7777)
-- **GameState** - Game flow (seed, scene transitions, `IsAIMode`, `IsOnline`)
-- **NakamaService** - Auth guest, matchmaking, relay commands (mode en ligne)
+- **NetworkManager** - ENet legacy multiplayer (hosting, joining, port 7777, max 8 — UI non branchée)
+- **GameState** - Game flow (seed, `ActivePlayerCount`, `IsAIMode`, `IsOnline`, `IsFreeForAll`)
+- **NakamaService** - Auth guest, matchmaking 2–8, lobby in-match, opcodes lobby relay (`4001`/`4002`), gameplay relay
 - **LocalizationManager** - i18n FR/EN/ES
 - **AudioSettings** - Volume musique / effets
 
@@ -109,6 +109,8 @@ Ship tiers: Transport = Tier 1, Fregate + Destroyer = Tier 3.
 
 **GameHUD** - Displays gold for selected camp, unit purchase buttons with prices, tier unlock button (1500 gold). Connected to SelectionManager for camp selection. Shows tier lock state per unit button.
 
+**Multijoueur en ligne (Nakama)** - Flux : `GameModeMenu` → `LobbyUI` → matchmaking → `JoinMatch` → lobby in-match (`MatchLobbyEntered`) → **`MatchStart` relay uniquement** → `StartOnlineGameFromMatch`. Pas d'IA (`IsAIMode`/`IsFreeForAll` remis à false via `ResetOnlineMatchFlags`). 1 camp/joueur, reste neutre (`GameManager.AssignCampsToPlayers`, `ActivePlayerCount`). Signaux : `MatchLobbyEntered`, `MatchLobbyTick`, `MatchStarting`. Module relay externe : countdown ~20s (+5s/join, start à 8) puis opcode `4002`. Test local : `--nakama-slot=1` / `2`.
+
 ### Key Patterns
 
 - Signal-based communication for UI and networking
@@ -127,6 +129,7 @@ Ship tiers: Transport = Tier 1, Fregate + Destroyer = Tier 3.
 
 - **OnDefenderDied() never called** — Corrigé : `Unit.Combat.Die()` appelle `OwnerCamp.OnDefenderDied()` (Unit.Combat.cs:215).
 - **No gold refund on camp capture mid-production** — Corrigé : `CampSimple.SetTeam()` appelle `RefundProductionQueue()` et `RefundShipProductionQueue()` (CampSimple.cs:166-174).
+- **Multi après solo : client avec IA vs humain** — Corrigé : `GameState.ResetOnlineMatchFlags()` + garde `InitAIController` si `IsOnline`.
 
 ## Code Conventions
 
