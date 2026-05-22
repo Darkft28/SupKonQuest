@@ -9,7 +9,7 @@ SupKonQuest is a strategy and conquest game built with Godot 4.5 and C# (.NET 8.
 ## Game Flow
 
 1. Joueur spawn avec 1 camp + 100 or
-2. Camp génère 50 or/sec, joueur reçoit 5 or/sec passif
+2. Chaque camp possédé génère 50 or/sec ; revenu passif global +500 or/sec
 3. Acheter des unités → file de production
 4. Sélectionner unités → clic droit pour déplacer
 5. Tuer les défenseurs d'un camp → attaquer le camp → capture
@@ -17,7 +17,7 @@ SupKonQuest is a strategy and conquest game built with Godot 4.5 and C# (.NET 8.
 
 ## Key Scenes
 
-- `Scenes/Main.tscn` - Point d'entrée
+- `Scenes/MainMenu.tscn` - Point d'entrée
 - `Scenes/Game.tscn` - Scène de jeu principale
 - `Scenes/Unit.tscn` - Prefab unité
 
@@ -41,24 +41,27 @@ godot --path . --run
 - `Scripts/Units/` - Unit.cs + partials (Combat, Movement, Healing, Transport, Visuals), UnitStats, Projectile
 - `Scripts/Ships/` - Ship.cs + partials (Combat, Movement, Transport, Visuals), ShipStats, ShipProjectile
 - `Scripts/Camps/` - CampSimple.cs + partials (Production, Naval, Defense, Visuals)
-- `Scripts/Map/` - MapGenerator, TerrainGenerator (static), CampPlacer (static), TerritoryManager
+- `Scripts/Map/` - MapGenerator, TerrainGenerator (static), CampPlacer (static), TerritoryManager, TerritoryConnectivity (static)
 - `Scripts/Selection/` - SelectionManager
 - `Scripts/Camera/` - CameraController
 - `Scripts/Economy/` - GameManager, VictoryManager
 - `Scripts/Network/` - NetworkManager, GameState, NetworkSync, NetworkEntityRegistry
 - `Scripts/AI/` - AIController (Utility AI, Easy/Medium/Hard, one per bot slot)
 - `Scripts/UI/` - GameHUD, LobbyUI, Minimap, MainMenu, GameModeMenu, LocalizationManager
-- `AI-implementation.md` - Notes de conception IA (idées futures : boss IA, naval, stagger, personnalités)
+- `AI-implementation.md` - Notes de conception IA (naval et boss, stagger implémenté ; idées futures : personnalités)
 - `Scenes/` - Godot scene files (.tscn)
 - `Assets/` - Textures, sprites, unit characters
 
 ### Singleton Managers (AutoLoads)
 
-Three autoloaded managers defined in project.godot:
+Autoloads in `project.godot`:
 
-- **NetworkManager** - ENet multiplayer (hosting, joining, peer communication on port 7777)
-- **GameState** - Game flow management (seed sync, scene transitions)
-- **LocalizationManager** - i18n support (FR/EN/ES)
+- **GameManager** - Gold economy, tiers, victory hooks (`GameManager.Instance`)
+- **NetworkManager** - ENet legacy multiplayer (hosting, joining, port 7777)
+- **GameState** - Game flow (seed, scene transitions, `IsAIMode`, `IsOnline`)
+- **NakamaService** - Auth guest, matchmaking, relay commands (mode en ligne)
+- **LocalizationManager** - i18n FR/EN/ES
+- **AudioSettings** - Volume musique / effets
 
 ### Core Systems
 
@@ -90,7 +93,11 @@ Unit tiers (affect production unlock):
 
 Ship tiers: Transport = Tier 1, Fregate + Destroyer = Tier 3.
 
-**CampSimple** - Base camps with health (600 HP), capture mechanics, and production queue (max 7 units). Generates gold passively (500 gold/sec). Spawns units in circular pattern (525px radius). Capture requires killing all defending units first. Has a defensive turret (5 dmg/sec at 600px). Port built manually (500 gold via HUD button): player clicks a coastal tile to place it; orientation auto-detected from adjacent water. Port has its own production queue (max 5 ships). `TrySpawnPort()` exists but is not called (dead code). Each camp has a `RegionId` (variable per map: 3 regions on Irridium, 4 on Alabasta) used for regional bonuses and Tier 3 unlock.
+**CampSimple** - Base camps with health (600 HP), capture mechanics, and production queue (max 7 units). Each owned camp adds 50 gold/sec to the team pool via `GoldPerSecond`. Spawns units in circular pattern (525px radius). Capture requires killing all defending units first. Has a defensive turret (5 dmg/sec at 600px). Port built manually (500 gold via HUD button): player clicks a coastal tile in team territory adjacent to water; orientation auto-detected from adjacent water. Port has its own production queue (max 5 ships). `TrySpawnPort()` exists but is not called (dead code). Each camp has a `RegionId` (variable per map: 3 regions on Irridium, 4 on Alabasta) used for regional bonuses and Tier 3 unlock.
+
+**TerritoryManager** - Visual territory tint (8-tile radius around camps). No manual territory purchase. Handles port placement mode (coastal tiles in team territory). `TerritoryConnectivity` builds a region adjacency graph from map presets so units/AI only prioritize land-reachable camps.
+
+**AIController** - Utility AI per bot slot. Medium/Hard: reactive defense, rally before attack, port/ship production when a full region is controlled, naval offensives (Fregate/Destroyer; Hard may attack by sea before home region is complete). Land targets filtered via `TerritoryConnectivity.IsReachable`. Easy: infantry spam, nearest camp, no naval.
 
 **Ships** - CharacterBody2D naval units with own state machine. 3 types: Transport (200HP, capacity 10 units, 150g), Fregate (180HP, 20atk, 200g), Destroyer (250HP, 35atk, 300g). Ship.tscn at `Scenes/Ship.tscn`. Assets in `Assets/Units/Ships/`. Destroyer textures = `Destroyers_*.png`.
 

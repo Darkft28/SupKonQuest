@@ -86,7 +86,7 @@ SupKonQuest/
 │   ├── Units/                  # Unit.cs + partials (Combat, Movement, Healing, Transport, Visuals)
 │   ├── Ships/                  # Ship.cs + partials (Combat, Movement, Transport, Visuals)
 │   ├── Camps/                  # CampSimple.cs + partials (Production, Naval, Defense, Visuals)
-│   ├── Map/                    # MapGenerator, TerrainGenerator, CampPlacer, TerritoryManager
+│   ├── Map/                    # MapGenerator, TerrainGenerator, CampPlacer, TerritoryManager, TerritoryConnectivity
 │   ├── Selection/              # SelectionManager
 │   ├── Camera/                 # CameraController
 │   ├── Economy/                # GameManager, VictoryManager
@@ -103,10 +103,12 @@ SupKonQuest/
 ```
 Root
 ├── Singletons (AutoLoads)
+│   ├── GameManager             # Economie or + bonus region + victoire
 │   ├── NetworkManager          # ENet legacy P2P (hosting, connexion, decouverte LAN)
 │   ├── GameState               # Flux de jeu (seed, identifiant joueur local, IsAIMode)
+│   ├── NakamaService           # Auth + matchmaking + relay (mode en ligne)
 │   ├── LocalizationManager     # i18n FR/EN/ES
-│   └── GameManager             # Economie or + bonus region + victoire
+│   └── AudioSettings           # Volume audio
 └── Game.tscn
     ├── MapGenerator
     │   ├── Sol (TileMapLayer)
@@ -123,8 +125,10 @@ Root
 
 - **GameManager** : economie or par joueur/slot, bonus region, conditions de victoire via VictoryManager. Accessible via `GameManager.Instance`.
 - **NetworkManager** : connexion ENet P2P, decouverte UDP (port 7778), code salon 6 caracteres.
-- **GameState** : seed de carte, identifiant local de joueur (slot d'ownership), IsAIMode, AILevel.
+- **GameState** : seed de carte, identifiant local de joueur (slot d'ownership), IsAIMode, AILevel, IsOnline.
+- **NakamaService** : mode en ligne (guest, matchmaking, envoi de commandes relay).
 - **LocalizationManager** : 166 cles traduites en FR/EN/ES, signal `LanguageChanged`.
+- **AudioSettings** : preferences de volume.
 
 ### Signaux (Observer Pattern)
 
@@ -175,7 +179,11 @@ Carte : 256x256 tuiles de 128px = ~32 000 x 32 000 px.
 
 ### Territoire visuel
 
-`TerritoryManager` colore les tuiles autour des camps (rayon 8 tuiles) selon l'equipe proprietaire. Mise a jour en temps reel.
+`TerritoryManager` colore les tuiles autour des camps (rayon 8 tuiles) selon l'equipe proprietaire. Mise a jour en temps reel. Pas d'achat manuel de tuiles : l'extension se fait uniquement par capture de camps.
+
+`TerritoryConnectivity` construit un graphe de regions terrestres voisines (preset). Les unites et l'IA priorisent les camps atteignables a pied ; les cibles isolees par l'eau passent par le naval.
+
+Placement de port : clic sur une tuile **terrestre de votre territoire** adjacente a l'eau (pas seulement pres du camp).
 
 ## Systeme d'unites
 
@@ -237,7 +245,7 @@ Formule scalaire — la defense reduit progressivement (100 defense = 50% reduct
 | Type      | Tier | PV  | Attaque | Defense | Vitesse | Portee | Prix | Production | Capacite  |
 | --------- | ---- | --- | ------- | ------- | ------- | ------ | ---- | ---------- | --------- |
 | Transport | 1    | 200 | 0       | 10      | 120     | -      | 150g | 5s         | 10 unites |
-| Fregate   | 3    | 180 | 20      | 15      | 100     | 250    | 200g | 5s         | -         |
+| Fregate   | 3    | 180 | 20      | 15      | 100     | 300    | 200g | 5s         | -         |
 | Destroyer | 3    | 250 | 35      | 20      | 80      | 350    | 300g | 7s         | -         |
 
 
@@ -247,7 +255,7 @@ Un **port** s'achete manuellement depuis le HUD (bouton **⚓ Port — 500g**) p
 
 **Script :** `Scripts/Camps/CampSimple.cs` + partials
 
-- 600 PV, genere 500 or/sec
+- 600 PV, genere 50 or/sec (en plus du passif global de 500 or/sec)
 - **Tourelle defensive** : 5 degats/sec a 600px (active contre les ennemis)
 - **File de production** : `Queue<string>` max 7 unites, un seul type produit a la fois
 
@@ -310,20 +318,22 @@ L'IA controle les equipes bot (mode solo ou FFA). Architecture **Utility AI** : 
 | Delai premiere attaque | 20s  | 12s    | 5s   |
 | Delai de reaction      | 5s   | 1.5s   | 0.3s |
 | Taux d'erreur cible    | 40%  | 15%    | 0%   |
-| Ratio defense          | 0%   | 25%    | 30%  |
+| Ratio defense          | 0%   | 15%    | 20%  |
 
 
 **Comportement par niveau :**
 
-- **Easy** : spam Infantry, attaque le camp le plus proche, pas de defense reactiva
-- **Medium** : composition equilibree (Infantry 45%, Range 35%, Support 20%), economise pour tier 2, defense reactive si camp menace
-- **Hard** : composition adaptative (contre AntiArmor si ennemi a >3 Heavy), vise tier 3 en controlant sa region d'origine
+- **Easy** : spam Infantry, attaque le camp terrestre le plus proche, pas de defense reactive ni naval
+- **Medium** : composition equilibree (Infantry 45%, Range 35%, Support 20%), economise pour tier 2, defense reactive, ralliement avant attaque ; port + Fregate si region d'origine entiere controlee ; offensive navale si region d'origine complete
+- **Hard** : composition adaptative (contre AntiArmor si ennemi a >3 Heavy), vise tier 3 ; port des qu'une region entiere est controlee ; production navale (Transport occasionnel, Fregate/Destroyer) ; vagues navales possibles avant home region complete (20% par tick, cooldown 30s)
+
+**Ciblage terrestre :** l'IA ignore les camps dont la `RegionId` n'est pas dans le composant connexe terrestre de ses regions possedees (`TerritoryConnectivity`).
 
 **Tiers IA :**
 
 - Tier 1 (depart) : Infantry, Support, Range
 - Tier 2 (achat 1500 or) : + Heal, AntiArmor
-- Tier 3 (controle region d'origine) : + Mortar, Heavy, Tank
+- Tier 3 (controle region d'origine) : + Mortar, Heavy, Tank, Fregate, Destroyer, Transport
 
 Activee via `GameState.IsAIMode = true`, niveau via `GameState.AILevel`.
 

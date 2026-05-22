@@ -1,10 +1,27 @@
 # Idées d'implémentation IA — SupKonQuest
 
-## Une partie de ces idées sont déja implémentées
+## Déjà implémenté (branche `feature/bateaux`)
+
+- **Idée 2 — IA navale** : ports, production de navires, offensives Medium/Hard, ciblage terrestre via `TerritoryConnectivity`, placement de port IA sur tout le littoral du territoire (pas seulement au pied du camp).
+
+
+## Déjà implémenté (branche `feature/ia-refonte`)
+
+- **Idée 1 — IA hiérachique** : 1 boss par territoire pour éviter les stalemates entre ia
+
+- **Idée 4 — IA stager** : décalage entre démarage de chaque ia pour éviter un match mirroir entre deux ia
+
+## Idées encore ouvertes
+
+- **Idée 3 — Personnalité IA**
+
+- **Idée 5 — Escalade dynamique**
+
+- **Idée 6 — Trève entre IA**
 
 ---
 
-## Idée 1 — IA hiérarchique : une "boss IA" parmi les bots ⭐
+## Idée 1 — IA hiérarchique : une "boss IA" parmi les bots (implémenté)
 
 **Concept** : Sur les N territoires ennemis, attribuer 3/4 d'IAs Easy et 1 IA Medium ou Hard.
 
@@ -20,23 +37,21 @@
 
 ---
 
-## Idée 2 — IA navale
+## Idée 2 — IA navale (implémenté)
 
-**Problème** : L'IA ne construit jamais de bateaux, elle est bloquée si le joueur occupe une île.
+Comportement actuel dans `AIController.cs` :
 
-**Concept** :
 
-- Si un camp ennemi est uniquement accessible par l'eau, l'IA commande des Transports.
-- L'IA embarque ses unités idle dans un Transport disponible et les débarque près de la cible.
-- Condition de déclenchement : `ChooseTarget()` retourne un camp sans chemin terrestre.
+| Niveau | Ports / prod navale                       | Offensive navale                                             |
+| ------ | ----------------------------------------- | ------------------------------------------------------------ |
+| Easy   | Non                                       | Non                                                          |
+| Medium | Si region d'origine entierement controlee | Si region d'origine complete                                 |
+| Hard   | Des qu'une region entiere est controlee   | Oui ; 20% par tick avant home region complete (cooldown 30s) |
 
-**Paramètres suggérés** :
 
-| Niveau | Comportement naval                                    |
-| ------ | ----------------------------------------------------- |
-| Easy   | Jamais de naval                                       |
-| Medium | Naval si aucune cible terrestre depuis 30s            |
-| Hard   | Naval proactif dès qu'un camp côtier est détecté      |
+Ciblage terrestre : camps hors composant connexe terrestre ignores (`IsLandReachable`). Pas encore d'embarquement automatique des unites dans les Transports.
+
+**Améliorations possibles** : embarquement/debarquement IA, Transports pour camps uniquement maritimes.
 
 ---
 
@@ -44,29 +59,33 @@
 
 **Concept** : Plutôt que diff = vitesse de réaction, ajouter des archétypes comportementaux.
 
-| Archétype      | Comportement                            | Adapté à    |
-| -------------- | --------------------------------------- | ----------- |
-| Rusher         | Spam Infantry, attaque immédiate        | Easy/Medium |
-| Économiste     | Accumule de l'or, achète Heavy/Tank     | Medium/Hard |
-| Défenseur      | Garde tous ses camps, attaque peu       | Easy        |
-| Expansionniste | Capture camps neutres en priorité       | Medium      |
+
+| Archétype      | Comportement                        | Adapté à    |
+| -------------- | ----------------------------------- | ----------- |
+| Rusher         | Spam Infantry, attaque immédiate    | Easy/Medium |
+| Économiste     | Accumule de l'or, achète Heavy/Tank | Medium/Hard |
+| Défenseur      | Garde tous ses camps, attaque peu   | Easy        |
+| Expansionniste | Capture camps neutres en priorité   | Medium      |
+
 
 **Implémentation** : ajouter un `enum AIPersonality` dans `AIController`, modifier `ScoreCamp()` et `PickUnitToBuy()` selon la personnalité.
 
 ---
 
-## Idée 4 — Stagger des IA (démarrage décalé)
+## Idée 4 — Stagger des IA (démarrage décalé) (implémenté)
 
 **Problème** : Toutes les IAs Easy attaquent en même temps au même endroit → embouteillage.
 
 **Concept** : Ajouter un délai de démarrage aléatoire par slot bot (`_gameStartDelay`).
 
-| Slot IA | Délai            |
-| ------ | ---------------- |
-| Slot 2 | 0s               |
-| Slot 3 | +5s à +15s       |
-| Slot 4 | +10s à +25s      |
-| ...    | ...              |
+
+| Slot IA | Délai       |
+| ------- | ----------- |
+| Slot 2  | 0s          |
+| Slot 3  | +5s à +15s  |
+| Slot 4  | +10s à +25s |
+| ...     | ...         |
+
 
 Cela étale les conflits inter-IA et évite les stalemates parfaits.
 
@@ -98,10 +117,13 @@ int effectiveMaxUnits = MaxUnits[_diffIdx] + (campCount - 1) * 4;
 
 ## Priorité d'implémentation suggérée
 
-| Priorité | Idée                      | Effort   | Impact                              |
-| -------- | ------------------------- | -------- | ----------------------------------- |
-| 1        | Idée 1 — Boss IA          | Faible   | Impact gameplay immédiat            |
-| 2        | Idée 4 — Stagger          | Très faible (~5 lignes) | Fix du stalemate actuel  |
-| 3        | Idée 2 — Naval            | Élevé    | Complète le gameplay naval          |
-| 4        | Idée 3 — Personnalités    | Élevé    | Refactor profond, pour plus tard    |
-| 5        | Idées 5 & 6 — Polish      | Moyen    | Finition avancée                    |
+
+| Priorité | Idée                          | Effort                  | Impact                           |
+| -------- | ----------------------------- | ----------------------- | -------------------------------- |
+| 1        | Idée 1 — Boss IA              | Faible                  | Impact gameplay immédiat         |
+| 2        | Idée 4 — Stagger              | Très faible (~5 lignes) | Fix du stalemate actuel          |
+| 3        | Idée 2 — Naval (embarquement) | Moyen                   | Complète le gameplay naval       |
+| 4        | Idée 3 — Personnalités        | Élevé                   | Refactor profond, pour plus tard |
+| 5        | Idées 5 & 6 — Polish          | Moyen                   | Finition avancée                 |
+
+
