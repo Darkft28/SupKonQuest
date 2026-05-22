@@ -130,6 +130,7 @@ Ship tiers: Transport = Tier 1, Fregate + Destroyer = Tier 3.
 - **OnDefenderDied() never called** — Corrigé : `Unit.Combat.Die()` appelle `OwnerCamp.OnDefenderDied()` (Unit.Combat.cs:215).
 - **No gold refund on camp capture mid-production** — Corrigé : `CampSimple.SetTeam()` appelle `RefundProductionQueue()` et `RefundShipProductionQueue()` (CampSimple.cs:166-174).
 - **Multi après solo : client avec IA vs humain** — Corrigé : `GameState.ResetOnlineMatchFlags()` + garde `InitAIController` si `IsOnline`.
+- **Solo après multi : partie sans IA (PvP)** — Corrigé : `StartSoloGame()` atomique ; `ConfigureOfflineGame` ne remet plus `IsAIMode` à false (évite le double appel via `StartOfflineGame`).
 
 ## Code Conventions
 

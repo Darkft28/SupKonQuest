@@ -58,17 +58,24 @@ public partial class GameState : Node
 
 	public void ConfigureOfflineGame(MapType mapType, bool fastMode)
 	{
-		CurrentPlayMode = PlayMode.Offline;
-		LocalTeamId = 1;
-		ActivePlayerCount = 1;
-		ResetOnlineMatchFlags();
+		ClearOnlineSessionFields();
 		SelectedMapType = mapType;
 		FastMode = fastMode;
 		MapSeed = 0;
-		MatchId = "";
-		MatchmakerTicket = "";
-		NakamaUserId = "";
-		PlayerDisplayName = "";
+	}
+
+	/// <summary>Mode solo vs IA : ne pas appeler ResetOnlineMatchFlags (reserve au multi).</summary>
+	public void StartSoloGame(MapType mapType, bool fastMode, AIController.Difficulty aiLevel)
+	{
+		ClearOnlineSessionFields();
+		ActivePlayerCount = 1;
+		IsAIMode = true;
+		IsFreeForAll = true;
+		AILevel = aiLevel;
+		SelectedMapType = mapType;
+		FastMode = fastMode;
+		GenerateSeed();
+		LoadGameScene();
 	}
 
 	public void ConfigureOnlineLobby(string displayName = "")
@@ -110,10 +117,15 @@ public partial class GameState : Node
 
 	public void ClearOnlineSession()
 	{
-		CurrentPlayMode = PlayMode.Offline;
-		LocalTeamId = 1;
+		ClearOnlineSessionFields();
 		ActivePlayerCount = 1;
 		ResetOnlineMatchFlags();
+	}
+
+	private void ClearOnlineSessionFields()
+	{
+		CurrentPlayMode = PlayMode.Offline;
+		LocalTeamId = 1;
 		MatchId = "";
 		MatchmakerTicket = "";
 		NakamaUserId = "";
