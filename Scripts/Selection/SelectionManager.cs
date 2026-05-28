@@ -48,6 +48,28 @@ public partial class SelectionManager : Node2D
 		{
 			UpdateSelectionRect(GetGlobalMousePosition());
 		}
+
+		if (@event is InputEventKey)
+		{
+			foreach (string unitType in KeybindingsManager.UnitTypes)
+			{
+				if (@event.IsActionPressed($"unit_macro_{unitType}"))
+				{
+					SelectUnitsByType(unitType);
+					GetViewport().SetInputAsHandled();
+					return;
+				}
+			}
+			foreach (string shipType in KeybindingsManager.ShipTypes)
+			{
+				if (@event.IsActionPressed($"ship_macro_{shipType}"))
+				{
+					SelectShipsByType(shipType);
+					GetViewport().SetInputAsHandled();
+					return;
+				}
+			}
+		}
 	}
 
 	private void StartSelection(Vector2 position)
@@ -438,6 +460,42 @@ public partial class SelectionManager : Node2D
 		DeselectPort();
 
 		SelectUnit(unit);
+	}
+
+	private void SelectUnitsByType(string unitType)
+	{
+		ClearSelection();
+		int localTeamId = GetLocalTeamId();
+		foreach (var node in GetTree().GetNodesInGroup("units"))
+		{
+			if (node is Unit unit && unit.GetTeamId() == localTeamId && unit.GetUnitType() == unitType)
+				SelectUnit(unit);
+		}
+	}
+
+	private void SelectShipsByType(string shipType)
+	{
+		ClearSelection();
+		int localTeamId = GetLocalTeamId();
+		foreach (var node in GetTree().GetNodesInGroup("ships"))
+		{
+			if (node is Ship ship && ship.GetTeamId() == localTeamId && ship.GetShipType() == shipType)
+				SelectShip(ship);
+		}
+	}
+
+	private void ClearSelection()
+	{
+		foreach (var u in _selectedUnits)
+			if (IsInstanceValid(u)) u.Modulate = Colors.White;
+		_selectedUnits.Clear();
+
+		foreach (var s in _selectedShips)
+			if (IsInstanceValid(s)) s.Modulate = Colors.White;
+		_selectedShips.Clear();
+
+		DeselectCamp();
+		DeselectPort();
 	}
 
 	public CampSimple GetSelectedCamp()
