@@ -264,7 +264,7 @@ Un **port** s'achete manuellement depuis le HUD (bouton **⚓ Port — 500g**) p
 1. Eliminer tous les defenseurs du camp
 2. Reduire les PV du camp a 0
 
-Recompenses : +50 or instantane, 3 unites bonus spawnees (Infantry, Range, Infantry). Mort mutuelle : si le dernier attaquant meurt au meme moment que le dernier defenseur, le camp redevient neutre.
+Recompenses : +50 or instantane, 3 unites bonus spawnees (Infantry, Range, Infantry).
 
 ## Economie
 
@@ -407,13 +407,20 @@ Constantes client : `NetworkCommandRouter.OpcodeLobbyTick` / `OpcodeMatchStart`.
 - Code conserve dans `NetworkManager` (port 7777, decouverte LAN 7778, max 8 peers).
 - L'UI lobby actuelle passe par `NakamaService` + `LobbyUI` uniquement.
 
-### Gameplay relay (opcodes 1001-3001)
+### Gameplay relay (opcodes 1001-6001)
 
-- `NetworkCommandRouter` : achats, deplacements, attaques, captures, or (snapshots).
+- `NetworkCommandRouter` : achats, deplacements, attaques, captures, or, ultimates et cleanup de deconnexion.
 - `NetworkEntityRegistry` : dictionnaire statique `NetworkId → Node`
   - IDs dynamiques : `"{peerId}_{counter}"`
   - IDs deterministes des defenseurs initiaux : `"camp_{campId}_unit_{index}"`
 - Camps neutres en relay : simulation locale sur **tous** les peers (`CampSimple.IsLocallyOwned`).
+
+### Deconnexion en partie (autorite serveur)
+
+- Mapping `userId -> teamId` fige au `MatchStart`.
+- Sur leave apres demarrage:
+  - serveur broadcast **une seule fois** `5002 PlayerLeaveCleanup`,
+  - client applique cleanup gameplay (suppression unites/navires, camps neutralises, respawn defenseurs neutres).
 
 ### RPCs Godot (ENet legacy)
 
@@ -445,15 +452,18 @@ Constantes client : `NetworkCommandRouter.OpcodeLobbyTick` / `OpcodeMatchStart`.
 ## Controles
 
 
-| Action              | Controle              |
-| ------------------- | --------------------- |
-| Deplacer la camera  | ZQSD / Fleches        |
-| Zoom                | Molette souris        |
-| Drag camera         | Clic droit maintenu   |
-| Selectionner        | Clic gauche           |
-| Selection multiple  | Clic gauche + glisser |
-| Deplacer les unites | Clic droit            |
-| Recentrer camera    | C / Home              |
+| Action                    | Controle              |
+| ------------------------- | --------------------- |
+| Deplacer la camera        | ZQSD / Fleches        |
+| Zoom                      | Molette souris        |
+| Drag camera               | Clic droit maintenu   |
+| Selectionner              | Clic gauche           |
+| Selection multiple        | Clic gauche + glisser |
+| Deplacer les unites       | Clic droit            |
+| Recentrer camera          | C / Home              |
+| Ultimate Heal (ciblage)   | `1` puis clic gauche  |
+| Ultimate Support (ciblage)| `2` puis clic gauche  |
+| Annuler le ciblage        | `Esc` / clic droit    |
 
 
 ## Conventions de code

@@ -8,6 +8,7 @@ public partial class SelectionManager : Node2D
 	private CampSimple _selectedCamp = null;
 	private CampSimple _selectedPort = null;
 	private List<Ship> _selectedShips = new List<Ship>();
+	private string _pendingAbilityId = "";
 
 	private Vector2 _selectionStart;
 	private bool _isSelecting = false;
@@ -31,6 +32,11 @@ public partial class SelectionManager : Node2D
 			{
 				if (mb.Pressed)
 				{
+					if (!string.IsNullOrWhiteSpace(_pendingAbilityId))
+					{
+						CastPendingAbilityAt(GetGlobalMousePosition());
+						return;
+					}
 					StartSelection(GetGlobalMousePosition());
 				}
 				else
@@ -40,6 +46,11 @@ public partial class SelectionManager : Node2D
 			}
 			else if (mb.ButtonIndex == MouseButton.Right && mb.Pressed)
 			{
+				if (!string.IsNullOrWhiteSpace(_pendingAbilityId))
+				{
+					CancelAbilityTargeting();
+					return;
+				}
 				HandleRightClick(GetGlobalMousePosition());
 			}
 		}
@@ -382,6 +393,42 @@ public partial class SelectionManager : Node2D
 
 			MoveSelectedShips(target);
 			return;
+		}
+	}
+
+	public void BeginAbilityTargeting(string abilityId)
+	{
+		_pendingAbilityId = abilityId ?? "";
+	}
+
+	public void CancelAbilityTargeting()
+	{
+		_pendingAbilityId = "";
+	}
+
+	public bool HasPendingAbility()
+	{
+		return !string.IsNullOrWhiteSpace(_pendingAbilityId);
+	}
+
+	private void CastPendingAbilityAt(Vector2 target)
+	{
+		string abilityId = _pendingAbilityId;
+		_pendingAbilityId = "";
+
+		if (string.IsNullOrWhiteSpace(abilityId) || _selectedUnits.Count == 0)
+			return;
+
+		if (ShouldUseRelayCommands())
+		{
+			NetworkCommandRouter.RequestCastUltimate(_selectedUnits, abilityId, target);
+			return;
+		}
+
+		foreach (var unit in _selectedUnits)
+		{
+			if (IsInstanceValid(unit))
+				unit.TryCastUltimate(abilityId, target);
 		}
 	}
 

@@ -1,5 +1,7 @@
 using Godot;
 using System.Collections.Generic;
+using System;
+using System.Linq;
 
 // Hub central de RPCs multijoueur. Enfant de Game.tscn.
 public partial class NetworkSync : Node
@@ -56,6 +58,8 @@ public partial class NetworkSync : Node
 
 	public bool IsServer()
 	{
+		if (Multiplayer.MultiplayerPeer == null)
+			return false;
 		return IsMultiplayer() && Multiplayer.IsServer();
 	}
 
@@ -311,6 +315,11 @@ public partial class NetworkSync : Node
 
 	private void SendEntityStatesBatch()
 	{
+		if (IsRelayMode())
+		{
+			return;
+		}
+
 		var gameState = GetNodeOrNull<GameState>("/root/GameState");
 		int localTeamId = gameState?.LocalTeamId ?? 1;
 

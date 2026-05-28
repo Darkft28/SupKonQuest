@@ -153,7 +153,9 @@ Composition targets: Easy=100% Infantry. Medium/Hard use mixed compositions (Inf
 
 Camp scoring: +2500 neutral, +(1-hpRatio)×1800 if damaged, +(5-defenders)×300, +3500 home region, −distance×0.4. Medium/Hard: port/ship production when a full region is controlled, naval offensives (Fregate/Destroyer). Land targets filtered via `TerritoryConnectivity.IsReachable`. Easy: infantry spam, nearest camp, no naval.
 
-**Multijoueur en ligne (Nakama)** - Flux : `GameModeMenu` → `LobbyUI` → matchmaking → `JoinMatch` → lobby in-match (`MatchLobbyEntered`) → **`MatchStart` relay uniquement** → `StartOnlineGameFromMatch`. Pas d'IA (`IsAIMode`/`IsFreeForAll` remis à false via `ResetOnlineMatchFlags`). 1 camp/joueur, reste neutre (`GameManager.AssignCampsToPlayers`, `ActivePlayerCount`). Signaux : `MatchLobbyEntered`, `MatchLobbyTick`, `MatchStarting`. Module relay externe : countdown ~20s (+5s/join, start à 8) puis opcode `4002`. Test local : `--nakama-slot=1` / `2`.
+**Multijoueur en ligne (Nakama)** - Flux : `GameModeMenu` → `LobbyUI` → matchmaking → `JoinMatch` → lobby in-match (`MatchLobbyEntered`) → **`MatchStart` relay uniquement** → `StartOnlineGameFromMatch`. Pas d'IA (`IsAIMode`/`IsFreeForAll` remis à false via `ResetOnlineMatchFlags`). 1 camp/joueur, reste neutre (`GameManager.AssignCampsToPlayers`, `ActivePlayerCount`). Signaux : `MatchLobbyEntered`, `MatchLobbyTick`, `MatchStarting`. Module relay externe : countdown ~20s (+5s/join, start à 8) puis opcode `4002`.
+Gestion déconnexion autoritaire serveur : `5002` (cleanup team) sur leave en partie. Le client applique l'événement serveur.
+Test local : `--nakama-slot=1` / `2`.
 
 ### Key Patterns
 - Partial classes by concern (Unit.Combat.cs, Unit.Movement.cs, etc.) — never mix concerns across partials
@@ -169,8 +171,6 @@ Camp scoring: +2500 neutral, +(1-hpRatio)×1800 if damaged, +(5-defenders)×300,
 ## Known Bugs (from audit 2026-05-12)
 
 - **HUD price mismatch** (HIGH): GameHUD.tscn hardcodes wrong prices: AntiArmor (90 vs 120), Heavy (120 vs 150), Mortar (110 vs 130), Tank (150 vs 200). Fix: update price Label nodes in GameHUD.tscn to match UnitStats.cs values.
-- **No multiplayer reconnection** (HIGH): Disconnect = end of game, no recovery path. NetworkManager changes scene to MainMenu after 5s.
-- **No naval AI** (MEDIUM): AIController has no logic for buying ships or using ports. Bots can be stranded if map requires naval crossing.
 
 ## Fixed Bugs (for reference)
 

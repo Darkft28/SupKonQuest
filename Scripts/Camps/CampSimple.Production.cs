@@ -187,6 +187,25 @@ public partial class CampSimple
 		}
 	}
 
+	public void RespawnNeutralDefenders()
+	{
+		ClearCampUnits();
+		SpawnUnits();
+		UpdateDefendersAuthority();
+	}
+
+	private void ClearCampUnits()
+	{
+		foreach (var unit in _spawnedUnits)
+		{
+			if (unit != null && IsInstanceValid(unit))
+				unit.QueueFree();
+		}
+
+		_spawnedUnits.Clear();
+		_defenders.Clear();
+	}
+
 	public int GetLiveUnitCount()
 	{
 		CleanDeadUnits();

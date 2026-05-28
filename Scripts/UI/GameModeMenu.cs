@@ -173,6 +173,11 @@ public partial class GameModeMenu : Control
 
 	private void OnMultiPressed()
 	{
+		NavigateToLobby();
+	}
+
+	private void NavigateToLobby()
+	{
 		var gameState = GetNodeOrNull<GameState>("/root/GameState");
 		gameState?.ConfigureOnlineLobby();
 		GetTree().ChangeSceneToFile("res://Scenes/Lobby.tscn");

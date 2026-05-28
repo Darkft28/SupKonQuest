@@ -340,6 +340,7 @@ public partial class Unit : CharacterBody2D
 		}
 
 		ProcessSupportBattleHorn(delta);
+		TickUltimateState(delta);
 
 		if (_intendedDirection != Vector2.Zero)
 			UpdateSpriteDirection(_intendedDirection);

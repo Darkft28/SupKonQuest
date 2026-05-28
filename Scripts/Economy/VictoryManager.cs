@@ -99,7 +99,11 @@ public class VictoryManager
 		{
 			canvasLayer.QueueFree();
 			_gameManager.GetTree().Paused = false;
-			_gameManager.GetTree().ChangeSceneToFile("res://Scenes/MainMenu.tscn");
+			var gameState = _gameManager.GetNodeOrNull<GameState>("/root/GameState");
+			if (gameState != null)
+				gameState.ReturnToMainMenu();
+			else
+				_gameManager.GetTree().ChangeSceneToFile("res://Scenes/MainMenu.tscn");
 		};
 
 		vbox.AddChild(victoryLabel);

@@ -15,6 +15,9 @@ public partial class GameHUD : Control
 	private Button _portButton;
 	private Label _tierInfoLabel;
 	private Button _unlockTier2Button;
+	private HBoxContainer _abilitiesContainer;
+	private Button _healUltimateButton;
+	private Button _supportUltimateButton;
 
 	private Panel _disconnectPanel;
 	private Label _disconnectLabel;
@@ -60,6 +63,7 @@ public partial class GameHUD : Control
 		CreateLockLabels();
 		CreateTierInfoLabel();
 		BindSceneHudControls();
+		CreateAbilityButtons();
 
 		var networkManager = GetNodeOrNull<NetworkManager>("/root/NetworkManager");
 		if (networkManager != null)
@@ -234,7 +238,11 @@ public partial class GameHUD : Control
 	{
 		TerritoryManager.Instance?.CancelPortPlacement();
 		GetTree().Paused = false;
-		GetTree().ChangeSceneToFile("res://Scenes/MainMenu.tscn");
+		var gameState = GetNodeOrNull<GameState>("/root/GameState");
+		if (gameState != null)
+			gameState.ReturnToMainMenu();
+		else
+			GetTree().ChangeSceneToFile("res://Scenes/MainMenu.tscn");
 	}
 
 	private void OnPortButtonPressed()
@@ -443,7 +451,104 @@ public partial class GameHUD : Control
 		UpdateContainerVisibility();
 		UpdateUnitButtons();
 		UpdateShipButtons();
+		UpdateAbilityButtons();
+		HandleAbilityHotkeys();
 		UpdateLeaderboard(delta);
+	}
+
+	private void CreateAbilityButtons()
+	{
+		_abilitiesContainer = new HBoxContainer();
+		_abilitiesContainer.AnchorLeft = 0.5f;
+		_abilitiesContainer.AnchorTop = 1f;
+		_abilitiesContainer.AnchorRight = 0.5f;
+		_abilitiesContainer.AnchorBottom = 1f;
+		_abilitiesContainer.OffsetLeft = -260f;
+		_abilitiesContainer.OffsetTop = -210f;
+		_abilitiesContainer.OffsetRight = 260f;
+		_abilitiesContainer.OffsetBottom = -170f;
+		_abilitiesContainer.Alignment = BoxContainer.AlignmentMode.Center;
+		_abilitiesContainer.AddThemeConstantOverride("separation", 8);
+		AddChild(_abilitiesContainer);
+
+		_healUltimateButton = new Button();
+		_healUltimateButton.Text = "Heal Ult [1]";
+		_healUltimateButton.Pressed += () => StartAbilityTargeting("heal_ultimate");
+		_abilitiesContainer.AddChild(_healUltimateButton);
+
+		_supportUltimateButton = new Button();
+		_supportUltimateButton.Text = "Support Ult [2]";
+		_supportUltimateButton.Pressed += () => StartAbilityTargeting("support_ultimate");
+		_abilitiesContainer.AddChild(_supportUltimateButton);
+
+		_abilitiesContainer.Visible = false;
+	}
+
+	private void HandleAbilityHotkeys()
+	{
+		if (_selectionManager == null)
+			return;
+
+		if (Input.IsActionJustPressed("ultimate_heal"))
+			StartAbilityTargeting("heal_ultimate");
+		else if (Input.IsActionJustPressed("ultimate_support"))
+			StartAbilityTargeting("support_ultimate");
+		else if (Input.IsActionJustPressed("ultimate_cancel"))
+			_selectionManager.CancelAbilityTargeting();
+	}
+
+	private void StartAbilityTargeting(string abilityId)
+	{
+		if (_selectionManager == null || string.IsNullOrWhiteSpace(abilityId))
+			return;
+
+		_selectionManager.BeginAbilityTargeting(abilityId);
+	}
+
+	private void UpdateAbilityButtons()
+	{
+		if (_abilitiesContainer == null || _selectionManager == null)
+			return;
+
+		var selectedUnits = _selectionManager.GetSelectedUnits();
+		bool hasUnits = selectedUnits != null && selectedUnits.Count > 0;
+		_abilitiesContainer.Visible = hasUnits;
+		if (!hasUnits)
+			return;
+
+		bool canHeal = false;
+		bool canSupport = false;
+		float healCooldown = 0f;
+		float supportCooldown = 0f;
+
+		foreach (var unit in selectedUnits)
+		{
+			if (unit == null || !IsInstanceValid(unit))
+				continue;
+
+			if (unit.GetUnitType() == "Heal")
+			{
+				healCooldown = Mathf.Max(healCooldown, unit.GetUltimateCooldownRemaining("heal_ultimate"));
+				canHeal |= unit.CanUseUltimate("heal_ultimate");
+			}
+			else if (unit.GetUnitType() == "Support")
+			{
+				supportCooldown = Mathf.Max(supportCooldown, unit.GetUltimateCooldownRemaining("support_ultimate"));
+				canSupport |= unit.CanUseUltimate("support_ultimate");
+			}
+		}
+
+		_healUltimateButton.Visible = canHeal || healCooldown > 0f;
+		_healUltimateButton.Disabled = !canHeal;
+		_healUltimateButton.Text = healCooldown > 0f
+			? $"Heal Ult [{Mathf.CeilToInt(healCooldown)}s]"
+			: "Heal Ult [1]";
+
+		_supportUltimateButton.Visible = canSupport || supportCooldown > 0f;
+		_supportUltimateButton.Disabled = !canSupport;
+		_supportUltimateButton.Text = supportCooldown > 0f
+			? $"Support Ult [{Mathf.CeilToInt(supportCooldown)}s]"
+			: "Support Ult [2]";
 	}
 
 	private void UpdateLeaderboard(double delta)
