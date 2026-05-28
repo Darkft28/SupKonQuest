@@ -58,8 +58,8 @@ public partial class MapGenerator : Node
 		if (!Engine.IsEditorHint())
 		{
 			var gameState = GetNodeOrNull<GameState>("/root/GameState");
-			if (gameState != null && gameState.MapSeed != 0)
-				_networkSeed = gameState.MapSeed;
+			if (gameState != null)
+				_networkSeed = gameState.GetEffectiveMapSeed();
 		}
 
 		if (!Engine.IsEditorHint())
@@ -518,7 +518,7 @@ public partial class MapGenerator : Node
 	private void InitAIController()
 	{
 		var gameState = GetNodeOrNull<GameState>("/root/GameState");
-		if (gameState == null || !gameState.IsAIMode) return;
+		if (gameState == null || !gameState.IsAIMode || gameState.IsOnline) return;
 
 		// Supprimer les anciens AIControllers
 		for (int i = GetChildCount() - 1; i >= 0; i--)

@@ -2,7 +2,7 @@ using Godot;
 
 public partial class CampSimple
 {
-	private const float TerritoryRadius = 600f; // réduit pour laisser des failles au joueur
+	private const float TerritoryRadius = 600f; 
 
 	private void SetupCampTimers()
 	{

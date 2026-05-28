@@ -4,7 +4,7 @@ Jeu de strategie et de conquete en temps reel developpe avec Godot 4.5 et C# (.N
 
 ## Description
 
-SupKonQuest est un RTS (Real-Time Strategy) ou le joueur doit capturer des camps sur une carte predéfinie. On commence avec un camp et un peu d'or, on produit des unites terrestres et navales, et on part a la conquete des camps adverses. Le jeu propose un mode solo, un mode contre IA (3 niveaux) et un mode multijoueur en reseau local en format "chacun pour soi".
+SupKonQuest est un RTS (Real-Time Strategy) ou le joueur doit capturer des camps sur une carte predéfinie. On commence avec un camp et un peu d'or, on produit des unites terrestres et navales, et on part a la conquete des camps adverses. Le jeu propose un mode solo contre IA (3 niveaux, 1 camp par faction) et un mode multijoueur en ligne PvP (2 a 8 joueurs, 1 camp de depart par joueur, camps restants neutres).
 
 Le principe : chaque camp genere de l'or passivement, cet or permet d'acheter des unites, et ces unites servent a capturer d'autres camps. Controler une region entiere rapporte un bonus. Le joueur qui controle tous les camps gagne.
 
@@ -34,9 +34,10 @@ Ensuite ouvrir le projet dans Godot 4.5 et lancer avec F5.
 ## Serveur Nakama local (pour le mode en ligne)
 
 Si vous n'avez pas encore de serveur, le mode solo fonctionne sans Nakama.
-Pour tester le mode en ligne (auth guest + matchmaking + lobby), lancez un Nakama local.
+Pour tester le mode en ligne (auth guest + matchmaking 2-8 + lobby in-match), lancez un Nakama local **et** le module relay (projet serveur separe) qui pilote le countdown et le demarrage de partie.
 
 Prerequis minimaux:
+
 - Docker Desktop
 
 Commandes (PowerShell):
@@ -48,8 +49,9 @@ docker run --name nakama --network nakama-net -p 7350:7350 -p 7349:7349 -d heroi
 ```
 
 Le projet utilise par defaut ces valeurs dans `project.godot`:
+
 - `nakama/scheme = "http"`
-- `nakama/host = "127.0.0.1"`
+- `nakama/host = "4.165.28.243"` (serveur Azure ; pour du local, mettre `127.0.0.1`)
 - `nakama/port = 7350`
 - `nakama/server_key = "defaultkey"`
 
@@ -74,7 +76,7 @@ SupKonQuest/
 ├── Scenes/
 │   ├── MainMenu.tscn
 │   ├── GameModeMenu.tscn       # Choix mode (Solo / Multi / IA)
-│   ├── Lobby.tscn              # Lobby multijoueur LAN
+│   ├── Lobby.tscn              # Lobby multijoueur (Nakama matchmaking)
 │   ├── Game.tscn               # Scene principale du jeu
 │   ├── GameHUD.tscn            # Interface HUD (or, boutons d'achat)
 │   ├── Unit.tscn               # Prefab unite terrestre
@@ -84,7 +86,7 @@ SupKonQuest/
 │   ├── Units/                  # Unit.cs + partials (Combat, Movement, Healing, Transport, Visuals)
 │   ├── Ships/                  # Ship.cs + partials (Combat, Movement, Transport, Visuals)
 │   ├── Camps/                  # CampSimple.cs + partials (Production, Naval, Defense, Visuals)
-│   ├── Map/                    # MapGenerator, TerrainGenerator, CampPlacer, TerritoryManager
+│   ├── Map/                    # MapGenerator, TerrainGenerator, CampPlacer, TerritoryManager, TerritoryConnectivity
 │   ├── Selection/              # SelectionManager
 │   ├── Camera/                 # CameraController
 │   ├── Economy/                # GameManager, VictoryManager
@@ -101,10 +103,12 @@ SupKonQuest/
 ```
 Root
 ├── Singletons (AutoLoads)
+│   ├── GameManager             # Economie or + bonus region + victoire
 │   ├── NetworkManager          # ENet legacy P2P (hosting, connexion, decouverte LAN)
 │   ├── GameState               # Flux de jeu (seed, identifiant joueur local, IsAIMode)
+│   ├── NakamaService           # Auth + matchmaking + relay (mode en ligne)
 │   ├── LocalizationManager     # i18n FR/EN/ES
-│   └── GameManager             # Economie or + bonus region + victoire
+│   └── AudioSettings           # Volume audio
 └── Game.tscn
     ├── MapGenerator
     │   ├── Sol (TileMapLayer)
@@ -121,8 +125,10 @@ Root
 
 - **GameManager** : economie or par joueur/slot, bonus region, conditions de victoire via VictoryManager. Accessible via `GameManager.Instance`.
 - **NetworkManager** : connexion ENet P2P, decouverte UDP (port 7778), code salon 6 caracteres.
-- **GameState** : seed de carte, identifiant local de joueur (slot d'ownership), IsAIMode, AILevel.
+- **GameState** : seed de carte, identifiant local de joueur (slot d'ownership), IsAIMode, AILevel, IsOnline.
+- **NakamaService** : mode en ligne (guest, matchmaking, envoi de commandes relay).
 - **LocalizationManager** : 166 cles traduites en FR/EN/ES, signal `LanguageChanged`.
+- **AudioSettings** : preferences de volume.
 
 ### Signaux (Observer Pattern)
 
@@ -152,14 +158,16 @@ Le serveur genere un seed aleatoire, l'envoie via RPC aux clients. Les positions
 
 ### Tuiles
 
-| ID | Biome | Praticable |
-|----|-------|-----------|
-| 6 | Eau | Non (navires seulement) |
-| 1 | Sable | Oui |
-| 0 | Herbe | Oui |
-| 3 | Foret | Oui |
-| 5 | Roche | Non |
-| 4 | Neige | Non |
+
+| ID  | Biome | Praticable              |
+| --- | ----- | ----------------------- |
+| 6   | Eau   | Non (navires seulement) |
+| 1   | Sable | Oui                     |
+| 0   | Herbe | Oui                     |
+| 3   | Foret | Oui                     |
+| 5   | Roche | Non                     |
+| 4   | Neige | Non                     |
+
 
 Carte : 256x256 tuiles de 128px = ~32 000 x 32 000 px.
 
@@ -171,7 +179,11 @@ Carte : 256x256 tuiles de 128px = ~32 000 x 32 000 px.
 
 ### Territoire visuel
 
-`TerritoryManager` colore les tuiles autour des camps (rayon 8 tuiles) selon l'equipe proprietaire. Mise a jour en temps reel.
+`TerritoryManager` colore les tuiles autour des camps (rayon 8 tuiles) selon l'equipe proprietaire. Mise a jour en temps reel. Pas d'achat manuel de tuiles : l'extension se fait uniquement par capture de camps.
+
+`TerritoryConnectivity` construit un graphe de regions terrestres voisines (preset). Les unites et l'IA priorisent les camps atteignables a pied ; les cibles isolees par l'eau passent par le naval.
+
+Placement de port : clic sur une tuile **terrestre de votre territoire** adjacente a l'eau (pas seulement pres du camp).
 
 ## Systeme d'unites
 
@@ -197,16 +209,18 @@ Detectection de blocage : si vitesse reelle < 10% de la vitesse attendue pendant
 
 ### Stats des unites
 
-| Type | Tier | Prix | PV | Attaque | Defense | Vitesse | Portee | Production |
-|------|------|------|----|---------|---------|---------|--------|------------|
-| Infantry | 1 | 50g | 100 | 15 | 10 | 150 | 100 | 2s |
-| Support | 1 | 75g | 80 | 8 | 5 | 120 | 100 | 3s |
-| Range | 1 | 80g | 70 | 20 | 5 | 100 | 300 | 3s |
-| Heal | 2 | 100g | 60 | 0 | 3 | 100 | 150 | 3s |
-| AntiArmor | 2 | 120g | 80 | 35 | 8 | 90 | 120 | 4s |
-| Mortar | 3 | 130g | 50 | 40 | 3 | 60 | 400 | 4s |
-| Heavy | 3 | 150g | 150 | 25 | 20 | 70 | 100 | 5s |
-| Tank | 3 | 200g | 200 | 30 | 25 | 50 | 100 | 6s |
+
+| Type      | Tier | Prix | PV  | Attaque | Defense | Vitesse | Portee | Production |
+| --------- | ---- | ---- | --- | ------- | ------- | ------- | ------ | ---------- |
+| Infantry  | 1    | 50g  | 100 | 15      | 10      | 150     | 100    | 2s         |
+| Support   | 1    | 75g  | 80  | 8       | 5       | 120     | 100    | 3s         |
+| Range     | 1    | 80g  | 70  | 20      | 5       | 100     | 300    | 3s         |
+| Heal      | 2    | 100g | 60  | 0       | 3       | 100     | 150    | 3s         |
+| AntiArmor | 2    | 120g | 80  | 35      | 8       | 90      | 120    | 4s         |
+| Mortar    | 3    | 130g | 50  | 40      | 3       | 60      | 400    | 4s         |
+| Heavy     | 3    | 150g | 150 | 25      | 20      | 70      | 100    | 5s         |
+| Tank      | 3    | 200g | 200 | 30      | 25      | 50      | 100    | 6s         |
+
 
 ### Formule de degats
 
@@ -227,11 +241,13 @@ Formule scalaire — la defense reduit progressivement (100 defense = 50% reduct
 
 **Scripts :** `Scripts/Ships/`
 
-| Type | Tier | PV | Attaque | Defense | Vitesse | Portee | Prix | Production | Capacite |
-|------|------|-----|---------|---------|---------|--------|------|-----------|---------|
-| Transport | 1 | 200 | 0 | 10 | 120 | - | 150g | 5s | 10 unites |
-| Fregate | 3 | 180 | 20 | 15 | 100 | 250 | 200g | 5s | - |
-| Destroyer | 3 | 250 | 35 | 20 | 80 | 350 | 300g | 7s | - |
+
+| Type      | Tier | PV  | Attaque | Defense | Vitesse | Portee | Prix | Production | Capacite  |
+| --------- | ---- | --- | ------- | ------- | ------- | ------ | ---- | ---------- | --------- |
+| Transport | 1    | 200 | 0       | 10      | 120     | -      | 150g | 5s         | 10 unites |
+| Fregate   | 3    | 180 | 20      | 15      | 100     | 300    | 200g | 5s         | -         |
+| Destroyer | 3    | 250 | 35      | 20      | 80      | 350    | 300g | 7s         | -         |
+
 
 Un **port** s'achete manuellement depuis le HUD (bouton **⚓ Port — 500g**) puis le joueur clique sur une tuile cotiere pour le poser. L'orientation est auto-detectee selon la direction de l'eau adjacente. Le port dispose de sa propre file de production (max 5 navires). Le Transport peut embarquer jusqu'a 10 unites terrestres et les debarquer sur une cote. Le placement peut etre annule (or rembourse).
 
@@ -239,8 +255,8 @@ Un **port** s'achete manuellement depuis le HUD (bouton **⚓ Port — 500g**) p
 
 **Script :** `Scripts/Camps/CampSimple.cs` + partials
 
-- 750 PV, genere 500 or/sec
-- **Tourelle defensive** : 15 degats/sec a 600px (active contre les ennemis)
+- 600 PV, genere 50 or/sec (en plus du passif global de 500 or/sec)
+- **Tourelle defensive** : 5 degats/sec a 600px (active contre les ennemis)
 - **File de production** : `Queue<string>` max 7 unites, un seul type produit a la fois
 
 ### Capture (deux phases)
@@ -254,13 +270,15 @@ Recompenses : +50 or instantane, 3 unites bonus spawnees (Infantry, Range, Infan
 
 ### Sources d'or
 
-| Source | Montant |
-|--------|---------|
-| Passif joueur | +500 or/sec |
-| Par camp possede | +50 or/sec |
-| Capture d'un camp | +50 or instantane |
-| Or stocke dans camp neutre | Transfere au moment de la capture |
-| Bonus region (region entiere controlee) | +30 or/sec |
+
+| Source                                  | Montant                           |
+| --------------------------------------- | --------------------------------- |
+| Passif joueur                           | +500 or/sec                       |
+| Par camp possede                        | +50 or/sec                        |
+| Capture d'un camp                       | +50 or instantane                 |
+| Or stocke dans camp neutre              | Transfere au moment de la capture |
+| Bonus region (region entiere controlee) | +30 or/sec                        |
+
 
 Or de depart : 100 or.
 
@@ -272,11 +290,13 @@ La carte est divisee en regions (3 sur Irridium, 4 sur Alabasta). Si une equipe 
 
 Chaque equipe progresse sur 3 paliers de production :
 
-| Palier | Condition de deblocage | Unites disponibles |
-|--------|------------------------|-------------------|
-| Tier 1 | Depart | Infantry, Support, Range, Transport |
-| Tier 2 | Achat 1500 or | + Heal, AntiArmor |
+
+| Palier | Condition de deblocage                          | Unites disponibles                        |
+| ------ | ----------------------------------------------- | ----------------------------------------- |
+| Tier 1 | Depart                                          | Infantry, Support, Range, Transport       |
+| Tier 2 | Achat 1500 or                                   | + Heal, AntiArmor                         |
 | Tier 3 | Controler tous les camps de sa region d'origine | + Mortar, Heavy, Tank, Fregate, Destroyer |
+
 
 Le bouton de deblocage tier 2 est visible dans le HUD quand un camp est selectionne.
 
@@ -290,24 +310,30 @@ Controler 100% des camps non-neutres. Verifie chaque seconde par `VictoryManager
 
 L'IA controle les equipes bot (mode solo ou FFA). Architecture **Utility AI** : chaque tick, l'IA score ses options (production, attaque, defense) et choisit la meilleure. Une instance `AIController` est creee par equipe bot dans `MapGenerator.InitAIController()`.
 
-| Parametre | Easy | Medium | Hard |
-|-----------|------|--------|------|
-| Tick de decision | 6s | 3.5s | 2s |
-| Max unites | 8 | 16 | 28 |
-| Delai premiere attaque | 20s | 12s | 5s |
-| Delai de reaction | 5s | 1.5s | 0.3s |
-| Taux d'erreur cible | 40% | 15% | 0% |
-| Ratio defense | 0% | 25% | 30% |
+
+| Parametre              | Easy | Medium | Hard |
+| ---------------------- | ---- | ------ | ---- |
+| Tick de decision       | 6s   | 3.5s   | 2s   |
+| Max unites             | 8    | 16     | 28   |
+| Delai premiere attaque | 20s  | 12s    | 5s   |
+| Delai de reaction      | 5s   | 1.5s   | 0.3s |
+| Taux d'erreur cible    | 40%  | 15%    | 0%   |
+| Ratio defense          | 0%   | 15%    | 20%  |
+
 
 **Comportement par niveau :**
-- **Easy** : spam Infantry, attaque le camp le plus proche, pas de defense reactiva
-- **Medium** : composition equilibree (Infantry 45%, Range 35%, Support 20%), economise pour tier 2, defense reactive si camp menace
-- **Hard** : composition adaptative (contre AntiArmor si ennemi a >3 Heavy), vise tier 3 en controlant sa region d'origine
+
+- **Easy** : spam Infantry, attaque le camp terrestre le plus proche, pas de defense reactive ni naval
+- **Medium** : composition equilibree (Infantry 45%, Range 35%, Support 20%), economise pour tier 2, defense reactive, ralliement avant attaque ; port + Fregate si region d'origine entiere controlee ; offensive navale si region d'origine complete
+- **Hard** : composition adaptative (contre AntiArmor si ennemi a >3 Heavy), vise tier 3 ; port des qu'une region entiere est controlee ; production navale (Transport occasionnel, Fregate/Destroyer) ; vagues navales possibles avant home region complete (20% par tick, cooldown 30s)
+
+**Ciblage terrestre :** l'IA ignore les camps dont la `RegionId` n'est pas dans le composant connexe terrestre de ses regions possedees (`TerritoryConnectivity`).
 
 **Tiers IA :**
+
 - Tier 1 (depart) : Infantry, Support, Range
 - Tier 2 (achat 1500 or) : + Heal, AntiArmor
-- Tier 3 (controle region d'origine) : + Mortar, Heavy, Tank
+- Tier 3 (controle region d'origine) : + Mortar, Heavy, Tank, Fregate, Destroyer, Transport
 
 Activee via `GameState.IsAIMode = true`, niveau via `GameState.AILevel`.
 
@@ -342,26 +368,67 @@ Un clic droit deplace les unites selectionnees. Clic droit sur un Transport alli
 
 **Scripts :** `Scripts/Network/`
 
-### Architecture relay Nakama
+### Mode en ligne (Nakama + relay)
 
-- Match "chacun pour soi" : chaque joueur est un slot d'ownership indépendant, sans alliance d'equipe
-- Connexion via code salon 6 caracteres (decouverte UDP broadcast sur port 7778) pour l'ancienne voie ENet; Nakama gere l'authentification et le relay des commandes en ligne
+- **PvP uniquement** : pas d'IA en multijoueur (`IsAIMode = false` force a l'entree du lobby/match).
+- **Matchmaking** : 2 a 8 joueurs (`AddMatchmakerAsync` min 2 / max 8).
+- **Camps** : 1 camp de depart par joueur humain ; les autres camps preset restent **neutres** (defenseurs 1,5x HP).
+- **Equipes** : `LocalTeamId` = index dans la liste triee des `userId` Nakama + 1 ; `ActivePlayerCount` fige au demarrage.
+- **Lobby in-match** : apres `JoinMatch` (>= 2 joueurs), le client affiche la liste des joueurs et attend le **serveur relay** — pas de demarrage automatique cote client.
+- **Test multi-instance** : un `deviceId` / `userId` Nakama distinct par instance via `--nakama-slot` (fichiers `user://nakama_device_id_1.txt` et `_2.txt`). Syntaxe recommandee Godot 4 :
+
+```powershell
+godot --path . -- --nakama-slot=1
+godot --path . -- --nakama-slot=2
+```
+
+(`--` separe les args moteur des args jeu ; le code lit aussi `OS.GetCmdlineArgs()` si `--nakama-slot=1` est passe sans `--`.)
+
+### Contrat relay (module serveur externe)
+
+Le module relay Nakama vit dans un **autre depot**. Il doit broadcaster :
+
+| Opcode | Nom | Payload JSON (camelCase) |
+| ------ | --- | ------------------------ |
+| `4001` | LobbyTick | `{ "secondsRemaining": int, "playerCount": int }` — environ chaque seconde pendant l'attente |
+| `4002` | MatchStart | `{ "seed": int, "orderedUserIds": ["userId1", ...] }` — liste triee par `userId` (meme regle que le client) |
+
+Regles serveur attendues :
+
+- Countdown **~20 s** des l'arrivee du 2e joueur.
+- **+5 s** au temps restant a chaque nouveau joueur (jusqu'a 8).
+- Demarrage immediat si **8 joueurs** dans le match.
+- Seul `MatchStart` declenche le chargement de `Game.tscn` sur tous les clients.
+
+Constantes client : `NetworkCommandRouter.OpcodeLobbyTick` / `OpcodeMatchStart`.
+
+### Architecture legacy ENet (non utilise par l'UI actuelle)
+
+- Code conserve dans `NetworkManager` (port 7777, decouverte LAN 7778, max 8 peers).
+- L'UI lobby actuelle passe par `NakamaService` + `LobbyUI` uniquement.
+
+### Gameplay relay (opcodes 1001-3001)
+
+- `NetworkCommandRouter` : achats, deplacements, attaques, captures, or (snapshots).
 - `NetworkEntityRegistry` : dictionnaire statique `NetworkId → Node`
   - IDs dynamiques : `"{peerId}_{counter}"`
   - IDs deterministes des defenseurs initiaux : `"camp_{campId}_unit_{index}"`
+- Camps neutres en relay : simulation locale sur **tous** les peers (`CampSimple.IsLocallyOwned`).
 
-### RPCs
+### RPCs Godot (ENet legacy)
 
-| RPC | Mode | Fiabilite | Usage |
-|-----|------|-----------|-------|
-| RpcReceiveSeedAndStart | Authority | Reliable | Serveur → Clients : seed + debut |
-| RpcSyncCampAssignments | Authority | Reliable | Attribution camps/joueurs |
-| RpcSpawnUnit / RpcSpawnShip | AnyPeer | Reliable | Creation entite distante |
-| RpcEntityDied | AnyPeer | Reliable | Destruction puppet |
-| RpcApplyUnitDamage / Camp / Ship | AnyPeer | Reliable | Degats (appliques uniquement par le peer proprietaire) |
-| RpcCampCaptured | AnyPeer | Reliable | Synchronisation capture |
-| RpcUnitBoarded / RpcTransportUnloaded | AnyPeer | Reliable | Transport naval |
-| RpcSyncEntityStates | AnyPeer | Unreliable | 20Hz : positions/sante/etats |
+
+| RPC                                   | Mode      | Fiabilite  | Usage                                                  |
+| ------------------------------------- | --------- | ---------- | ------------------------------------------------------ |
+| RpcReceiveSeedAndStart                | Authority | Reliable   | Serveur → Clients : seed + debut                       |
+| RpcSyncCampAssignments                | Authority | Reliable   | Attribution camps/joueurs                              |
+| RpcSpawnUnit / RpcSpawnShip           | AnyPeer   | Reliable   | Creation entite distante                               |
+| RpcEntityDied                         | AnyPeer   | Reliable   | Destruction puppet                                     |
+| RpcApplyUnitDamage / Camp / Ship      | AnyPeer   | Reliable   | Degats (appliques uniquement par le peer proprietaire) |
+| RpcCampCaptured                       | AnyPeer   | Reliable   | Synchronisation capture                                |
+| RpcUnitBoarded / RpcTransportUnloaded | AnyPeer   | Reliable   | Transport naval                                        |
+| RpcSyncEntityStates                   | AnyPeer   | Unreliable | 20Hz : positions/sante/etats                           |
+
 
 ### Determinisme
 
@@ -377,15 +444,17 @@ Un clic droit deplace les unites selectionnees. Clic droit sur un Transport alli
 
 ## Controles
 
-| Action | Controle |
-|--------|----------|
-| Deplacer la camera | ZQSD / Fleches |
-| Zoom | Molette souris |
-| Drag camera | Clic droit maintenu |
-| Selectionner | Clic gauche |
-| Selection multiple | Clic gauche + glisser |
-| Deplacer les unites | Clic droit |
-| Recentrer camera | C / Home |
+
+| Action              | Controle              |
+| ------------------- | --------------------- |
+| Deplacer la camera  | ZQSD / Fleches        |
+| Zoom                | Molette souris        |
+| Drag camera         | Clic droit maintenu   |
+| Selectionner        | Clic gauche           |
+| Selection multiple  | Clic gauche + glisser |
+| Deplacer les unites | Clic droit            |
+| Recentrer camera    | C / Home              |
+
 
 ## Conventions de code
 
@@ -399,11 +468,13 @@ Un clic droit deplace les unites selectionnees. Clic droit sur un Transport alli
 
 ### Branches
 
-| Branche | Role | Protection |
-|---------|------|------------|
-| `main` | Version stable (releases) | PR obligatoire + 1 approbation + no force push |
-| `develop` | Integration (code teste) | PR obligatoire + 1 approbation + no force push |
-| `feature/*` | Developpement quotidien | Aucune restriction |
+
+| Branche     | Role                      | Protection                                     |
+| ----------- | ------------------------- | ---------------------------------------------- |
+| `main`      | Version stable (releases) | PR obligatoire + 1 approbation + no force push |
+| `develop`   | Integration (code teste)  | PR obligatoire + 1 approbation + no force push |
+| `feature/`* | Developpement quotidien   | Aucune restriction                             |
+
 
 ### Workflow
 
@@ -449,16 +520,19 @@ git push origin feature/nom-de-la-feature
 
 ### Convention de commits
 
-| Prefixe | Usage |
-|---------|-------|
-| `feat:` | Nouvelle fonctionnalite |
-| `fix:` | Correction de bug |
-| `refactor:` | Reorganisation du code |
-| `docs:` | Documentation |
-| `style:` | Formatage, pas de changement logique |
-| `test:` | Ajout ou modification de tests |
+
+| Prefixe     | Usage                                |
+| ----------- | ------------------------------------ |
+| `feat:`     | Nouvelle fonctionnalite              |
+| `fix:`      | Correction de bug                    |
+| `refactor:` | Reorganisation du code               |
+| `docs:`     | Documentation                        |
+| `style:`    | Formatage, pas de changement logique |
+| `test:`     | Ajout ou modification de tests       |
+
 
 ## Auteurs
 
 - **Darkft28** - [GitHub](https://github.com/Darkft28)
 - **Louis27940** - [GitHub](https://github.com/Louis27940)
+

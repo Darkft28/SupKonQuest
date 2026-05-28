@@ -133,6 +133,14 @@ public partial class Ship : CharacterBody2D
 		}
 	}
 
+	public void SetCurrentHealth(float value)
+	{
+		_currentHealth = value;
+		if (_currentHealth < 0)
+			_currentHealth = 0;
+		QueueRedraw();
+	}
+
 	public void ApplyNetworkState(Vector2 pos, float health)
 	{
 		_networkTargetPosition = pos;

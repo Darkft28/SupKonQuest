@@ -46,7 +46,7 @@ public partial class Ship
 		}
 
 		string texturePath = GetTexturePath(SpriteDirection.Front);
-		var texture = GD.Load<Texture2D>(texturePath);
+		var texture = LoadShipTexture(texturePath);
 
 		if (texture != null)
 		{
@@ -79,6 +79,24 @@ public partial class Ship
 		};
 	}
 
+	private static Texture2D LoadShipTexture(string path)
+	{
+		var texture = GD.Load<Texture2D>(path);
+		if (texture != null)
+			return texture;
+
+		// Secours si le chemin accentué échoue (export / FS) — noms ASCII alternatifs.
+		if (path.Contains("Frégate"))
+		{
+			string ascii = path
+				.Replace("Frégate", "Fregate")
+				.Replace("frégate_", "Fregate_");
+			texture = GD.Load<Texture2D>(ascii);
+		}
+
+		return texture;
+	}
+
 	private void UpdateSpriteDirection(Vector2 velocity)
 	{
 		if (velocity.LengthSquared() < 1f) return;
@@ -97,7 +115,7 @@ public partial class Ship
 		{
 			_currentDirection = newDir;
 			string texturePath = GetTexturePath(newDir);
-			var texture = GD.Load<Texture2D>(texturePath);
+			var texture = LoadShipTexture(texturePath);
 			if (texture != null && _sprite != null)
 			{
 				_sprite.Texture = texture;

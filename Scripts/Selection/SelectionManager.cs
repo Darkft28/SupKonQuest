@@ -194,6 +194,7 @@ public partial class SelectionManager : Node2D
 
 	private void SelectCamp(CampSimple camp)
 	{
+		if (camp.GetTeamId() != GetLocalTeamId()) return;
 		_selectedCamp = camp;
 		_selectedCamp.Modulate = new Color(1.2f, 1.2f, 0.8f, 1);
 	}
@@ -312,6 +313,7 @@ public partial class SelectionManager : Node2D
 
 		if (_selectedShips.Count > 0)
 		{
+			bool relayMode = ShouldUseRelayCommands();
 			bool hasTransportWithUnits = false;
 			foreach (var ship in _selectedShips)
 			{
@@ -350,7 +352,13 @@ public partial class SelectionManager : Node2D
 				}
 			}
 
-				MoveSelectedShips(target);
+			if (relayMode)
+			{
+				NetworkCommandRouter.RequestMoveShips(_selectedShips, target);
+				return;
+			}
+
+			MoveSelectedShips(target);
 			return;
 		}
 	}

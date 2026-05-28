@@ -12,8 +12,6 @@ public partial class GameHUD : Control
 	private HBoxContainer _unitsContainer;
 	private HBoxContainer _shipsContainer;
 	private Button _quitButton;
-	private Button _territoryButton;
-	private HBoxContainer _brushSizeContainer;
 	private Button _portButton;
 	private Label _tierInfoLabel;
 	private Button _unlockTier2Button;
@@ -75,8 +73,6 @@ public partial class GameHUD : Control
 	private void BindSceneHudControls()
 	{
 		_quitButton = GetNode<Button>("QuitButton");
-		_territoryButton = GetNode<Button>("TerritoryButton");
-		_brushSizeContainer = GetNode<HBoxContainer>("BrushSizeContainer");
 		_portButton = GetNode<Button>("PortButton");
 		_disconnectPanel = GetNode<Panel>("DisconnectPanel");
 		_disconnectLabel = GetNode<Label>("DisconnectPanel/DisconnectLabel");
@@ -88,21 +84,6 @@ public partial class GameHUD : Control
 		_quitButton.Text = "✕ Menu";
 		UIStyle.ApplyStone(_quitButton);
 		_quitButton.Pressed += OnQuitButtonPressed;
-
-		_territoryButton.Text = $"🗺 Territoire ({TerritoryManager.TileCost}g/tuile)";
-		_territoryButton.ToggleMode = true;
-		UIStyle.ApplyStone(_territoryButton);
-		_territoryButton.Toggled += OnTerritoryButtonToggled;
-
-		var brush1 = _brushSizeContainer.GetNode<Button>("Brush1Button");
-		var brush3 = _brushSizeContainer.GetNode<Button>("Brush3Button");
-		var brush5 = _brushSizeContainer.GetNode<Button>("Brush5Button");
-		UIStyle.ApplyStone(brush1);
-		UIStyle.ApplyStone(brush3);
-		UIStyle.ApplyStone(brush5);
-		brush1.Pressed += () => OnBrushSizeButtonPressed(1);
-		brush3.Pressed += () => OnBrushSizeButtonPressed(3);
-		brush5.Pressed += () => OnBrushSizeButtonPressed(5);
 
 		_portButton.Text = $"⚓ Port ({CampSimple.PortCost}g)";
 		UIStyle.ApplyStone(_portButton);
@@ -251,21 +232,9 @@ public partial class GameHUD : Control
 
 	private void OnQuitButtonPressed()
 	{
-		TerritoryManager.Instance?.SetBuyMode(false);
 		TerritoryManager.Instance?.CancelPortPlacement();
 		GetTree().Paused = false;
 		GetTree().ChangeSceneToFile("res://Scenes/MainMenu.tscn");
-	}
-
-	private void OnTerritoryButtonToggled(bool pressed)
-	{
-		TerritoryManager.Instance?.SetBuyMode(pressed);
-		_brushSizeContainer.Visible = pressed;
-	}
-
-	private void OnBrushSizeButtonPressed(int size)
-	{
-		TerritoryManager.Instance?.SetBrushSize(size);
 	}
 
 	private void OnPortButtonPressed()
@@ -441,7 +410,8 @@ public partial class GameHUD : Control
 			return;
 		}
 
-		selectedCamp.BuyUnit(unitType);
+		if (!selectedCamp.BuyUnit(unitType))
+			GD.Print($"[HUD] Achat {unitType} refusé : {selectedCamp.GetBuyUnitDenyReason(unitType)}");
 	}
 
 	private void OnShipButtonPressed(string shipType)
@@ -452,6 +422,12 @@ public partial class GameHUD : Control
 		if (selectedPort == null || !IsInstanceValid(selectedPort)) return;
 
 		if (selectedPort.GetTeamId() != GetLocalTeamId()) return;
+
+		if (ShouldUseRelayCommands())
+		{
+			NetworkCommandRouter.RequestBuyShip(selectedPort, shipType);
+			return;
+		}
 
 		selectedPort.BuyShip(shipType);
 	}
@@ -656,19 +632,24 @@ public partial class GameHUD : Control
 
 		var selectedCamp = _selectionManager.GetSelectedCamp();
 
+		int localTeam = GetLocalTeamId();
+
 		if (selectedCamp == null || !IsInstanceValid(selectedCamp))
 		{
 			if (_tierInfoLabel != null) _tierInfoLabel.Visible = false;
+			SetAllUnitButtonsDisabled(null);
 			return;
 		}
-		if (selectedCamp.GetTeamId() != GetLocalTeamId())
+
+		if (selectedCamp.GetTeamId() != localTeam)
 		{
 			if (_tierInfoLabel != null) _tierInfoLabel.Visible = false;
+			SetAllUnitButtonsDisabled("Sélectionnez un de vos camps");
 			return;
 		}
 
 		bool queueFull = selectedCamp.GetQueueCount() >= selectedCamp.GetMaxQueueSize();
-		int unlockedTier = GameManager.Instance?.GetUnlockedTier(GetLocalTeamId()) ?? 1;
+		int unlockedTier = GameManager.Instance?.GetUnlockedTier(localTeam) ?? 1;
 
 		// Barre d'info palier
 		if (_tierInfoLabel != null)
@@ -707,7 +688,8 @@ public partial class GameHUD : Control
 
 			int requiredTier = GameManager.GetUnitTier(unitType);
 			bool locked = unlockedTier < requiredTier;
-			bool canBuy = !locked && !queueFull && selectedCamp.CanBuyUnit(unitType);
+			string denyReason = locked ? null : selectedCamp.GetBuyUnitDenyReason(unitType);
+			bool canBuy = !locked && denyReason == null;
 
 			btn.Disabled = !canBuy;
 			btn.Modulate = locked
@@ -721,12 +703,23 @@ public partial class GameHUD : Control
 				btn.TooltipText = requiredTier == 2
 					? $"🔒 Palier 2 : achetez l'amélioration ({GameManager.Tier2Cost}g)"
 					: "🔒 Palier 3 : capturez tous les camps de votre région de départ";
-			else if (queueFull)
-				btn.TooltipText = "File de production pleine !";
-			else if (!selectedCamp.CanBuyUnit(unitType))
-				btn.TooltipText = $"Or insuffisant ({UnitStats.GetStats(unitType).Price}g requis)";
+			else if (denyReason != null)
+				btn.TooltipText = denyReason;
 			else
 				btn.TooltipText = "";
+		}
+	}
+
+	private void SetAllUnitButtonsDisabled(string tooltip)
+	{
+		foreach (string unitType in UnitTypes)
+		{
+			if (!_unitButtons.TryGetValue(unitType, out var btn)) continue;
+			btn.Disabled = true;
+			btn.Modulate = new Color(0.5f, 0.5f, 0.5f, 0.8f);
+			btn.TooltipText = tooltip ?? "";
+			if (_lockLabels.TryGetValue(unitType, out var lbl))
+				lbl.Text = "";
 		}
 	}
 
@@ -758,12 +751,18 @@ public partial class GameHUD : Control
 				btn.TooltipText = "🔒 Capturez toute votre région de départ + construisez un port";
 			else if (!canBuy)
 			{
-				int queueCount = selectedPort.GetShipQueueCount();
-				int maxQueue = selectedPort.GetMaxShipQueueSize();
-				if (queueCount >= maxQueue)
-					btn.TooltipText = "File navale pleine !";
+				int activeShips = ShipStats.CountActiveShipsForTeam(GetLocalTeamId(), GetTree());
+				if (activeShips >= ShipStats.MaxActiveShipsPerTeam)
+					btn.TooltipText = $"Limite de flotte atteinte ({activeShips}/{ShipStats.MaxActiveShipsPerTeam})";
 				else
-					btn.TooltipText = $"Or insuffisant ({ShipStats.GetStats(shipType).Price}g requis)";
+				{
+					int queueCount = selectedPort.GetShipQueueCount();
+					int maxQueue = selectedPort.GetMaxShipQueueSize();
+					if (queueCount >= maxQueue)
+						btn.TooltipText = "File navale pleine !";
+					else
+						btn.TooltipText = $"Or insuffisant ({ShipStats.GetStats(shipType).Price}g requis)";
+				}
 			}
 			else
 				btn.TooltipText = "";
@@ -840,8 +839,7 @@ public partial class GameHUD : Control
 			return;
 		}
 
-		int localTeam = GetLocalTeamId();
-		int gold = GameManager.Instance.GetGold(localTeam);
+		int gold = GameManager.Instance.GetGold(GetLocalTeamId());
 		_goldLabel.Text = $"{gold}";
 	}
 }

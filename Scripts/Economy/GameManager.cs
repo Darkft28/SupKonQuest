@@ -1,4 +1,5 @@
 using Godot;
+using System;
 using System.Collections.Generic;
 
 public partial class GameManager : Node
@@ -30,7 +31,7 @@ public partial class GameManager : Node
 	// Équipes ayant acheté le palier 2
 	private HashSet<int> _tier2Unlocked = new HashSet<int>();
 
-	private const int NumberOfPlayers = 2;
+	private const int MaxHumanPlayers = 8;
 
 	private VictoryManager _victoryManager;
 
@@ -69,14 +70,37 @@ public partial class GameManager : Node
 		if (_allCamps.Count == 0)
 			return;
 
-		// Shuffle deterministe : meme resultat sur les 2 peers grace a la seed partagee
+		// Shuffle deterministe : meme resultat sur tous les peers grace a la seed partagee
 		var gameState = GetNodeOrNull<GameState>("/root/GameState");
-		int seed = gameState?.MapSeed ?? (int)GD.Randi();
+		int seed = gameState != null ? gameState.GetEffectiveMapSeed() : (int)GD.Randi();
 
 		List<CampSimple> shuffledCamps = new List<CampSimple>(_allCamps);
 		ShuffleList(shuffledCamps, seed);
 
-		if (gameState?.IsFreeForAll == true)
+		if (gameState?.IsOnline == true)
+		{
+			int playerCount = Math.Max(2, Math.Min(MaxHumanPlayers, gameState.ActivePlayerCount));
+			playerCount = Math.Min(playerCount, shuffledCamps.Count);
+			int campIndex = 0;
+
+			for (int playerId = 1; playerId <= playerCount; playerId++)
+			{
+				if (campIndex >= shuffledCamps.Count)
+					break;
+
+				shuffledCamps[campIndex].SetTeam(playerId, false);
+				_homeRegions[playerId] = shuffledCamps[campIndex].RegionId;
+				InitializeTeam(playerId);
+				campIndex++;
+			}
+
+			while (campIndex < shuffledCamps.Count)
+			{
+				shuffledCamps[campIndex].SetTeam(0, true);
+				campIndex++;
+			}
+		}
+		else if (gameState?.IsFreeForAll == true)
 		{
 			shuffledCamps[0].SetTeam(1, false);
 			_homeRegions[1] = shuffledCamps[0].RegionId;
@@ -92,10 +116,12 @@ public partial class GameManager : Node
 		}
 		else
 		{
-			int campsPerPlayer = shuffledCamps.Count / NumberOfPlayers;
+			int playerCount = 2;
+			playerCount = Math.Min(playerCount, shuffledCamps.Count);
+			const int campsPerPlayer = 1;
 			int campIndex = 0;
 
-			for (int playerId = 1; playerId <= NumberOfPlayers; playerId++)
+			for (int playerId = 1; playerId <= playerCount; playerId++)
 			{
 				bool firstCamp = true;
 				for (int i = 0; i < campsPerPlayer; i++)
@@ -331,7 +357,6 @@ public partial class GameManager : Node
 
 		_teamGold[teamId] -= amount;
 		int version = IncrementGoldVersion(teamId);
-		TrySendRelayGoldSnapshot(teamId, version, "spend");
 		return true;
 	}
 
@@ -343,67 +368,11 @@ public partial class GameManager : Node
 		}
 		_teamGold[teamId] += amount;
 		int version = IncrementGoldVersion(teamId);
-		TrySendRelayGoldSnapshot(teamId, version, "add");
-	}
-
-	private void TrySendRelayGoldSnapshot(int teamId, int version, string reason)
-	{
-		if (!IsNakamaRelayMode())
-			return;
-
-		if (!IsLocalTeam(teamId))
-			return;
-
-		NetworkCommandRouter.SendGoldSnapshot(teamId, GetGold(teamId), version, reason);
 	}
 
 	public void GiveCaptureBonus(int teamId)
 	{
 		AddGold(teamId, CaptureBonus);
-	}
-
-	public int GetGoldVersion(int teamId)
-	{
-		return _teamGoldVersion.TryGetValue(teamId, out int version) ? version : 0;
-	}
-
-	public void BroadcastRelayGoldSnapshotForLocalTeam(string reason = "periodic")
-	{
-		if (!IsNakamaRelayMode())
-			return;
-
-		int localTeamId = GetLocalTeamId();
-		if (localTeamId <= 0 || !_teamGold.ContainsKey(localTeamId))
-			return;
-
-		NetworkCommandRouter.SendGoldSnapshot(localTeamId, _teamGold[localTeamId], GetGoldVersion(localTeamId), reason);
-	}
-
-	public void ApplyRelayGoldSnapshot(int teamId, int authoritativeGold, int version, string senderUserId)
-	{
-		if (teamId <= 0)
-			return;
-
-		if (!IsNakamaRelayMode())
-			return;
-
-		if (IsLocalTeam(teamId))
-			return;
-
-		if (!_teamGold.ContainsKey(teamId))
-			_teamGold[teamId] = authoritativeGold;
-
-		int localVersion = GetGoldVersion(teamId);
-		if (version < localVersion)
-			return;
-
-		if (_teamGold[teamId] != authoritativeGold)
-		{
-			GD.Print($"[RELAY][GOLD] Reconcile team {teamId}: {_teamGold[teamId]} -> {authoritativeGold} (v{version}, from {senderUserId})");
-			_teamGold[teamId] = authoritativeGold;
-		}
-
-		_teamGoldVersion[teamId] = version;
 	}
 
 	public float GetSpeedMultiplier(int teamId)
@@ -466,7 +435,7 @@ public partial class GameManager : Node
 
 	public static int GetShipTier(string shipType) => shipType switch
 	{
-		"Transport" => 1,
+		"Transport" => 3,
 		"Fregate" or "Destroyer" => 3,
 		_ => 1
 	};
@@ -509,16 +478,4 @@ public partial class GameManager : Node
 		return 2;
 	}
 
-	// Correction légère de l'or en multijoueur (évite micro-corrections sous 5 or d'écart)
-	public void SyncGold(int teamId, int authorativeGold)
-	{
-		if (!_teamGold.ContainsKey(teamId)) return;
-
-		int diff = Mathf.Abs(_teamGold[teamId] - authorativeGold);
-		if (diff > 5)
-		{
-			_teamGold[teamId] = authorativeGold;
-			IncrementGoldVersion(teamId);
-		}
-	}
 }

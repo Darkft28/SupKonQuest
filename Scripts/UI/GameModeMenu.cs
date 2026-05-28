@@ -165,17 +165,8 @@ public partial class GameModeMenu : Control
 	{
 		_overlay.Visible = false;
 		var gameState = GetNodeOrNull<GameState>("/root/GameState");
-		if (gameState != null)
-		{
-			gameState.ConfigureOfflineGame(_selectedMapType, _fastModeCheckBox.ButtonPressed);
-			gameState.IsFreeForAll = true;
-			gameState.IsAIMode = true;
-			gameState.AILevel = _selectedDifficulty;
-			gameState.SelectedMapType = _selectedMapType;
-			gameState.FastMode = _fastModeCheckBox.ButtonPressed;
-		}
 		Engine.TimeScale = _fastModeCheckBox.ButtonPressed ? 3.0 : 1.0;
-		gameState?.StartOfflineGame(_selectedMapType, _fastModeCheckBox.ButtonPressed);
+		gameState?.StartSoloGame(_selectedMapType, _fastModeCheckBox.ButtonPressed, _selectedDifficulty);
 	}
 
 	// ── Navigation ───────────────────────────────────────────────────────────

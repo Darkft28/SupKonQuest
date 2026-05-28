@@ -100,6 +100,51 @@ public static class TerritoryConnectivity
         return false;
     }
 
+    /// <summary>
+    /// Retourne toutes les régions terrestres atteignables depuis les régions possédées (BFS transitif).
+    /// </summary>
+    public static HashSet<int> GetReachableRegions(Dictionary<int, HashSet<int>> graph, IEnumerable<int> ownedRegions)
+    {
+        var reachable = new HashSet<int>();
+        if (graph == null || ownedRegions == null)
+            return reachable;
+
+        var queue = new Queue<int>();
+        foreach (int region in ownedRegions)
+        {
+            if (region <= 0)
+                continue;
+            if (reachable.Add(region))
+                queue.Enqueue(region);
+        }
+
+        while (queue.Count > 0)
+        {
+            int current = queue.Dequeue();
+            if (!graph.TryGetValue(current, out var neighbors))
+                continue;
+
+            foreach (int neighbor in neighbors)
+            {
+                if (reachable.Add(neighbor))
+                    queue.Enqueue(neighbor);
+            }
+        }
+
+        return reachable;
+    }
+
+    /// <summary>
+    /// Vérifie si targetRegion est dans le composant connexe des régions possédées.
+    /// </summary>
+    public static bool IsReachable(Dictionary<int, HashSet<int>> graph, IEnumerable<int> ownedRegions, int targetRegion)
+    {
+        if (targetRegion <= 0)
+            return true;
+
+        return GetReachableRegions(graph, ownedRegions).Contains(targetRegion);
+    }
+
     // Retourne true si la tuile (en coordonnées monde-tilemap, pas grille) est terrestre
     // (non eau, non vide)
     private static bool IsTerrestrialTile(TileMapLayer solLayer, int tileX, int tileY)

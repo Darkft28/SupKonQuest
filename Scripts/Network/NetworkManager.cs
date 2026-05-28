@@ -5,7 +5,7 @@ public partial class NetworkManager : Node
 {
 	public const int DefaultPort = 7777;
 	public const int DiscoveryPort = 7778;
-	public const int MaxPlayers = 2;
+	public const int MaxPlayers = 8;
 
 	private ENetMultiplayerPeer _peer;
 

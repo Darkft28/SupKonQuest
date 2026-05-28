@@ -1,4 +1,5 @@
 using Godot;
+using System;
 
 public partial class GameState : Node
 {
@@ -29,6 +30,9 @@ public partial class GameState : Node
 	public string MatchmakerTicket { get; private set; } = "";
 	public bool IsOnline => CurrentPlayMode == PlayMode.Online;
 
+	/// <summary>Nombre de joueurs humains dans la partie (1 solo, 2-8 en ligne).</summary>
+	public int ActivePlayerCount { get; private set; } = 1;
+
 	[Signal] public delegate void GameStartingEventHandler(int seed);
 	[Signal] public delegate void PlayerListUpdatedEventHandler();
 
@@ -54,38 +58,84 @@ public partial class GameState : Node
 
 	public void ConfigureOfflineGame(MapType mapType, bool fastMode)
 	{
-		CurrentPlayMode = PlayMode.Offline;
-		LocalTeamId = 1;
+		ClearOnlineSessionFields();
 		SelectedMapType = mapType;
 		FastMode = fastMode;
 		MapSeed = 0;
-		MatchId = "";
-		MatchmakerTicket = "";
-		NakamaUserId = "";
-		PlayerDisplayName = "";
+	}
+
+	/// <summary>Mode solo vs IA : ne pas appeler ResetOnlineMatchFlags (reserve au multi).</summary>
+	public void StartSoloGame(MapType mapType, bool fastMode, AIController.Difficulty aiLevel)
+	{
+		ClearOnlineSessionFields();
+		ActivePlayerCount = 1;
+		IsAIMode = true;
+		IsFreeForAll = true;
+		AILevel = aiLevel;
+		SelectedMapType = mapType;
+		FastMode = fastMode;
+		GenerateSeed();
+		LoadGameScene();
 	}
 
 	public void ConfigureOnlineLobby(string displayName = "")
 	{
 		CurrentPlayMode = PlayMode.Online;
 		LocalTeamId = 1;
+		ActivePlayerCount = 2;
+		ResetOnlineMatchFlags();
 		SelectedMapType = MapType.Irridium;
 		FastMode = false;
-		IsFreeForAll = false;
 		MatchId = "";
 		MatchmakerTicket = "";
 		MapSeed = 0;
 		PlayerDisplayName = displayName;
 	}
 
-	public void ConfigureOnlineMatch(string matchId, int localTeamId, int seed, string nakamaUserId, string displayName)
+	public void ConfigureOnlineMatch(string matchId, int localTeamId, int seed, int activePlayerCount, string nakamaUserId, string displayName)
 	{
 		CurrentPlayMode = PlayMode.Online;
 		LocalTeamId = localTeamId;
+		ActivePlayerCount = Math.Max(2, Math.Min(8, activePlayerCount));
+		ResetOnlineMatchFlags();
 		MatchId = matchId;
-		MapSeed = seed;
+		MapSeed = NormalizeMapSeed(seed, matchId);
 		NakamaUserId = nakamaUserId;
 		PlayerDisplayName = displayName;
+	}
+
+	public int GetEffectiveMapSeed()
+	{
+		return NormalizeMapSeed(MapSeed, MatchId);
+	}
+
+	public static int DeriveSeedFromMatchId(string matchId)
+	{
+		if (string.IsNullOrWhiteSpace(matchId))
+			return 0;
+
+		unchecked
+		{
+			int hash = 17;
+			foreach (char c in matchId)
+				hash = hash * 31 + c;
+			return hash & int.MaxValue;
+		}
+	}
+
+	private static int NormalizeMapSeed(int seed, string matchId)
+	{
+		if (seed > 0)
+			return seed;
+
+		int derived = DeriveSeedFromMatchId(matchId);
+		return derived > 0 ? derived : (int)GD.Randi();
+	}
+
+	private void ResetOnlineMatchFlags()
+	{
+		IsAIMode = false;
+		IsFreeForAll = false;
 	}
 
 	public void SetMatchmakerTicket(string ticket)
@@ -95,9 +145,15 @@ public partial class GameState : Node
 
 	public void ClearOnlineSession()
 	{
+		ClearOnlineSessionFields();
+		ActivePlayerCount = 1;
+		ResetOnlineMatchFlags();
+	}
+
+	private void ClearOnlineSessionFields()
+	{
 		CurrentPlayMode = PlayMode.Offline;
 		LocalTeamId = 1;
-		IsFreeForAll = false;
 		MatchId = "";
 		MatchmakerTicket = "";
 		NakamaUserId = "";
@@ -126,9 +182,9 @@ public partial class GameState : Node
 		LoadGameScene();
 	}
 
-	public void StartOnlineGameFromMatch(string matchId, int localTeamId, int seed, string nakamaUserId, string displayName)
+	public void StartOnlineGameFromMatch(string matchId, int localTeamId, int seed, int activePlayerCount, string nakamaUserId, string displayName)
 	{
-		ConfigureOnlineMatch(matchId, localTeamId, seed, nakamaUserId, displayName);
+		ConfigureOnlineMatch(matchId, localTeamId, seed, activePlayerCount, nakamaUserId, displayName);
 		EmitSignal(SignalName.GameStarting, seed);
 		CallDeferred(nameof(LoadGameScene));
 	}
@@ -165,7 +221,6 @@ public partial class GameState : Node
 		_networkManager?.Disconnect();
 		ClearOnlineSession();
 		MapSeed = 0;
-		IsFreeForAll = false;
 		FastMode = false;
 		SelectedMapType = MapType.Irridium;
 		Engine.TimeScale = 1.0;

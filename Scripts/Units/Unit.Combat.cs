@@ -98,13 +98,17 @@ public partial class Unit
 				else
 				{
 					MoveWithNav(combatTarget.GlobalPosition);
+					ProcessStuckDetection();
 				}
 			}
 			else
 			{
 				// Aucun ennemi visible : avancer vers le camp
 				if (distanceToCamp > _stats.Range)
+				{
 					MoveWithNav(_campTarget.GlobalPosition);
+					ProcessStuckDetection();
+				}
 				else
 					Velocity = Vector2.Zero;
 			}
@@ -133,6 +137,7 @@ public partial class Unit
 		if (distanceToCamp > effectiveCampRange)
 		{
 			MoveWithNav(_campTarget.GlobalPosition);
+			ProcessStuckDetection();
 			return;
 		}
 
@@ -268,7 +273,7 @@ public partial class Unit
 
 	private Unit FindNearestDefenderOfCamp(CampSimple camp)
 	{
-		var defenders = camp.GetLiveDefenders();
+		var defenders = camp.GetRelevantDefenders();
 		Unit nearest = null;
 		float nearestDist = float.MaxValue;
 
@@ -340,8 +345,8 @@ public partial class Unit
 			{
 				if (camp.RegionId == myRegion)
 					score -= 3000f; // Même région = priorité maximale
-				else if (camp.RegionId > 0 && TerritoryConnectivity.AreConnected(graph, myRegion, camp.RegionId))
-					score -= 1500f; // Région adjacente accessible = priorité secondaire
+				else if (camp.RegionId > 0 && TerritoryConnectivity.IsReachable(graph, new[] { myRegion }, camp.RegionId))
+					score -= 1500f; // Territoire terrestre accessible = priorité secondaire
 			}
 			else if (myRegion > 0 && camp.RegionId == myRegion)
 			{

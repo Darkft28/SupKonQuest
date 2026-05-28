@@ -7,10 +7,10 @@ public partial class CampSimple : Area2D
 
 	[Export] public int TeamId = 1;
 	[Export] public bool IsNeutralCamp = false;
-	[Export] public float MaxHealth = 750f;
+	[Export] public float MaxHealth = 600f;
 	[Export] public int GoldPerSecond = 50;
 
-	[Export] public float TurretDamage = 15f;
+	[Export] public float TurretDamage = 5f;
 	[Export] public float TurretRange = 600f;
 
 	private float _currentHealth;
@@ -34,6 +34,7 @@ public partial class CampSimple : Area2D
 	private string _currentProduction = null;
 	private float _productionTimer = 0f;
 	private int _dynamicUnitSpawnSequence = 0;
+	private int _dynamicShipSpawnSequence = 0;
 	private const int MaxQueueSize = 7;
 	// Plafond global d'unités géré par GameManager.GetMaxUnitsForTeam() (10 par camp contrôlé)
 
@@ -111,7 +112,12 @@ public partial class CampSimple : Area2D
 		var gameState = GetNodeOrNull<GameState>("/root/GameState");
 		int localTeamId = gameState?.LocalTeamId ?? 1;
 
-		// Camps neutres : le serveur (team 1) a l'autorite
+		// Relay : les camps neutres ne sont pas simulés localement sur tous les peers
+		// (évite double capture / désync) — la capture arrive via opcode CampCaptured.
+		if (IsRelayModeActive() && (IsNeutralCamp || TeamId == 0))
+			return false;
+
+		// Camps neutres ENet : le serveur (team 1) a l'autorite
 		if (IsNeutralCamp || TeamId == 0)
 			return localTeamId == 1;
 
