@@ -297,7 +297,7 @@ public partial class SelectionManager : Node2D
 			{
 				if (node is Ship ship && ship.GetShipType() == "Transport")
 				{
-					if (ship.GlobalPosition.DistanceTo(target) < 150)
+					if (ship.GlobalPosition.DistanceTo(target) < 250)
 					{
 						int unitTeam = _selectedUnits[0].GetTeamId();
 						if (ship.GetTeamId() == unitTeam)

@@ -113,9 +113,10 @@ public partial class Ship : CharacterBody2D
 
 		_navAgent.PathDesiredDistance = 15f;
 		_navAgent.TargetDesiredDistance = ArrivalDistance;
-		_navAgent.AvoidanceEnabled = false;
+		_navAgent.AvoidanceEnabled = ShipType != "Transport";
 		_navAgent.NavigationLayers = 2u;
-		_navAgent.Radius = 60f; // marge autour des côtes
+		_navAgent.Radius = 42f;
+		_navAgent.MaxNeighbors = 8;
 
 		_currentState = ShipState.Idle;
 

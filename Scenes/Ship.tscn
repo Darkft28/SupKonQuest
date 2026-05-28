@@ -1,9 +1,10 @@
-[gd_scene load_steps=4 format=3]
+[gd_scene load_steps=4 format=3 uid="uid://cy8b68x1s2w1l"]
 
-[ext_resource type="Script" path="res://Scripts/Ships/Ship.cs" id="1_ship"]
+[ext_resource type="Script" uid="uid://c7hjvfkkjhmli" path="res://Scripts/Ships/Ship.cs" id="1_ship"]
 
-[sub_resource type="CircleShape2D" id="CircleShape2D_body"]
-radius = 60.0
+[sub_resource type="CapsuleShape2D" id="CapsuleShape2D_v4ccy"]
+radius = 42.0
+height = 100.0
 
 [sub_resource type="CircleShape2D" id="CircleShape2D_detection"]
 radius = 500.0
@@ -14,7 +15,7 @@ collision_mask = 2
 script = ExtResource("1_ship")
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="."]
-shape = SubResource("CircleShape2D_body")
+shape = SubResource("CapsuleShape2D_v4ccy")
 
 [node name="Sprite2D" type="Sprite2D" parent="."]
 
@@ -28,5 +29,7 @@ shape = SubResource("CircleShape2D_detection")
 [node name="NavigationAgent2D" type="NavigationAgent2D" parent="."]
 path_desired_distance = 15.0
 target_desired_distance = 30.0
-radius = 60.0
 navigation_layers = 2
+avoidance_enabled = true
+radius = 42.0
+max_neighbors = 8

@@ -97,7 +97,7 @@ Ship tiers: Transport = Tier 1, Fregate + Destroyer = Tier 3.
 | Fregate | 180 | 20 | 15 | 100 | — | 200g | 5s |
 | Destroyer | 250 | 35 | 20 | 80 | — | 300g | 7s |
 
-Transport is pacifist (never engages enemies). Destroyer textures: `Assets/Units/Ships/Destroyer/Destroyers_*.png`. Fregate: `Assets/Units/Ships/Frégate/frégate_*.png` (accented folder). Unload radius max 2000px, requires coastal tile with adjacent water in 3×3 grid.
+Transport is pacifist (never engages enemies) but can be sunk by enemy Fregate/Destroyer. Destroyer textures: `Assets/Units/Ships/Destroyer/Destroyers_*.png`. Fregate: `Assets/Units/Ships/Frégate/frégate_*.png` (accented folder). Unload radius max 2000px, requires coastal tile with adjacent water in 3×3 grid.
 
 **SelectionManager** - Click/box selection. Priority: port (<100px) → camp (<200px) → ship (<80px) → unit (<64px). Right-click: detects Transport within 150px (auto-board), enemy camp within 400px (AttackCamp), otherwise MoveTo. In Nakama relay mode, routes commands through `NetworkCommandRouter` instead of calling directly.
 

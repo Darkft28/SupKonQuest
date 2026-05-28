@@ -126,7 +126,6 @@ public partial class ShipProjectile : Node2D
 			if (ship == _targetShip) continue;
 			if (ship.GetTeamId() == _attackerTeamId) continue;
 			if (ship.GetCurrentHealth() <= 0) continue;
-			if (ship.GetShipType() == "Transport") continue;
 
 			float dist = _targetPos.DistanceTo(ship.GlobalPosition);
 			if (dist > SplashRadius) continue;

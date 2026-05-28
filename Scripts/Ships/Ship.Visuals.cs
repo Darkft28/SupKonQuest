@@ -7,11 +7,11 @@ public partial class Ship
 		var currentScene = GetTree().CurrentScene;
 		if (currentScene == null) return;
 
-		var mapGenerator = currentScene.FindChild("MapGenerator", true, false);
-		if (mapGenerator != null)
-		{
-			_tileMapSol = mapGenerator.GetNodeOrNull<TileMapLayer>("Sol");
-		}
+		_tileMapSol = currentScene.GetNodeOrNull<TileMapLayer>("Sol");
+		if (_tileMapSol != null) return;
+
+		var mapRoot = currentScene.FindChild("MapGenerator", true, false) ?? currentScene;
+		_tileMapSol = mapRoot.GetNodeOrNull<TileMapLayer>("Sol");
 	}
 
 	private void CreateCollision()
@@ -24,15 +24,18 @@ public partial class Ship
 			AddChild(collision);
 		}
 
-		var shape = collision.Shape as CircleShape2D ?? new CircleShape2D();
-		shape.Radius = 60f;
+		var shape = collision.Shape as CapsuleShape2D ?? new CapsuleShape2D();
+		shape.Radius = 42f;
+		shape.Height = 100f;
 		collision.Shape = shape;
 
 		// Bateaux sur leur propre layer pour eviter collisions avec unites terrestres
 		SetCollisionLayerValue(1, false);
 		SetCollisionLayerValue(2, true);
+		SetCollisionLayerValue(3, false);
 		SetCollisionMaskValue(1, false);
 		SetCollisionMaskValue(2, true);
+		SetCollisionMaskValue(3, false);
 	}
 
 	private void CreateSprite()

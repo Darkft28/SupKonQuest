@@ -2,19 +2,20 @@
 
 [ext_resource type="Script" uid="uid://cnpjlr3xshcud" path="res://Scripts/Units/Unit.cs" id="1_unit"]
 
-[sub_resource type="CircleShape2D" id="CircleShape2D_body"]
-radius = 40.0
+[sub_resource type="CapsuleShape2D" id="CapsuleShape2D_qk68r"]
+radius = 34.0
+height = 50.0
 
 [sub_resource type="CircleShape2D" id="CircleShape2D_detection"]
 radius = 400.0
 
 [node name="Unit" type="CharacterBody2D"]
 collision_layer = 1
-collision_mask = 1
+collision_mask = 5
 script = ExtResource("1_unit")
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="."]
-shape = SubResource("CircleShape2D_body")
+shape = SubResource("CapsuleShape2D_qk68r")
 
 [node name="Sprite2D" type="Sprite2D" parent="."]
 

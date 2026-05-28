@@ -101,12 +101,17 @@ public partial class Unit
 			AddChild(collision);
 		}
 
-		var shape = collision.Shape as CircleShape2D ?? new CircleShape2D();
-		shape.Radius = 40f;
+		var shape = collision.Shape as CapsuleShape2D ?? new CapsuleShape2D();
+		shape.Radius = 34f;
+		shape.Height = 50f;
 		collision.Shape = shape;
 
-		CollisionLayer = 1u;
-		CollisionMask = 1u;
+		SetCollisionLayerValue(1, true);
+		SetCollisionLayerValue(2, false);
+		SetCollisionLayerValue(3, false);
+		SetCollisionMaskValue(1, true);
+		SetCollisionMaskValue(2, false);
+		SetCollisionMaskValue(3, true);
 	}
 
 	private void CreateDetectionZone()
