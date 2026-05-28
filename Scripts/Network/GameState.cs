@@ -5,7 +5,7 @@ public partial class GameState : Node
 {
 	public enum PlayMode { Offline, Online }
 	public enum MapSizePreset { Small, Medium, Large }
-	public enum MapType { Irridium, Alabasta }
+	public enum MapType { Irridium, Alabasta, Torskey }
 
 	public PlayMode CurrentPlayMode { get; private set; } = PlayMode.Offline;
 

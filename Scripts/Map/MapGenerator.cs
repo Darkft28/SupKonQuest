@@ -244,10 +244,18 @@ public partial class MapGenerator : Node
 	private float[] ApplyPresetMap(GameState.MapType mapType, int halfWidth, int halfHeight,
 		out System.Collections.Generic.List<Vector2I> campPositions)
 	{
-		int[] solRle = mapType == GameState.MapType.Irridium
-			? IrridiumMap.SolRle : AlabastaMap.SolRle;
-		int[] objetsRle = mapType == GameState.MapType.Irridium
-			? IrridiumMap.ObjetsRle : AlabastaMap.ObjetsRle;
+		int[] solRle = mapType switch
+		{
+			GameState.MapType.Alabasta => AlabastaMap.SolRle,
+			GameState.MapType.Torskey => TorskeyMap.SolRle,
+			_                          => IrridiumMap.SolRle,
+		};
+		int[] objetsRle = mapType switch
+		{
+			GameState.MapType.Alabasta => AlabastaMap.ObjetsRle,
+			GameState.MapType.Torskey => TorskeyMap.ObjetsRle,
+			_                          => IrridiumMap.ObjetsRle,
+		};
 
 		int width  = halfWidth  * 2;
 		int height = halfHeight * 2;
@@ -260,10 +268,18 @@ public partial class MapGenerator : Node
 		campPositions = CollectPresetCampPositions(objetsRle, width, height, -halfWidth, -halfHeight);
 
 		// Charger la grille de territoires depuis le RLE de la map preset
-		int[] territoiresRle = mapType == GameState.MapType.Irridium
-			? IrridiumMap.TerritoiresRle : AlabastaMap.TerritoiresRle;
-		_territoireNoms = mapType == GameState.MapType.Irridium
-			? IrridiumMap.TerritoireNoms : AlabastaMap.TerritoireNoms;
+		int[] territoiresRle = mapType switch
+		{
+			GameState.MapType.Alabasta => AlabastaMap.TerritoiresRle,
+			GameState.MapType.Torskey => TorskeyMap.TerritoiresRle,
+			_                          => IrridiumMap.TerritoiresRle,
+		};
+		_territoireNoms = mapType switch
+		{
+			GameState.MapType.Alabasta => AlabastaMap.TerritoireNoms,
+			GameState.MapType.Torskey => TorskeyMap.TerritoireNoms,
+			_                          => IrridiumMap.TerritoireNoms,
+		};
 		LoadTerritoryMap(territoiresRle, width, height, halfWidth, halfHeight);
 
 		// Angles de régions par défaut pour les presets (3 secteurs à 120°)
