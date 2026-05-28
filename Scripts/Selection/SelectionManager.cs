@@ -62,6 +62,13 @@ public partial class SelectionManager : Node2D
 
 		if (@event is InputEventKey)
 		{
+			if (@event.IsActionPressed(KeybindingsManager.AllOwnedUnitsAction))
+			{
+				SelectAllOwnedUnits();
+				GetViewport().SetInputAsHandled();
+				return;
+			}
+
 			foreach (string unitType in KeybindingsManager.UnitTypes)
 			{
 				if (@event.IsActionPressed($"unit_macro_{unitType}"))
@@ -416,20 +423,20 @@ public partial class SelectionManager : Node2D
 		string abilityId = _pendingAbilityId;
 		_pendingAbilityId = "";
 
-		if (string.IsNullOrWhiteSpace(abilityId) || _selectedUnits.Count == 0)
+		if (string.IsNullOrWhiteSpace(abilityId))
+			return;
+
+		int localTeamId = GetLocalTeamId();
+		if (localTeamId <= 0)
 			return;
 
 		if (ShouldUseRelayCommands())
 		{
-			NetworkCommandRouter.RequestCastUltimate(_selectedUnits, abilityId, target);
+			NetworkCommandRouter.RequestCastUltimate(localTeamId, abilityId, target);
 			return;
 		}
 
-		foreach (var unit in _selectedUnits)
-		{
-			if (IsInstanceValid(unit))
-				unit.TryCastUltimate(abilityId, target);
-		}
+		GameManager.Instance?.TryCastTeamUltimate(localTeamId, abilityId, target);
 	}
 
 	private void SendUnitsToTransport(Ship transport)
@@ -516,6 +523,17 @@ public partial class SelectionManager : Node2D
 		foreach (var node in GetTree().GetNodesInGroup("units"))
 		{
 			if (node is Unit unit && unit.GetTeamId() == localTeamId && unit.GetUnitType() == unitType)
+				SelectUnit(unit);
+		}
+	}
+
+	private void SelectAllOwnedUnits()
+	{
+		ClearSelection();
+		int localTeamId = GetLocalTeamId();
+		foreach (var node in GetTree().GetNodesInGroup("units"))
+		{
+			if (node is Unit unit && unit.GetTeamId() == localTeamId)
 				SelectUnit(unit);
 		}
 	}

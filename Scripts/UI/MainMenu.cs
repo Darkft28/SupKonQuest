@@ -143,12 +143,19 @@ public partial class MainMenu : Control
 		AddSectionLabel(innerVbox, "Unités");
 		foreach (string unitType in KeybindingsManager.UnitTypes)
 			AddBindingRow(innerVbox, $"unit_macro_{unitType}", GetUnitLabel(unitType));
+		AddBindingRow(innerVbox, KeybindingsManager.AllOwnedUnitsAction, "Toutes les unités");
 
 		innerVbox.AddChild(new HSeparator());
 
 		AddSectionLabel(innerVbox, "Navires");
 		foreach (string shipType in KeybindingsManager.ShipTypes)
 			AddBindingRow(innerVbox, $"ship_macro_{shipType}", GetShipLabel(shipType));
+
+		innerVbox.AddChild(new HSeparator());
+
+		AddSectionLabel(innerVbox, "Ultimes");
+		foreach (string ultimateAction in KeybindingsManager.UltimateActions)
+			AddBindingRow(innerVbox, ultimateAction, GetUltimateLabel(ultimateAction));
 
 		vbox.AddChild(new HSeparator());
 
@@ -213,6 +220,14 @@ public partial class MainMenu : Control
 		"Fregate"    => "Frégate",
 		"Destroyer"  => "Destroyer",
 		_ => shipType,
+	};
+
+	private static string GetUltimateLabel(string action) => action switch
+	{
+		"ultimate_heal" => "Ultime Soin",
+		"ultimate_support" => "Ultime Support",
+		"ultimate_cancel" => "Annuler ciblage ultime",
+		_ => action,
 	};
 
 	private void ShowKeybindingsPanel()

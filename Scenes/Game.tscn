@@ -1,4 +1,4 @@
-[gd_scene load_steps=26 format=3 uid="uid://4n8kkodj5pob"]
+[gd_scene load_steps=27 format=3 uid="uid://4n8kkodj5pob"]
 
 [ext_resource type="Script" uid="uid://drgdyby4ncxx6" path="res://Scripts/Map/MapGenerator.cs" id="1_707gh"]
 [ext_resource type="Texture2D" uid="uid://ci3d4fikx58kj" path="res://Assets/Map/Grass.png" id="2_aa0um"]
@@ -15,6 +15,7 @@
 [ext_resource type="Texture2D" uid="uid://dadcmn6ktuuy2" path="res://Assets/Objects/Camps_UP.png" id="11_jbi0w"]
 [ext_resource type="Script" path="res://Scripts/Network/NetworkSync.cs" id="12_netsync"]
 [ext_resource type="PackedScene" uid="uid://do8135h5uk8sg" path="res://Scenes/GameHUD.tscn" id="13_3cx6b"]
+[ext_resource type="Script" path="res://Scripts/Visual/UltimateVfxManager.cs" id="14_ultimatevfx"]
 
 [sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_kqipd"]
 texture = ExtResource("2_aa0um")
@@ -159,6 +160,9 @@ script = ExtResource("10_selection")
 
 [node name="NetworkSync" type="Node" parent="."]
 script = ExtResource("12_netsync")
+
+[node name="UltimateVfxManager" type="Node2D" parent="."]
+script = ExtResource("14_ultimatevfx")
 
 [node name="CanvasLayer" type="CanvasLayer" parent="."]
 

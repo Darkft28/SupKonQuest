@@ -1,4 +1,5 @@
 using Godot;
+using System;
 using System.Collections.Generic;
 
 public partial class Unit
@@ -16,6 +17,11 @@ public partial class Unit
 	private readonly Dictionary<string, float> _ultimateCooldowns = new();
 	private float _temporaryDefenseBonus;
 	private float _temporaryDefenseBonusRemaining;
+	public static event Action<Unit, string, Vector2> UltimateCast;
+	public static void EmitUltimateCastVfx(Unit caster, string abilityId, Vector2 targetPosition)
+	{
+		UltimateCast?.Invoke(caster, abilityId, targetPosition);
+	}
 
 	public bool CanUseUltimate(string abilityId)
 	{
@@ -48,11 +54,13 @@ public partial class Unit
 			case HealUltimateId:
 				CastHealUltimate(targetPosition);
 				_ultimateCooldowns[abilityId] = HealUltimateCooldown;
+				EmitUltimateCastVfx(this, abilityId, targetPosition);
 				return true;
 
 			case SupportUltimateId:
 				CastSupportUltimate(targetPosition);
 				_ultimateCooldowns[abilityId] = SupportUltimateCooldown;
+				EmitUltimateCastVfx(this, abilityId, targetPosition);
 				return true;
 		}
 
@@ -89,6 +97,11 @@ public partial class Unit
 	{
 		_temporaryDefenseBonus = Mathf.Max(_temporaryDefenseBonus, bonus);
 		_temporaryDefenseBonusRemaining = Mathf.Max(_temporaryDefenseBonusRemaining, duration);
+	}
+
+	public void ApplyTeamSupportUltimateBonus(float bonus, float duration)
+	{
+		ApplyTemporaryDefenseBonus(bonus, duration);
 	}
 
 	private float GetTemporaryDefenseBonus()

@@ -25,6 +25,16 @@ public partial class GameManager : Node
 	// Bonus de vitesse par région contrôlée
 	private Dictionary<int, float> _speedMultipliers = new Dictionary<int, float>();
 	private const float RegionSpeedBonusPerRegion = 0.20f;
+	private readonly Dictionary<string, float> _teamUltimateCooldowns = new();
+	private const string HealUltimateId = "heal_ultimate";
+	private const string SupportUltimateId = "support_ultimate";
+	private const float HealUltimateCooldownSeconds = 20f;
+	private const float SupportUltimateCooldownSeconds = 25f;
+	private const float TeamHealUltimateRadius = 300f;
+	private const float TeamHealUltimateAmount = 70f;
+	private const float TeamSupportUltimateRadius = 320f;
+	private const float TeamSupportUltimateDefenseBonus = 20f;
+	private const float TeamSupportUltimateDuration = 8f;
 
 	private List<CampSimple> _allCamps = new List<CampSimple>();
 
@@ -54,6 +64,7 @@ public partial class GameManager : Node
 		_homeRegions.Clear();
 		_allCamps.Clear();
 		_tier2Unlocked.Clear();
+		_teamUltimateCooldowns.Clear();
 
 		var campNodes = GetTree().GetNodesInGroup("camps");
 		foreach (var node in campNodes)
@@ -229,6 +240,8 @@ public partial class GameManager : Node
 
 	public override void _Process(double delta)
 	{
+		TickTeamUltimateCooldowns((float)delta);
+
 		_passiveGoldTimer += (float)delta;
 		if (_passiveGoldTimer >= 1.0f)
 		{
@@ -258,6 +271,128 @@ public partial class GameManager : Node
 		}
 
 		_victoryManager.Update(delta);
+	}
+
+	private static string BuildTeamUltimateKey(int teamId, string abilityId)
+	{
+		return $"{teamId}:{abilityId}";
+	}
+
+	private static float GetUltimateCooldownDuration(string abilityId)
+	{
+		return abilityId switch
+		{
+			HealUltimateId => HealUltimateCooldownSeconds,
+			SupportUltimateId => SupportUltimateCooldownSeconds,
+			_ => 0f,
+		};
+	}
+
+	private void TickTeamUltimateCooldowns(float delta)
+	{
+		if (_teamUltimateCooldowns.Count == 0 || delta <= 0f)
+			return;
+
+		var keys = new List<string>(_teamUltimateCooldowns.Keys);
+		foreach (string key in keys)
+		{
+			float next = _teamUltimateCooldowns[key] - delta;
+			if (next <= 0f)
+				_teamUltimateCooldowns.Remove(key);
+			else
+				_teamUltimateCooldowns[key] = next;
+		}
+	}
+
+	public float GetTeamUltimateCooldownRemaining(int teamId, string abilityId)
+	{
+		if (teamId <= 0 || string.IsNullOrWhiteSpace(abilityId))
+			return 0f;
+
+		string key = BuildTeamUltimateKey(teamId, abilityId);
+		return _teamUltimateCooldowns.TryGetValue(key, out float remaining) ? remaining : 0f;
+	}
+
+	public bool CanUseTeamUltimate(int teamId, string abilityId)
+	{
+		return teamId > 0
+			&& !string.IsNullOrWhiteSpace(abilityId)
+			&& GetUltimateCooldownDuration(abilityId) > 0f
+			&& GetTeamUltimateCooldownRemaining(teamId, abilityId) <= 0f;
+	}
+
+	public bool TryStartTeamUltimateCooldown(int teamId, string abilityId)
+	{
+		if (!CanUseTeamUltimate(teamId, abilityId))
+			return false;
+
+		float duration = GetUltimateCooldownDuration(abilityId);
+		if (duration <= 0f)
+			return false;
+
+		_teamUltimateCooldowns[BuildTeamUltimateKey(teamId, abilityId)] = duration;
+		return true;
+	}
+
+	public bool TryCastTeamUltimate(int teamId, string abilityId, Vector2 targetPosition)
+	{
+		if (!TryStartTeamUltimateCooldown(teamId, abilityId))
+			return false;
+
+		ApplyTeamUltimateEffect(teamId, abilityId, targetPosition, emitVfx: true);
+		return true;
+	}
+
+	public void ApplyRemoteTeamUltimateCast(int teamId, string abilityId, Vector2 targetPosition)
+	{
+		if (teamId <= 0 || string.IsNullOrWhiteSpace(abilityId))
+			return;
+
+		float duration = GetUltimateCooldownDuration(abilityId);
+		if (duration > 0f)
+		{
+			string key = BuildTeamUltimateKey(teamId, abilityId);
+			float current = GetTeamUltimateCooldownRemaining(teamId, abilityId);
+			_teamUltimateCooldowns[key] = Mathf.Max(current, duration);
+		}
+
+		// Remote peers rely on relay cast for gameplay and VFX.
+		ApplyTeamUltimateEffect(teamId, abilityId, targetPosition, emitVfx: true);
+	}
+
+	private void ApplyTeamUltimateEffect(int teamId, string abilityId, Vector2 targetPosition, bool emitVfx = true)
+	{
+		if (teamId <= 0 || string.IsNullOrWhiteSpace(abilityId))
+			return;
+
+		var allUnits = GetTree().GetNodesInGroup("units");
+		Unit firstAffectedUnit = null;
+
+		foreach (var node in allUnits)
+		{
+			if (node is not Unit ally || ally.GetTeamId() != teamId || ally.GetCurrentHealth() <= 0)
+				continue;
+
+			if (abilityId == HealUltimateId)
+			{
+				if (ally.GlobalPosition.DistanceTo(targetPosition) <= TeamHealUltimateRadius)
+				{
+					ally.Heal(TeamHealUltimateAmount);
+					firstAffectedUnit ??= ally;
+				}
+			}
+			else if (abilityId == SupportUltimateId)
+			{
+				if (ally.GlobalPosition.DistanceTo(targetPosition) <= TeamSupportUltimateRadius)
+				{
+					ally.ApplyTeamSupportUltimateBonus(TeamSupportUltimateDefenseBonus, TeamSupportUltimateDuration);
+					firstAffectedUnit ??= ally;
+				}
+			}
+		}
+
+		if (emitVfx)
+			Unit.EmitUltimateCastVfx(firstAffectedUnit, abilityId, targetPosition);
 	}
 
 	private void CheckRegionBonuses(int localTeamId)

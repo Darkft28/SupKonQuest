@@ -472,12 +472,12 @@ public partial class GameHUD : Control
 		AddChild(_abilitiesContainer);
 
 		_healUltimateButton = new Button();
-		_healUltimateButton.Text = "Heal Ult [1]";
+		_healUltimateButton.Text = BuildUltimateReadyLabel("Heal Ult", "ultimate_heal");
 		_healUltimateButton.Pressed += () => StartAbilityTargeting("heal_ultimate");
 		_abilitiesContainer.AddChild(_healUltimateButton);
 
 		_supportUltimateButton = new Button();
-		_supportUltimateButton.Text = "Support Ult [2]";
+		_supportUltimateButton.Text = BuildUltimateReadyLabel("Support Ult", "ultimate_support");
 		_supportUltimateButton.Pressed += () => StartAbilityTargeting("support_ultimate");
 		_abilitiesContainer.AddChild(_supportUltimateButton);
 
@@ -501,6 +501,8 @@ public partial class GameHUD : Control
 	{
 		if (_selectionManager == null || string.IsNullOrWhiteSpace(abilityId))
 			return;
+		if (GameManager.Instance != null && !GameManager.Instance.CanUseTeamUltimate(GetLocalTeamId(), abilityId))
+			return;
 
 		_selectionManager.BeginAbilityTargeting(abilityId);
 	}
@@ -510,45 +512,37 @@ public partial class GameHUD : Control
 		if (_abilitiesContainer == null || _selectionManager == null)
 			return;
 
-		var selectedUnits = _selectionManager.GetSelectedUnits();
-		bool hasUnits = selectedUnits != null && selectedUnits.Count > 0;
-		_abilitiesContainer.Visible = hasUnits;
-		if (!hasUnits)
-			return;
+		_abilitiesContainer.Visible = true;
 
-		bool canHeal = false;
-		bool canSupport = false;
-		float healCooldown = 0f;
-		float supportCooldown = 0f;
+		int localTeamId = GetLocalTeamId();
+		float healCooldown = GameManager.Instance?.GetTeamUltimateCooldownRemaining(localTeamId, "heal_ultimate") ?? 0f;
+		float supportCooldown = GameManager.Instance?.GetTeamUltimateCooldownRemaining(localTeamId, "support_ultimate") ?? 0f;
+		bool canHeal = healCooldown <= 0f;
+		bool canSupport = supportCooldown <= 0f;
 
-		foreach (var unit in selectedUnits)
-		{
-			if (unit == null || !IsInstanceValid(unit))
-				continue;
-
-			if (unit.GetUnitType() == "Heal")
-			{
-				healCooldown = Mathf.Max(healCooldown, unit.GetUltimateCooldownRemaining("heal_ultimate"));
-				canHeal |= unit.CanUseUltimate("heal_ultimate");
-			}
-			else if (unit.GetUnitType() == "Support")
-			{
-				supportCooldown = Mathf.Max(supportCooldown, unit.GetUltimateCooldownRemaining("support_ultimate"));
-				canSupport |= unit.CanUseUltimate("support_ultimate");
-			}
-		}
-
-		_healUltimateButton.Visible = canHeal || healCooldown > 0f;
+		_healUltimateButton.Visible = true;
 		_healUltimateButton.Disabled = !canHeal;
 		_healUltimateButton.Text = healCooldown > 0f
-			? $"Heal Ult [{Mathf.CeilToInt(healCooldown)}s]"
-			: "Heal Ult [1]";
+			? BuildUltimateCooldownLabel("Heal Ult", healCooldown)
+			: BuildUltimateReadyLabel("Heal Ult", "ultimate_heal");
 
-		_supportUltimateButton.Visible = canSupport || supportCooldown > 0f;
+		_supportUltimateButton.Visible = true;
 		_supportUltimateButton.Disabled = !canSupport;
 		_supportUltimateButton.Text = supportCooldown > 0f
-			? $"Support Ult [{Mathf.CeilToInt(supportCooldown)}s]"
-			: "Support Ult [2]";
+			? BuildUltimateCooldownLabel("Support Ult", supportCooldown)
+			: BuildUltimateReadyLabel("Support Ult", "ultimate_support");
+	}
+
+	private static string BuildUltimateCooldownLabel(string label, float cooldown)
+	{
+		return $"{label} [{Mathf.CeilToInt(cooldown)}s]";
+	}
+
+	private static string BuildUltimateReadyLabel(string label, string actionName)
+	{
+		Key key = KeybindingsManager.Instance?.GetBindingForAction(actionName) ?? Key.None;
+		string keyLabel = KeybindingsManager.KeyDisplayName(key);
+		return $"{label} [{keyLabel}]";
 	}
 
 	private void UpdateLeaderboard(double delta)

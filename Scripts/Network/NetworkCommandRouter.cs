@@ -20,6 +20,7 @@ public static class NetworkCommandRouter
 	public const long OpcodeMatchStart = 4002;
 	public const long OpcodePlayerLeaveCleanup = 5002;
 	public const long OpcodeCastUltimate = 6001;
+	public const long OpcodeUltimateVfx = 6002;
 	private static readonly JsonSerializerOptions RelayJsonOptions = new()
 	{
 		PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
@@ -118,7 +119,18 @@ public static class NetworkCommandRouter
 	[Serializable]
 	private sealed class CastUltimateCommand : RelayCommandBase
 	{
+		// Keep legacy field for currently deployed relay validator compatibility.
 		public string[] UnitIds { get; set; } = Array.Empty<string>();
+		public int TeamId { get; set; }
+		public string AbilityId { get; set; } = "";
+		public float TargetX { get; set; }
+		public float TargetY { get; set; }
+	}
+
+	[Serializable]
+	private sealed class UltimateVfxCommand : RelayCommandBase
+	{
+		public int TeamId { get; set; }
 		public string AbilityId { get; set; } = "";
 		public float TargetX { get; set; }
 		public float TargetY { get; set; }
@@ -282,20 +294,37 @@ public static class NetworkCommandRouter
 		});
 	}
 
-	public static void RequestCastUltimate(IEnumerable<Unit> units, string abilityId, Vector2 target)
+	public static void RequestCastUltimate(int teamId, string abilityId, Vector2 target)
 	{
-		var validUnits = units?.Where(unit => unit != null && GodotObject.IsInstanceValid(unit)).ToList() ?? new List<Unit>();
-		if (validUnits.Count == 0 || string.IsNullOrWhiteSpace(abilityId))
+		if (teamId <= 0 || string.IsNullOrWhiteSpace(abilityId))
 			return;
 
-		foreach (var unit in validUnits)
-			unit.TryCastUltimate(abilityId, target);
+		bool castStarted = GameManager.Instance != null && GameManager.Instance.TryCastTeamUltimate(teamId, abilityId, target);
+		if (!castStarted)
+			return;
 
 		SendRelayAsync(OpcodeCastUltimate, new CastUltimateCommand
 		{
 			SenderUserId = NakamaService.Instance?.UserId ?? "",
 			Sequence = ++_sequence,
-			UnitIds = validUnits.Where(unit => !string.IsNullOrWhiteSpace(unit.NetworkId)).Select(unit => unit.NetworkId).ToArray(),
+			UnitIds = new[] { $"team_{teamId}" },
+			TeamId = teamId,
+			AbilityId = abilityId,
+			TargetX = target.X,
+			TargetY = target.Y
+		});
+	}
+
+	public static void SendUltimateVfx(int teamId, string abilityId, Vector2 target)
+	{
+		if (teamId <= 0 || string.IsNullOrWhiteSpace(abilityId))
+			return;
+
+		SendRelayAsync(OpcodeUltimateVfx, new UltimateVfxCommand
+		{
+			SenderUserId = NakamaService.Instance?.UserId ?? "",
+			Sequence = ++_sequence,
+			TeamId = teamId,
 			AbilityId = abilityId,
 			TargetX = target.X,
 			TargetY = target.Y
@@ -471,6 +500,15 @@ public static class NetworkCommandRouter
 				ApplyCastUltimate(command);
 				break;
 			}
+			case OpcodeUltimateVfx:
+			{
+				var command = JsonSerializer.Deserialize<UltimateVfxCommand>(payload, RelayJsonReadOptions);
+				if (command == null || command.SenderUserId == localUserId)
+					return;
+
+				ApplyUltimateVfx(command);
+				break;
+			}
 			default:
 				GD.Print($"[RELAY] Unsupported opcode={opcode}");
 				break;
@@ -644,15 +682,23 @@ public static class NetworkCommandRouter
 
 	private static void ApplyCastUltimate(CastUltimateCommand command)
 	{
-		Vector2 target = new(command.TargetX, command.TargetY);
-		foreach (string unitId in command.UnitIds)
-		{
-			var unit = NetworkEntityRegistry.Get<Unit>(unitId);
-			if (unit == null || !GodotObject.IsInstanceValid(unit))
-				continue;
+		GameManager.Instance?.ApplyRemoteTeamUltimateCast(
+			command.TeamId,
+			command.AbilityId,
+			new Vector2(command.TargetX, command.TargetY)
+		);
+	}
 
-			unit.TryCastUltimate(command.AbilityId, target);
-		}
+	private static void ApplyUltimateVfx(UltimateVfxCommand command)
+	{
+		if (string.IsNullOrWhiteSpace(command.AbilityId))
+			return;
+
+		Unit.EmitUltimateCastVfx(
+			null,
+			command.AbilityId,
+			new Vector2(command.TargetX, command.TargetY)
+		);
 	}
 
 	private static SceneTree GetTree()
