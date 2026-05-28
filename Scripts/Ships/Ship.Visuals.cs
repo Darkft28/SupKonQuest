@@ -145,6 +145,10 @@ public partial class Ship
 		circleShape.Radius = DetectionRange;
 		collisionShape.Shape = circleShape;
 
+		// Layer 0 = invisible ; Mask 2 = détecte les navires (layer 2)
+		_detectionZone.CollisionLayer = 0u;
+		_detectionZone.CollisionMask = 2u;
+
 		_detectionZone.BodyEntered += OnBodyEnteredDetectionZone;
 	}
 

@@ -29,7 +29,7 @@ public partial class Unit : CharacterBody2D
 	private Sprite2D _sprite;
 
 	private Vector2? _targetPosition = null;
-	private const float ArrivalDistance = 20f;
+	private const float ArrivalDistance = 80f;
 	private Vector2 _lastPosition;
 	private int _stuckFrames = 0;
 	private int _moveStartDelay = 0;
@@ -62,6 +62,7 @@ public partial class Unit : CharacterBody2D
 	private bool _navTargetDirty = true;
 	private int _navPathCooldown = 0; // frames avant de relire le chemin nav (calcul asynchrone)
 	private const float NavUpdateDistance = 64f; // recalcule le chemin si la cible bouge > 64px
+	private Vector2 _intendedDirection = Vector2.Zero; // direction voulue avant MoveAndSlide
 
 	// Throttle recherche ennemis/camps — évite O(n²) chaque frame
 	private float _aiSearchTimer = 0f;
@@ -71,6 +72,7 @@ public partial class Unit : CharacterBody2D
 	private float _campDefeatCheckTimer = 0f;
 	private bool _campDefeatCached = false;
 	private const float CampDefeatCheckInterval = 0.3f;
+
 
 	// Ennemi croisé en chemin vers un camp (combat opportuniste)
 	private Unit _opportunisticTarget = null;
@@ -250,6 +252,7 @@ public partial class Unit : CharacterBody2D
 				_currentTarget = null;
 				_healTarget = null;
 				Velocity = Vector2.Zero;
+				_intendedDirection = Vector2.Zero;
 				QueueRedraw();
 				break;
 
@@ -338,6 +341,7 @@ public partial class Unit : CharacterBody2D
 
 		ProcessSupportBattleHorn(delta);
 
-		UpdateSpriteDirection(Velocity);
+		if (_intendedDirection != Vector2.Zero)
+			UpdateSpriteDirection(_intendedDirection);
 	}
 }

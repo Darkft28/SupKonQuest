@@ -337,6 +337,11 @@ public partial class MapGenerator : Node
 		}
 	}
 
+	private bool IsSand(int tx, int ty)
+	{
+		return _tileMapSol.GetCellSourceId(new Vector2I(tx, ty)) == 1;
+	}
+
 	private void TriggerIntroZoom()
 	{
 		var camera = _camera as SupKonQuest.CameraController;

@@ -4,22 +4,24 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-SupKonQuest is a strategy and conquest game built with Godot 4.5 and C# (.NET 8.0). It features procedural map generation, multiplayer networking via ENet and Nakama relay, and a gold-based economy system with unit production queues.
+SupKonQuest is a strategy and conquest game built with Godot 4.5 and C# (.NET 8.0). It features predefined map presets (Irridium, Alabasta), ENet P2P multiplayer with Nakama relay fallback, a gold-based economy with unit/ship production queues, and a Utility AI system.
 
 ## Game Flow
 
 1. Joueur spawn avec 1 camp + 100 or
-2. Chaque camp possédé génère 50 or/sec ; revenu passif global +500 or/sec
-3. Acheter des unités → file de production
-4. Sélectionner unités → clic droit pour déplacer
-5. Tuer les défenseurs d'un camp → attaquer le camp → capture
-6. Victoire: capturer tous les camps ennemis
+2. GameManager donne 500 or/sec passif à chaque équipe ; chaque camp neutre génère 50 or/sec localement
+3. Acheter des unités (Tier 1 par défaut) → file de production par camp (max 7)
+4. Sélectionner unités → clic droit pour déplacer ou attaquer
+5. Tuer les défenseurs d'un camp → attaquer le bâtiment → capture (+50 or bonus + 3 unités bonus)
+6. Victoire : capturer tous les camps ennemis
 
 ## Key Scenes
-
-- `Scenes/MainMenu.tscn` - Point d'entrée
-- `Scenes/Game.tscn` - Scène de jeu principale
-- `Scenes/Unit.tscn` - Prefab unité
+- `Scenes/Game.tscn` - Scène de jeu principale (racine : `MapGenerator.cs`)
+- `Scenes/Unit.tscn` - Prefab unité terrestre
+- `Scenes/Ship.tscn` - Prefab navire
+- `Scenes/camp_simple.tscn` - Prefab camp (Area2D, scale 4.5×)
+- `Scenes/GameHUD.tscn` - HUD en surimpression (instancié dans CanvasLayer de Game.tscn)
+- Point d'entrée : `Scenes/MainMenu.tscn` → `Scenes/GameModeMenu.tscn` → `Scenes/Lobby.tscn` → Game
 
 ## Build Commands
 
@@ -37,38 +39,33 @@ godot --path . --run
 ## Architecture
 
 ### Directory Structure
-
-- `Scripts/Units/` - Unit.cs + partials (Combat, Movement, Healing, Transport, Visuals), UnitStats, Projectile
+- `Scripts/Units/` - Unit.cs + partials (Combat, Movement, Healing, Transport, Visuals, Audio), UnitStats, Projectile
 - `Scripts/Ships/` - Ship.cs + partials (Combat, Movement, Transport, Visuals), ShipStats, ShipProjectile
 - `Scripts/Camps/` - CampSimple.cs + partials (Production, Naval, Defense, Visuals)
 - `Scripts/Map/` - MapGenerator, TerrainGenerator (static), CampPlacer (static), TerritoryManager, TerritoryConnectivity (static)
 - `Scripts/Selection/` - SelectionManager
 - `Scripts/Camera/` - CameraController
 - `Scripts/Economy/` - GameManager, VictoryManager
-- `Scripts/Network/` - NetworkManager, GameState, NetworkSync, NetworkEntityRegistry
-- `Scripts/AI/` - AIController (Utility AI, Easy/Medium/Hard, one per bot slot)
-- `Scripts/UI/` - GameHUD, LobbyUI, Minimap, MainMenu, GameModeMenu, LocalizationManager
+- `Scripts/Network/` - NetworkManager, GameState, NetworkSync, NetworkEntityRegistry, NakamaService, NetworkCommandRouter
+- `Scripts/AI/` - AIController (Utility AI, Easy/Medium/Hard, one instance per bot team)
+- `Scripts/UI/` - GameHUD, LobbyUI, Minimap, MainMenu, GameModeMenu, LocalizationManager, AudioSettings, UIStyle
 - `AI-implementation.md` - Notes de conception IA (naval et boss, stagger implémenté ; idées futures : personnalités)
 - `Scenes/` - Godot scene files (.tscn)
 - `Assets/` - Textures, sprites, unit characters
 
-### Singleton Managers (AutoLoads)
-
-Autoloads in `project.godot`:
-
+### Singleton Managers (AutoLoads in project.godot)
 - **GameManager** - Gold economy, tiers, victory hooks (`GameManager.Instance`)
-- **NetworkManager** - ENet legacy multiplayer (hosting, joining, port 7777, max 8 — UI non branchée)
+- **NetworkManager** - ENet multiplayer (hosting, joining, peer comm port 7777; LAN discovery UDP port 7778)
 - **GameState** - Game flow (seed, `ActivePlayerCount`, `IsAIMode`, `IsOnline`, `IsFreeForAll`)
 - **NakamaService** - Auth guest, matchmaking 2–8, lobby in-match, opcodes lobby relay (`4001`/`4002`), gameplay relay
-- **LocalizationManager** - i18n FR/EN/ES
-- **AudioSettings** - Volume musique / effets
+- **LocalizationManager** - i18n (FR/EN/ES), signal `LanguageChanged`
+- **AudioSettings** - Volume music/SFX with persistence
 
 ### Core Systems
 
-**GameManager** - Gold economy per player/slot with passive income (500 gold/sec), unit purchasing, capture bonuses (50 gold). Starting gold: 100. Manages a 3-tier unlock system: Tier 1 (default), Tier 2 (manual purchase: 1500 gold), Tier 3 (auto-unlock when controlling all camps in home region).
+**GameManager** - Gold economy per team. `PassiveGoldPerSecond = 500` given each second per team regardless of camp count. `CaptureBonus = 50` gold on capture. `StartingGold = 100`. `RegionBonusGold = 30` or/s if team controls all camps in a region. `RegionSpeedBonusPerRegion = 0.20f` (cumulative speed multiplier per full region). `MaxUnitsPerCamp = 10` (global cap = owned camps × 10). 3-tier unlock: Tier 1 default, Tier 2 manual purchase `Tier2Cost = 1500`, Tier 3 auto-unlock when controlling 100% of home region camps.
 
-**Unit System** - CharacterBody2D-based units with UnitStatsData (MaxHealth, Attack, Defense, Speed, Range, Price, ProductionTime). 8 unit types available:
-
+**Unit System** - CharacterBody2D with state machine (Idle, MovingToPoint, MovingToTarget, Attacking, AttackingCamp, Healing, MovingToTransport). Navigation layer 1 (ground only). Detection zone = `stats.Range + 400px`. Enemy search throttled to 0.5s. Stuck detection: 120 frames (≈2s) of insufficient movement.
 
 | Type      | Price | HP  | Attack | Defense | Speed | Range | Prod. Time |
 | --------- | ----- | --- | ------ | ------- | ----- | ----- | ---------- |
@@ -81,56 +78,108 @@ Autoloads in `project.godot`:
 | Heavy     | 150g  | 150 | 25     | 20      | 70    | 100   | 5s         |
 | Tank      | 200g  | 200 | 30     | 25      | 50    | 100   | 6s         |
 
-
-Damage formula: `damage * 100f / (100f + totalDefense)` (scalable reduction, NOT subtractive). Neutral camp units have 1.5x HP.
-AntiArmor deals x2 damage vs Heavy. Mortar AoE splash 200px radius, 20 flat damage (ignores defense).
+Damage formula: `damage * 100f / (100f + totalDefense)` (scalable reduction, NOT subtractive). Neutral camp units have 1.5x HP. AntiArmor deals ×2 damage vs Heavy. Mortar AoE: 200px radius, 20 flat damage (ignores defense, skips shooter and allies). Support aura: +10 defense per Support ally within 200px, **capped at 40** (4 Supports max).
 
 Unit tiers (affect production unlock):
-
 - Tier 1: Infantry, Support, Range
 - Tier 2: Heal, AntiArmor
 - Tier 3: Mortar, Heavy, Tank
 
 Ship tiers: Transport = Tier 1, Fregate + Destroyer = Tier 3.
 
-**CampSimple** - Base camps with health (600 HP), capture mechanics, and production queue (max 7 units). Each owned camp adds 50 gold/sec to the team pool via `GoldPerSecond`. Spawns units in circular pattern (525px radius). Capture requires killing all defending units first. Has a defensive turret (5 dmg/sec at 600px). Port built manually (500 gold via HUD button): player clicks a coastal tile in team territory adjacent to water; orientation auto-detected from adjacent water. Port has its own production queue (max 5 ships). `TrySpawnPort()` exists but is not called (dead code). Each camp has a `RegionId` (variable per map: 3 regions on Irridium, 4 on Alabasta) used for regional bonuses and Tier 3 unlock.
+**Unit.Audio.cs** - Pooled 2D spatial audio (`UnitSfxMaxDistance = 7500f`). Infantry: 4 random impact sounds, round-robin pool of 5 players. Range: arrow impact. Heal: magic sound. Support: war horn every 10s when in combat, max 2 simultaneous within 3200px. Uses `SFX` audio bus.
 
-**TerritoryManager** - Visual territory tint (8-tile radius around camps). No manual territory purchase. Handles port placement mode (coastal tiles in team territory). `TerritoryConnectivity` builds a region adjacency graph from map presets so units/AI only prioritize land-reachable camps.
+**CampSimple** - Area2D (scale 4.5×). `MaxHealth = 750f`. `MaxQueueSize = 7` units, `MaxShipQueueSize = 5` ships. Turret: `TurretDamage = 15f/s` at `TurretRange = 600f`, applied directly (no projectile). Territory alert timer (1.5s tick, 8s cooldown) sends Idle defenders toward intruders. Spawn radius 525px with deterministic angle `(CampId * 73856093) ^ (sequence * 19349663)`, spiral fallback if terrain blocked (Forest=3, Snow=4, Water=6). Port costs `PortCost = 500` gold, placed by clicking a coastal tile (auto-detects orientation from adjacent water count). `TrySpawnPort()` exists but is dead code (never called). Each camp has `RegionId` (3 on Irridium, 4 on Alabasta).
 
-**AIController** - Utility AI per bot slot. Medium/Hard: reactive defense, rally before attack, port/ship production when a full region is controlled, naval offensives (Fregate/Destroyer; Hard may attack by sea before home region is complete). Land targets filtered via `TerritoryConnectivity.IsReachable`. Easy: infantry spam, nearest camp, no naval.
+**Ships** - CharacterBody2D, navigation layer 2 (water only, tile id 6). 3 types:
+| Type | HP | Attack | Defense | Speed | Capacity | Price | Prod |
+|------|----|--------|---------|-------|----------|-------|------|
+| Transport | 200 | 0 | 10 | 120 | 10 units | 150g | 5s |
+| Fregate | 180 | 20 | 15 | 100 | — | 200g | 5s |
+| Destroyer | 250 | 35 | 20 | 80 | — | 300g | 7s |
 
-**Ships** - CharacterBody2D naval units with own state machine. 3 types: Transport (200HP, capacity 10 units, 150g), Fregate (180HP, 20atk, 200g), Destroyer (250HP, 35atk, 300g). Ship.tscn at `Scenes/Ship.tscn`. Assets in `Assets/Units/Ships/`. Destroyer textures = `Destroyers_*.png`.
+Transport is pacifist (never engages enemies). Destroyer textures: `Assets/Units/Ships/Destroyer/Destroyers_*.png`. Fregate: `Assets/Units/Ships/Frégate/frégate_*.png` (accented folder). Unload radius max 2000px, requires coastal tile with adjacent water in 3×3 grid.
 
-**SelectionManager** - Handles unit/camp/ship/port selection via click or box selection. Selection priority: port > camp > ship > unit. Selected units/ships moved with right-click. Right-click on allied Transport = auto-board. Stuck detection after 2s of no movement.
+**SelectionManager** - Click/box selection. Priority: port (<100px) → camp (<200px) → ship (<80px) → unit (<64px). Right-click: detects Transport within 150px (auto-board), enemy camp within 400px (AttackCamp), otherwise MoveTo. In Nakama relay mode, routes commands through `NetworkCommandRouter` instead of calling directly.
 
-**MapGenerator** - Loads predefined map presets (IrridiumMap or AlabastaMap) on a 256x256 grid, 128px tiles. Camp positions are preset per map, shuffled deterministically via seed. No procedural camp placement. Biome tile IDs: Water=6, Sand=1, Grass=0, Forest=3, Rock=5, Snow=4. Deterministic seeded generation for multiplayer sync.
+**MapGenerator** - Async load with 5-frame wait for NavigationServer2D to process nav regions. Decodes RLE presets (IrridiumMap/AlabastaMap). Builds 2 separate navmeshes (layer 1 = ground, layer 2 = water). `TerritoryGraph: Dictionary<int, HashSet<int>>` is the public region-adjacency graph used by unit AI to prioritize nearby camp targets. Walkable check: rejects tile ids 6 (water), 3 (forest), 5 (rock), 4 (snow), objects 100/101.
 
-**CameraController** - Zoom (0.05x-2.0x), WASD/arrow pan, right-click drag, recenter with C/Home
+**TerritoryManager** - 256×256 grid of team ownership. Territory computed by BFS distance² from camp positions (radius 8 tiles default). Manual tile purchase: 200 gold/tile, BFS-connected to existing owned territory only (no isolated purchase). Orphan tiles on capture re-assigned via BFS connectivity. Visual: tint overlay (alpha 0.15) + golden borders (4px) drawn in `_Draw()`.
 
-**GameHUD** - Displays gold for selected camp, unit purchase buttons with prices, tier unlock button (1500 gold). Connected to SelectionManager for camp selection. Shows tier lock state per unit button.
+**TerritoryConnectivity** - Static class building bidirectional adjacency graph between regions (4-neighbor scan, land tiles only, BFS for transitive connectivity check `AreConnected()`).
+
+**CameraController** - Zoom 0.05×–2.0× (min dynamic per map size). Pan: arrows/WASD at `PanSpeed=600f/Zoom`, right-drag. Zoom maintains mouse position. Intro animation: tween position + zoom from full map view to player camp (3–5s depending on map size, easing InOutCubic).
+
+**GameHUD** - Leaderboard: collapsible (▼/▶ toggle), top 10, dynamic height, gold column added, rank colors (gold/silver/cream). Tier info label shows state and unlock cost. Lock overlay on unit buttons when tier not unlocked. Port button visible only when camp selected + no port + affordable.
+
+### Networking Architecture
+
+**ENet P2P (local/LAN):**
+- Server = Team 1, Client = Team 2 (set via `GameState.LocalTeamId`)
+- LAN discovery: client broadcasts `"SUPKONQUEST_DISCOVER:{CODE}"` UDP:7778, server replies `"SUPKONQUEST_FOUND:{CODE}:{PORT}"`
+- `NetworkEntityRegistry`: global `string networkId → Node`, IDs = `"{peerId}_{counter}"`
+- Deterministic defender IDs: `"camp_{campId}_unit_{index}"`, dynamic units: `"camp_{campId}_dyn_{sequence}"`
+- Authority: server controls neutral camps and Team 1 entities; each peer controls their own team
+- Reliable RPCs: spawn, death, damage, camp capture, transport board/unload, camp assignments
+- Unreliable RPCs: 20Hz batched position/health/state sync (`SyncInterval = 0.05s`)
+- Gold sync: `RpcSyncGold` every 10s (server→clients), tolerance 5 gold before applying correction
+
+**Nakama relay (online matchmaking):**
+- `NakamaService` autoload handles auth (persistent device ID at `user://nakama_device_id.txt`), matchmaking, socket
+- `IsRelayMode()` = `GameState.IsOnline && NakamaService.IsSocketConnected`
+- `NetworkCommandRouter` serializes commands as JSON with opcodes: BuyUnit=1001, MoveUnits=2001, AttackCamp=2002, CampCaptured=2003, GoldSnapshot=3001
+- In relay mode, SelectionManager/GameHUD call `NetworkCommandRouter.Request*()` instead of direct camp calls
+- Gold snapshot sent every 1s in relay mode for reconciliation
+
+**Godot RPC limitation:** `bool[]` not supported as Variant; use `int[]` instead.
+
+### AI System
+
+**AIController** - One instance per bot team, created by `MapGenerator.InitAIController()`. Architecture: Utility AI scoring `ScoreCamp()` evaluated each tick.
+
+Boss designation: MapGenerator finds the bot team most geographically distant from the player per region, assigns `difficulty = playerDifficulty + 1`. All other bots = Easy.
+
+| Param | Easy | Medium | Hard |
+|-------|------|--------|------|
+| Tick (s) | 6.0 | 3.5 | 2.0 |
+| MaxUnits | 8 | 16 | 28 |
+| FirstAttackDelay (s) | 20 | 12 | 5 |
+| ReactionDelay (s) | 5.0 | 1.5 | 0.3 |
+| ErrorRate | 40% | 15% | 0% |
+| ForcedAttackDelay (s) | 60 | 40 | 25 |
+| DefenseRatio | 0 | 0.15 | 0.20 |
+
+Composition targets: Easy=100% Infantry. Medium/Hard use mixed compositions (Infantry/Range/Support/Heal/AntiArmor). Hard counter-comp: if enemy has ≥3 Heavy → prioritize AntiArmor. Medium/Hard use rally-point strategy before attacking. Reactive defense: sends DefenseRatio% of idle units if a camp is at <60% HP or enemy within 700px.
+
+Camp scoring: +2500 neutral, +(1-hpRatio)×1800 if damaged, +(5-defenders)×300, +3500 home region, −distance×0.4. Medium/Hard: port/ship production when a full region is controlled, naval offensives (Fregate/Destroyer). Land targets filtered via `TerritoryConnectivity.IsReachable`. Easy: infantry spam, nearest camp, no naval.
 
 **Multijoueur en ligne (Nakama)** - Flux : `GameModeMenu` → `LobbyUI` → matchmaking → `JoinMatch` → lobby in-match (`MatchLobbyEntered`) → **`MatchStart` relay uniquement** → `StartOnlineGameFromMatch`. Pas d'IA (`IsAIMode`/`IsFreeForAll` remis à false via `ResetOnlineMatchFlags`). 1 camp/joueur, reste neutre (`GameManager.AssignCampsToPlayers`, `ActivePlayerCount`). Signaux : `MatchLobbyEntered`, `MatchLobbyTick`, `MatchStarting`. Module relay externe : countdown ~20s (+5s/join, start à 8) puis opcode `4002`. Test local : `--nakama-slot=1` / `2`.
 
 ### Key Patterns
-
+- Partial classes by concern (Unit.Combat.cs, Unit.Movement.cs, etc.) — never mix concerns across partials
+- Groups for entity lookup: `"units"`, `"ships"`, `"camps"`, `"team_<id>"`
+- Deterministic seeding for all shuffles and spawn positions (Fisher-Yates with shared seed)
+- Enemy search/pathfinding throttled (0.5s search, 64px nav recalc threshold, 3-frame cooldown)
+- `IsLocalAuthority` bool on Unit/Ship controls which peer processes damage/death
+- Relay mode detected at call site; same code paths, different dispatch (NetworkCommandRouter vs direct)
+- Audio pooled with round-robin players to avoid create/destroy overhead
 - Signal-based communication for UI and networking
-- Group-based ownership organization ("units", "team_", "camps")
-- Deterministic systems via seeded random for network sync
-- All network state changes use RPCs with Authority mode
 - Production queue system with async unit spawning
 
-## Known Bugs (from audit 2026-04-05)
+## Known Bugs (from audit 2026-05-12)
 
-- **Support aura stacking unlimited** (MEDIUM): 10 Support units = +100 defense bonus, can make units unkillable. Fix: cap bonus at +40-50 in `Unit.Healing.GetSupportDefenseBonus()`.
-- **HUD price mismatch** (HIGH): GameHUD.tscn displays wrong prices for AntiArmor (90 vs 120), Heavy (120 vs 150), Mortar (110 vs 130), Tank (150 vs 200). Fix: sync .tscn with UnitStats.cs values.
-- **No multiplayer reconnection** (HIGH): Disconnect = end of game with no recovery path.
+- **HUD price mismatch** (HIGH): GameHUD.tscn hardcodes wrong prices: AntiArmor (90 vs 120), Heavy (120 vs 150), Mortar (110 vs 130), Tank (150 vs 200). Fix: update price Label nodes in GameHUD.tscn to match UnitStats.cs values.
+- **No multiplayer reconnection** (HIGH): Disconnect = end of game, no recovery path. NetworkManager changes scene to MainMenu after 5s.
+- **No naval AI** (MEDIUM): AIController has no logic for buying ships or using ports. Bots can be stranded if map requires naval crossing.
 
 ## Fixed Bugs (for reference)
 
-- **OnDefenderDied() never called** — Corrigé : `Unit.Combat.Die()` appelle `OwnerCamp.OnDefenderDied()` (Unit.Combat.cs:215).
-- **No gold refund on camp capture mid-production** — Corrigé : `CampSimple.SetTeam()` appelle `RefundProductionQueue()` et `RefundShipProductionQueue()` (CampSimple.cs:166-174).
+- **OnDefenderDied() never called** — `Unit.Combat.Die()` calls `OwnerCamp.OnDefenderDied()`.
+- **No gold refund on camp capture mid-production** — `CampSimple.SetTeam()` calls `RefundProductionQueue()` and `RefundShipProductionQueue()`.
+- **Support aura stacking unlimited** — `GetSupportDefenseBonus()` now caps at +40 (4 Supports × +10).
+- **Gold desync in multiplayer** — `NetworkSync.RpcSyncGold()` runs every 10s server→clients with 5-gold tolerance.
 - **Multi après solo : client avec IA vs humain** — Corrigé : `GameState.ResetOnlineMatchFlags()` + garde `InitAIController` si `IsOnline`.
-- **Solo après multi : partie sans IA (PvP)** — Corrigé : `StartSoloGame()` atomique ; `ConfigureOfflineGame` ne remet plus `IsAIMode` à false (évite le double appel via `StartOfflineGame`).
+- **Solo après multi : partie sans IA (PvP)** — Corrigé : `StartSoloGame()` atomique ; `ConfigureOfflineGame` ne remet plus `IsAIMode` à false.
 
 ## Code Conventions
 
@@ -148,4 +197,3 @@ From CONTRIBUTING.md:
 - Create feature branches from develop: `feature/feature-name`
 - Merge features to develop, then develop to main for releases
 - **Ne jamais inclure de traces de collaboration avec Claude** (pas de "Co-Authored-By: Claude", pas de mentions Claude dans les commits)
-
