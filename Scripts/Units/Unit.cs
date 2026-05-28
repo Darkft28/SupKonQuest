@@ -337,6 +337,7 @@ public partial class Unit : CharacterBody2D
 		}
 
 		ProcessSupportBattleHorn(delta);
+		TickUltimateState(delta);
 
 		UpdateSpriteDirection(Velocity);
 	}

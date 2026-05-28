@@ -33,7 +33,7 @@ public partial class NakamaService : Node
 	private const string ConfigPortPath = "nakama/port";
 	private const string ConfigServerKeyPath = "nakama/server_key";
 	private const string DefaultScheme = "http";
-	private const string DefaultHost = "4.165.28.243";
+	private const string DefaultHost = "4.166.40.82";
 	private const int DefaultPort = 7350;
 	private const string DefaultServerKey = "defaultkey";
 
@@ -56,6 +56,7 @@ public partial class NakamaService : Node
 	private float _lobbyCountdownSeconds = -1f;
 	private bool _hasReceivedLobbyTick;
 	private readonly Dictionary<string, string> _matchPlayers = new();
+	private readonly Dictionary<string, int> _userTeamMap = new();
 
 	public bool IsAuthenticated => _session != null && !_session.IsExpired;
 	public bool IsSocketConnected => _socket != null;
@@ -244,6 +245,7 @@ public partial class NakamaService : Node
 		_userId = "";
 		_displayName = "";
 		_matchPlayers.Clear();
+		_userTeamMap.Clear();
 		EmitSignal(SignalName.Disconnected);
 	}
 
@@ -393,6 +395,7 @@ public partial class NakamaService : Node
 			OnLobbyPresenceChanged();
 		else
 			TryEnterMatchLobby("presence event");
+
 	}
 
 	private void OnReceivedMatchState(IMatchState matchState)
@@ -521,6 +524,9 @@ public partial class NakamaService : Node
 		_pendingMatchSeed = effectiveSeed;
 		int localTeamId = localIndex + 1;
 		int playerCount = ordered.Count;
+		_userTeamMap.Clear();
+		for (int i = 0; i < ordered.Count; i++)
+			_userTeamMap[ordered[i]] = i + 1;
 
 		GD.Print($"[NAKAMA] Match starting ({source}): {_matchId} team={localTeamId} seed={effectiveSeed} players={playerCount}");
 		CallDeferred(nameof(DeferredEmitMatchStarting), _matchId, localTeamId, effectiveSeed, playerCount);
@@ -766,6 +772,7 @@ public partial class NakamaService : Node
 		_pendingMatchSeed = 0;
 		ResetLobbyState();
 		_matchPlayers.Clear();
+		_userTeamMap.Clear();
 		EmitMatchmakingFailedThreadSafe("Deux instances utilisent le meme user Nakama. Lance chaque instance avec un slot different (--nakama-slot=1, --nakama-slot=2).");
 	}
 

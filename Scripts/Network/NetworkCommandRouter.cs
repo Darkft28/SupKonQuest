@@ -18,6 +18,8 @@ public static class NetworkCommandRouter
 	public const long OpcodeGoldSnapshot = 3001;
 	public const long OpcodeLobbyTick = 4001;
 	public const long OpcodeMatchStart = 4002;
+	public const long OpcodePlayerLeaveCleanup = 5002;
+	public const long OpcodeCastUltimate = 6001;
 	private static readonly JsonSerializerOptions RelayJsonOptions = new()
 	{
 		PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
@@ -106,6 +108,22 @@ public static class NetworkCommandRouter
 		public float Rotation { get; set; }
 		public bool FlipH { get; set; }
 	}
+
+	[Serializable]
+	private sealed class PlayerLeaveCleanupCommand : RelayCommandBase
+	{
+		public int TeamId { get; set; }
+	}
+
+	[Serializable]
+	private sealed class CastUltimateCommand : RelayCommandBase
+	{
+		public string[] UnitIds { get; set; } = Array.Empty<string>();
+		public string AbilityId { get; set; } = "";
+		public float TargetX { get; set; }
+		public float TargetY { get; set; }
+	}
+
 
 	public static void RequestBuyUnit(CampSimple camp, string unitType)
 	{
@@ -248,6 +266,39 @@ public static class NetworkCommandRouter
 			PosY = posY,
 			Rotation = rotation,
 			FlipH = flipH
+		});
+	}
+
+	public static void SendPlayerLeaveCleanup(int teamId)
+	{
+		if (teamId <= 0)
+			return;
+
+		SendRelayAsync(OpcodePlayerLeaveCleanup, new PlayerLeaveCleanupCommand
+		{
+			SenderUserId = NakamaService.Instance?.UserId ?? "",
+			Sequence = ++_sequence,
+			TeamId = teamId
+		});
+	}
+
+	public static void RequestCastUltimate(IEnumerable<Unit> units, string abilityId, Vector2 target)
+	{
+		var validUnits = units?.Where(unit => unit != null && GodotObject.IsInstanceValid(unit)).ToList() ?? new List<Unit>();
+		if (validUnits.Count == 0 || string.IsNullOrWhiteSpace(abilityId))
+			return;
+
+		foreach (var unit in validUnits)
+			unit.TryCastUltimate(abilityId, target);
+
+		SendRelayAsync(OpcodeCastUltimate, new CastUltimateCommand
+		{
+			SenderUserId = NakamaService.Instance?.UserId ?? "",
+			Sequence = ++_sequence,
+			UnitIds = validUnits.Where(unit => !string.IsNullOrWhiteSpace(unit.NetworkId)).Select(unit => unit.NetworkId).ToArray(),
+			AbilityId = abilityId,
+			TargetX = target.X,
+			TargetY = target.Y
 		});
 	}
 
@@ -400,6 +451,24 @@ public static class NetworkCommandRouter
 					return;
 
 				ApplyBuildPort(command);
+				break;
+			}
+			case OpcodePlayerLeaveCleanup:
+			{
+				var command = JsonSerializer.Deserialize<PlayerLeaveCleanupCommand>(payload, RelayJsonReadOptions);
+				if (command == null || command.SenderUserId == localUserId)
+					return;
+
+				ApplyPlayerLeaveCleanup(command);
+				break;
+			}
+			case OpcodeCastUltimate:
+			{
+				var command = JsonSerializer.Deserialize<CastUltimateCommand>(payload, RelayJsonReadOptions);
+				if (command == null || command.SenderUserId == localUserId)
+					return;
+
+				ApplyCastUltimate(command);
 				break;
 			}
 			default:
@@ -565,6 +634,24 @@ public static class NetworkCommandRouter
 				camp.ApplyRemotePortPlacement(command.PosX, command.PosY, command.Rotation, command.FlipH);
 				break;
 			}
+		}
+	}
+
+	private static void ApplyPlayerLeaveCleanup(PlayerLeaveCleanupCommand command)
+	{
+		GameManager.Instance?.ApplyPlayerLeaveCleanup(command.TeamId);
+	}
+
+	private static void ApplyCastUltimate(CastUltimateCommand command)
+	{
+		Vector2 target = new(command.TargetX, command.TargetY);
+		foreach (string unitId in command.UnitIds)
+		{
+			var unit = NetworkEntityRegistry.Get<Unit>(unitId);
+			if (unit == null || !GodotObject.IsInstanceValid(unit))
+				continue;
+
+			unit.TryCastUltimate(command.AbilityId, target);
 		}
 	}
 

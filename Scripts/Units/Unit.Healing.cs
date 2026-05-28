@@ -62,7 +62,7 @@ public partial class Unit
 			}
 		}
 
-		return Mathf.Min(bonus, 40f); // cap : 4 supports max actifs
+		return Mathf.Min(bonus, 40f) + GetTemporaryDefenseBonus(); // cap aura + buff ultimate
 	}
 
 	private Unit FindWoundedAllyInRange()

@@ -109,7 +109,9 @@ Ship tiers: Transport = Tier 1, Fregate + Destroyer = Tier 3.
 
 **GameHUD** - Displays gold for selected camp, unit purchase buttons with prices, tier unlock button (1500 gold). Connected to SelectionManager for camp selection. Shows tier lock state per unit button.
 
-**Multijoueur en ligne (Nakama)** - Flux : `GameModeMenu` → `LobbyUI` → matchmaking → `JoinMatch` → lobby in-match (`MatchLobbyEntered`) → **`MatchStart` relay uniquement** → `StartOnlineGameFromMatch`. Pas d'IA (`IsAIMode`/`IsFreeForAll` remis à false via `ResetOnlineMatchFlags`). 1 camp/joueur, reste neutre (`GameManager.AssignCampsToPlayers`, `ActivePlayerCount`). Signaux : `MatchLobbyEntered`, `MatchLobbyTick`, `MatchStarting`. Module relay externe : countdown ~20s (+5s/join, start à 8) puis opcode `4002`. Test local : `--nakama-slot=1` / `2`.
+**Multijoueur en ligne (Nakama)** - Flux : `GameModeMenu` → `LobbyUI` → matchmaking → `JoinMatch` → lobby in-match (`MatchLobbyEntered`) → **`MatchStart` relay uniquement** → `StartOnlineGameFromMatch`. Pas d'IA (`IsAIMode`/`IsFreeForAll` remis à false via `ResetOnlineMatchFlags`). 1 camp/joueur, reste neutre (`GameManager.AssignCampsToPlayers`, `ActivePlayerCount`). Signaux : `MatchLobbyEntered`, `MatchLobbyTick`, `MatchStarting`. Module relay externe : countdown ~20s (+5s/join, start à 8) puis opcode `4002`.
+Gestion déconnexion autoritaire serveur : `5002` (cleanup team) sur leave en partie. Le client applique l'événement serveur.
+Test local : `--nakama-slot=1` / `2`.
 
 ### Key Patterns
 
@@ -123,7 +125,7 @@ Ship tiers: Transport = Tier 1, Fregate + Destroyer = Tier 3.
 
 - **Support aura stacking unlimited** (MEDIUM): 10 Support units = +100 defense bonus, can make units unkillable. Fix: cap bonus at +40-50 in `Unit.Healing.GetSupportDefenseBonus()`.
 - **HUD price mismatch** (HIGH): GameHUD.tscn displays wrong prices for AntiArmor (90 vs 120), Heavy (120 vs 150), Mortar (110 vs 130), Tank (150 vs 200). Fix: sync .tscn with UnitStats.cs values.
-- **No multiplayer reconnection** (HIGH): Disconnect = end of game with no recovery path.
+- **No multiplayer reconnection** (HIGH): Disconnect en partie implique cleanup serveur immédiat, sans reprise de session.
 
 ## Fixed Bugs (for reference)
 

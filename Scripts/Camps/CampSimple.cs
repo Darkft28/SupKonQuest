@@ -211,6 +211,14 @@ public partial class CampSimple : Area2D
 		UpdateSpawnedUnitsTeam();
 	}
 
+	public void NeutralizeCampAfterPlayerLeave()
+	{
+		SetTeam(0, true);
+		SetCurrentHealth(MaxHealth);
+		RefreshCampLabel();
+		UpdateCampTimers();
+	}
+
 	private void UpdateSpawnedUnitsTeam()
 	{
 		CleanDeadUnits();

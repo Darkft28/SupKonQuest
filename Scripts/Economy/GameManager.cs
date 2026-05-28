@@ -164,6 +164,7 @@ public partial class GameManager : Node
 	private void BroadcastCampAssignments()
 	{
 		if (NetworkSync.Instance == null || !NetworkSync.Instance.IsMultiplayer()) return;
+		if (NetworkSync.Instance.IsRelayMode()) return;
 		if (!NetworkSync.Instance.IsServer()) return;
 
 		var campIds = new List<int>();
@@ -476,6 +477,38 @@ public partial class GameManager : Node
 		if (homeCamps.TrueForAll(c => c.GetTeamId() == teamId)) return 3;
 
 		return 2;
+	}
+
+	public void ApplyPlayerLeaveCleanup(int leavingTeamId)
+	{
+		if (leavingTeamId <= 0)
+			return;
+
+		foreach (var node in GetTree().GetNodesInGroup("units"))
+		{
+			if (node is Unit unit && unit.GetTeamId() == leavingTeamId && IsInstanceValid(unit))
+				unit.QueueFree();
+		}
+
+		foreach (var node in GetTree().GetNodesInGroup("ships"))
+		{
+			if (node is Ship ship && ship.GetTeamId() == leavingTeamId && IsInstanceValid(ship))
+				ship.QueueFree();
+		}
+
+		foreach (var camp in _allCamps)
+		{
+			if (camp == null || !IsInstanceValid(camp) || camp.GetTeamId() != leavingTeamId)
+				continue;
+
+			camp.NeutralizeCampAfterPlayerLeave();
+			camp.RespawnNeutralDefenders();
+		}
+
+		_teamGold.Remove(leavingTeamId);
+		_teamGoldVersion.Remove(leavingTeamId);
+		_homeRegions.Remove(leavingTeamId);
+		_tier2Unlocked.Remove(leavingTeamId);
 	}
 
 }
