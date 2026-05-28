@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-SupKonQuest is a strategy and conquest game built with Godot 4.5 and C# (.NET 8.0). It features predefined map presets (Irridium, Alabasta), ENet P2P multiplayer with Nakama relay fallback, a gold-based economy with unit/ship production queues, and a Utility AI system.
+SupKonQuest is a strategy and conquest game built with Godot 4.5 and C# (.NET 8.0). It features predefined map presets (Irridium, Alabasta), online multiplayer via Nakama relay, a gold-based economy with unit/ship production queues, and a Utility AI system.
 
 ## Game Flow
 
@@ -46,7 +46,7 @@ godot --path . --run
 - `Scripts/Selection/` - SelectionManager
 - `Scripts/Camera/` - CameraController
 - `Scripts/Economy/` - GameManager, VictoryManager
-- `Scripts/Network/` - NetworkManager, GameState, NetworkSync, NetworkEntityRegistry, NakamaService, NetworkCommandRouter
+- `Scripts/Network/` - GameState, NetworkSync, NetworkEntityRegistry, NakamaService, NetworkCommandRouter
 - `Scripts/AI/` - AIController (Utility AI, Easy/Medium/Hard, one instance per bot team)
 - `Scripts/UI/` - GameHUD, LobbyUI, Minimap, MainMenu, GameModeMenu, LocalizationManager, AudioSettings, UIStyle
 - `AI-implementation.md` - Notes de conception IA (naval et boss, stagger implémenté ; idées futures : personnalités)
@@ -55,8 +55,7 @@ godot --path . --run
 
 ### Singleton Managers (AutoLoads in project.godot)
 - **GameManager** - Gold economy, tiers, victory hooks (`GameManager.Instance`)
-- **NetworkManager** - ENet multiplayer (hosting, joining, peer comm port 7777; LAN discovery UDP port 7778)
-- **GameState** - Game flow (seed, `ActivePlayerCount`, `IsAIMode`, `IsOnline`, `IsFreeForAll`)
+- **GameState** - Game flow (seed, `ActivePlayerCount`, `IsAIMode`, `IsOnline`, `IsFreeForAll`, `IsOnlineMultiplayer`)
 - **NakamaService** - Auth guest, matchmaking 2–8, lobby in-match, opcodes lobby relay (`4001`/`4002`), gameplay relay
 - **LocalizationManager** - i18n (FR/EN/ES), signal `LanguageChanged`
 - **AudioSettings** - Volume music/SFX with persistence
@@ -114,19 +113,12 @@ Transport is pacifist (never engages enemies). Destroyer textures: `Assets/Units
 
 ### Networking Architecture
 
-**ENet P2P (local/LAN):**
-- Server = Team 1, Client = Team 2 (set via `GameState.LocalTeamId`)
-- LAN discovery: client broadcasts `"SUPKONQUEST_DISCOVER:{CODE}"` UDP:7778, server replies `"SUPKONQUEST_FOUND:{CODE}:{PORT}"`
-- `NetworkEntityRegistry`: global `string networkId → Node`, IDs = `"{peerId}_{counter}"`
-- Deterministic defender IDs: `"camp_{campId}_unit_{index}"`, dynamic units: `"camp_{campId}_dyn_{sequence}"`
-- Authority: server controls neutral camps and Team 1 entities; each peer controls their own team
-- Reliable RPCs: spawn, death, damage, camp capture, transport board/unload, camp assignments
-- Unreliable RPCs: 20Hz batched position/health/state sync (`SyncInterval = 0.05s`)
-- Gold sync: `RpcSyncGold` every 10s (server→clients), tolerance 5 gold before applying correction
-
-**Nakama relay (online matchmaking):**
+**Nakama relay (online multiplayer):**
 - `NakamaService` autoload handles auth (persistent device ID at `user://nakama_device_id.txt`), matchmaking, socket
-- `IsRelayMode()` = `GameState.IsOnline && NakamaService.IsSocketConnected`
+- `GameState.IsOnlineMultiplayer` = `IsOnline && NakamaService.IsSocketConnected`
+- `NetworkSync.IsMultiplayer()` aliases the same check; provides local combat/transport helpers for online play
+- `NetworkEntityRegistry`: global `string networkId → Node`
+- Deterministic defender IDs: `"camp_{campId}_unit_{index}"`, dynamic units: `"camp_{campId}_dyn_{sequence}"`
 - `NetworkCommandRouter` serializes commands as JSON with opcodes: BuyUnit=1001, MoveUnits=2001, AttackCamp=2002, CampCaptured=2003, GoldSnapshot=3001
 - In relay mode, SelectionManager/GameHUD call `NetworkCommandRouter.Request*()` instead of direct camp calls
 - Gold snapshot sent every 1s in relay mode for reconciliation

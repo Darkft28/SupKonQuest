@@ -112,22 +112,14 @@ public partial class CampSimple : Area2D
 		var gameState = GetNodeOrNull<GameState>("/root/GameState");
 		int localTeamId = gameState?.LocalTeamId ?? 1;
 
-		// Relay : les camps neutres ne sont pas simulés localement sur tous les peers
-		// (évite double capture / désync) — la capture arrive via opcode CampCaptured.
-		if (IsRelayModeActive() && (IsNeutralCamp || TeamId == 0))
+		// Online: neutral camps are not simulated on every peer (capture via CampCaptured opcode).
+		if (IsOnlineMultiplayer() && (IsNeutralCamp || TeamId == 0))
 			return false;
-
-		// Camps neutres ENet : le serveur (team 1) a l'autorite
-		if (IsNeutralCamp || TeamId == 0)
-			return localTeamId == 1;
 
 		return TeamId == localTeamId;
 	}
 
-	private bool IsRelayModeActive()
-	{
-		return NetworkSync.Instance?.IsRelayMode() == true;
-	}
+	private static bool IsOnlineMultiplayer() => GameState.IsOnlineMultiplayer;
 
 	// Reseau : mettre a jour l'autorite des defenseurs apres assignation
 	public void UpdateDefendersAuthority()
@@ -170,7 +162,7 @@ public partial class CampSimple : Area2D
 
 		// En mode relay, une capture peut n'être confirmée que par message distant.
 		// On ajoute donc les bonus units ici pour converger avec le peer qui a capturé localement.
-		if (IsRelayModeActive())
+		if (IsOnlineMultiplayer())
 			SpawnBonusUnits();
 
 		GD.Print($"[NET] Camp #{CampId} capture a distance: Team {oldTeamId} -> {newTeamId}");

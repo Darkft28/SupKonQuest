@@ -4,7 +4,7 @@ public partial class CampSimple
 {
 	private void ProcessProductionQueue(double delta)
 	{
-		if (!IsRelayModeActive() && !IsLocallyOwned()) return;
+		if (IsOnlineMultiplayer() && !IsLocallyOwned()) return;
 
 		if (_currentProduction == null && _productionQueue.Count > 0)
 		{
@@ -55,20 +55,22 @@ public partial class CampSimple
 
 	public bool ApplyRelayBuyUnit(string unitType)
 	{
-		int totalInQueue = _productionQueue.Count + (_currentProduction != null ? 1 : 0);
-		if (totalInQueue >= MaxQueueSize)
-			return false;
+		// Remote peers do not simulate the queue; the owner sends SpawnUnit when production ends.
+		return !IsNeutralCamp;
+	}
 
-		_productionQueue.Enqueue(unitType);
-		return true;
+	public void RegisterRelaySpawnedUnit(Unit unit)
+	{
+		if (unit == null || !IsInstanceValid(unit))
+			return;
+
+		_spawnedUnits.Add(unit);
 	}
 
 	// IDs des biomes/objets à éviter au spawn (forêt, neige, eau, arbres, montagnes)
 	private const int IdSolForet = 3;
 	private const int IdSolNeige = 4;
 	private const int IdSolEau = 6;
-	private const int IdObjetArbreSpawn = 100;
-	private const int IdObjetMontagneSpawn = 101;
 	private const float SpawnRadius = 525f;
 	public const float DefenderRelevanceRadius = 1200f;
 
@@ -78,11 +80,6 @@ public partial class CampSimple
 		Vector2I tc = _tileMapSol.LocalToMap(_tileMapSol.ToLocal(worldPos));
 		int solId = _tileMapSol.GetCellSourceId(tc);
 		if (solId == IdSolForet || solId == IdSolNeige || solId == IdSolEau) return true;
-		if (_tileMapObjets != null)
-		{
-			int objId = _tileMapObjets.GetCellSourceId(tc);
-			if (objId == IdObjetArbreSpawn || objId == IdObjetMontagneSpawn) return true;
-		}
 		return false;
 	}
 
@@ -136,10 +133,10 @@ public partial class CampSimple
 		GetParent().AddChild(unit);
 		_spawnedUnits.Add(unit);
 
-		if (!IsRelayModeActive())
+		if (IsOnlineMultiplayer())
 		{
-			NetworkSync.Instance?.SendSpawnUnit(networkId, unitType, TeamId,
-				unit.GlobalPosition.X, unit.GlobalPosition.Y, unit.GetCurrentHealth(), false);
+			NetworkCommandRouter.SendSpawnUnit(networkId, unitType, TeamId, CampId,
+				unit.GlobalPosition.X, unit.GlobalPosition.Y, unit.GetCurrentHealth());
 		}
 	}
 
@@ -160,7 +157,7 @@ public partial class CampSimple
 		var unitScene = GD.Load<PackedScene>("res://Scenes/Unit.tscn");
 		if (unitScene == null)
 		{
-			GD.PrintErr("Impossible de charger Unit.tscn");
+			GD.PrintErr("Failed to load Unit.tscn");
 			return;
 		}
 
@@ -313,13 +310,13 @@ public partial class CampSimple
 
 	public void RefundProductionQueue(int refundTeamId)
 	{
-		// Pas de remboursement pour les camps neutres (or local, pas de GameManager)
+		// No refund for neutral camps (local gold, no GameManager)
 		if (refundTeamId <= 0) return;
 		if (GameManager.Instance == null) return;
 
 		int totalRefund = 0;
 
-		// Rembourser l'unité en cours de production
+		// Refund currently produced unit
 		if (_currentProduction != null)
 		{
 			int price = UnitStats.GetStats(_currentProduction).Price;
@@ -328,7 +325,7 @@ public partial class CampSimple
 			_productionTimer = 0f;
 		}
 
-		// Rembourser toutes les unités dans la file
+		// Refund all queued units
 		while (_productionQueue.Count > 0)
 		{
 			string unitType = _productionQueue.Dequeue();

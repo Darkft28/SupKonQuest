@@ -121,7 +121,7 @@ public partial class Projectile : Node2D
 		{
 			// Réseau : si la cible est un puppet, envoyer via RPC
 			bool isMulti = NetworkSync.Instance?.IsMultiplayer() == true;
-			if (isMulti && !_targetUnit.IsLocalAuthority && !string.IsNullOrEmpty(_targetUnit.NetworkId))
+			if (isMulti && !string.IsNullOrEmpty(_targetUnit.NetworkId))
 			{
 				NetworkSync.Instance?.SendUnitDamage(_targetUnit.NetworkId, _damage, _attackerTeamId);
 			}
@@ -154,7 +154,7 @@ public partial class Projectile : Node2D
 			if (dist > SplashRadius) continue;
 
 			bool isMultiSplash = NetworkSync.Instance?.IsMultiplayer() == true;
-			if (isMultiSplash && !unit.IsLocalAuthority && !string.IsNullOrEmpty(unit.NetworkId))
+			if (isMultiSplash && !string.IsNullOrEmpty(unit.NetworkId))
 				NetworkSync.Instance?.SendUnitDamage(unit.NetworkId, SplashDamage, _attackerTeamId);
 			else
 				unit.TakeDamageFrom(SplashDamage, _attackerTeamId);

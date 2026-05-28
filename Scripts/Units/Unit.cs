@@ -293,21 +293,6 @@ public partial class Unit : CharacterBody2D
 
 	public override void _PhysicsProcess(double delta)
 	{
-		// Puppet réseau : interpoler vers la position distante, pas d'IA locale
-		bool isMulti = NetworkSync.Instance?.IsMultiplayer() == true;
-		bool isRelay = NetworkSync.Instance?.IsRelayMode() == true;
-		if (isMulti && !isRelay && !IsLocalAuthority)
-		{
-			if (_networkTargetPosition.HasValue)
-			{
-				Vector2 moveDir = _networkTargetPosition.Value - GlobalPosition;
-				if (moveDir.Length() > 2f)
-					UpdateSpriteDirection(moveDir);
-				GlobalPosition = GlobalPosition.Lerp(_networkTargetPosition.Value, 10f * (float)delta);
-			}
-			return;
-		}
-
 		switch (_currentState)
 		{
 			case UnitState.Idle:

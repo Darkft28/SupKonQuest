@@ -14,7 +14,7 @@ Le principe : chaque camp genere de l'or passivement, cet or permet d'acheter de
 
 **C# (.NET 8.0)** : typage statique, structures de donnees .NET (`Dictionary`, `Queue`, `List`). Aucune dependance NuGet externe.
 
-**ENet** : protocole reseau UDP fiable integre dans Godot pour l'ancien mode local/legacy (retransmission des paquets perdus, ordonnancement). Port 7777 pour le jeu, 7778 pour la decouverte LAN via UDP broadcast.
+**Nakama** : backend multijoueur (auth guest, matchmaking, relay de commandes gameplay via WebSocket).
 
 ## Prerequis
 
@@ -90,7 +90,7 @@ SupKonQuest/
 │   ├── Selection/              # SelectionManager
 │   ├── Camera/                 # CameraController
 │   ├── Economy/                # GameManager, VictoryManager
-│   ├── Network/                # NetworkManager, GameState, NetworkSync, NetworkEntityRegistry
+│   ├── Network/                # GameState, NetworkSync, NetworkEntityRegistry, NakamaService
 │   ├── AI/                     # AIController (Easy/Medium/Hard)
 │   └── UI/                     # GameHUD, LobbyUI, Minimap, MainMenu, GameModeMenu, LocalizationManager
 └── project.godot               # Config Godot (autoloads, inputs)
@@ -104,8 +104,7 @@ SupKonQuest/
 Root
 ├── Singletons (AutoLoads)
 │   ├── GameManager             # Economie or + bonus region + victoire
-│   ├── NetworkManager          # ENet legacy P2P (hosting, connexion, decouverte LAN)
-│   ├── GameState               # Flux de jeu (seed, identifiant joueur local, IsAIMode)
+│   ├── GameState               # Flux de jeu (seed, identifiant joueur local, IsAIMode, IsOnline)
 │   ├── NakamaService           # Auth + matchmaking + relay (mode en ligne)
 │   ├── LocalizationManager     # i18n FR/EN/ES
 │   └── AudioSettings           # Volume audio
@@ -115,7 +114,7 @@ Root
     │   ├── Objets (TileMapLayer)
     │   ├── Camera2D (CameraController)
     │   ├── SelectionManager
-    │   ├── NetworkSync          # Hub RPCs (ajoute au runtime en multi)
+    │   ├── NetworkSync          # Helpers sync online (Nakama relay)
     │   └── Units               # Conteneur des camps, unites, navires
     ├── GameHUD
     └── Minimap (SubViewport)
@@ -124,8 +123,7 @@ Root
 ### Singletons (AutoLoad)
 
 - **GameManager** : economie or par joueur/slot, bonus region, conditions de victoire via VictoryManager. Accessible via `GameManager.Instance`.
-- **NetworkManager** : connexion ENet P2P, decouverte UDP (port 7778), code salon 6 caracteres.
-- **GameState** : seed de carte, identifiant local de joueur (slot d'ownership), IsAIMode, AILevel, IsOnline.
+- **GameState** : seed de carte, identifiant local de joueur (slot d'ownership), IsAIMode, AILevel, IsOnline, `IsOnlineMultiplayer`.
 - **NakamaService** : mode en ligne (guest, matchmaking, envoi de commandes relay).
 - **LocalizationManager** : 166 cles traduites en FR/EN/ES, signal `LanguageChanged`.
 - **AudioSettings** : preferences de volume.
@@ -140,7 +138,7 @@ Godot utilise des signaux pour la communication entre noeuds. Exemple :
 EmitSignal(SignalName.PlayerConnected, id);
 ```
 
-`NetworkManager` emet `PlayerConnected`, `LobbyUI` s'abonne pour mettre a jour la liste sans dependance directe.
+`NakamaService` emet les signaux de lobby/match ; `LobbyUI` s'abonne pour mettre a jour la liste des joueurs.
 
 ## Generation de la carte
 
@@ -402,14 +400,9 @@ Regles serveur attendues :
 
 Constantes client : `NetworkCommandRouter.OpcodeLobbyTick` / `OpcodeMatchStart`.
 
-### Architecture legacy ENet (non utilise par l'UI actuelle)
-
-- Code conserve dans `NetworkManager` (port 7777, decouverte LAN 7778, max 8 peers).
-- L'UI lobby actuelle passe par `NakamaService` + `LobbyUI` uniquement.
-
 ### Gameplay relay (opcodes 1001-6001)
 
-- `NetworkCommandRouter` : achats, deplacements, attaques, captures, or, ultimates et cleanup de deconnexion.
+- `NetworkCommandRouter` : achats, spawns (`1003`/`1005`), deplacements (`2001`/`2004`), transport (`2006`-`2008`), degats camp (`2005`), captures, combat (`7001`-`7003`), ultimates et cleanup de deconnexion.
 - `NetworkEntityRegistry` : dictionnaire statique `NetworkId → Node`
   - IDs dynamiques : `"{peerId}_{counter}"`
   - IDs deterministes des defenseurs initiaux : `"camp_{campId}_unit_{index}"`
@@ -422,26 +415,10 @@ Constantes client : `NetworkCommandRouter.OpcodeLobbyTick` / `OpcodeMatchStart`.
   - serveur broadcast **une seule fois** `5002 PlayerLeaveCleanup`,
   - client applique cleanup gameplay (suppression unites/navires, camps neutralises, respawn defenseurs neutres).
 
-### RPCs Godot (ENet legacy)
-
-
-| RPC                                   | Mode      | Fiabilite  | Usage                                                  |
-| ------------------------------------- | --------- | ---------- | ------------------------------------------------------ |
-| RpcReceiveSeedAndStart                | Authority | Reliable   | Serveur → Clients : seed + debut                       |
-| RpcSyncCampAssignments                | Authority | Reliable   | Attribution camps/joueurs                              |
-| RpcSpawnUnit / RpcSpawnShip           | AnyPeer   | Reliable   | Creation entite distante                               |
-| RpcEntityDied                         | AnyPeer   | Reliable   | Destruction puppet                                     |
-| RpcApplyUnitDamage / Camp / Ship      | AnyPeer   | Reliable   | Degats (appliques uniquement par le peer proprietaire) |
-| RpcCampCaptured                       | AnyPeer   | Reliable   | Synchronisation capture                                |
-| RpcUnitBoarded / RpcTransportUnloaded | AnyPeer   | Reliable   | Transport naval                                        |
-| RpcSyncEntityStates                   | AnyPeer   | Unreliable | 20Hz : positions/sante/etats                           |
-
-
 ### Determinisme
 
 - Meme seed → meme terrain, memes positions de camps, meme distribution initiale
-- L'economie de chaque joueur est calculee localement (pas de sync or)
-- Limitation Godot : `bool[]` non supportee en RPC Variant → convertie en `int[]`
+- L'economie de chaque joueur est calculee localement (snapshots or via opcode relay)
 
 ## Localisation
 

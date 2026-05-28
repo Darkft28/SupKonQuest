@@ -4,6 +4,8 @@ using System.Collections.Generic;
 
 public partial class GameManager : Node
 {
+	[Signal] public delegate void OnlinePlayerLeftEventHandler(int teamId);
+
 	private static GameManager _instance;
 
 	public static GameManager Instance
@@ -22,7 +24,7 @@ public partial class GameManager : Node
 
 	private float _passiveGoldTimer = 0f;
 
-	// Bonus de vitesse par région contrôlée
+	// Speed bonus per controlled region
 	private Dictionary<int, float> _speedMultipliers = new Dictionary<int, float>();
 	private const float RegionSpeedBonusPerRegion = 0.20f;
 	private readonly Dictionary<string, float> _teamUltimateCooldowns = new();
@@ -38,7 +40,7 @@ public partial class GameManager : Node
 
 	private List<CampSimple> _allCamps = new List<CampSimple>();
 
-	// Équipes ayant acheté le palier 2
+	// Teams that purchased tier 2
 	private HashSet<int> _tier2Unlocked = new HashSet<int>();
 
 	private const int MaxHumanPlayers = 8;
@@ -58,7 +60,7 @@ public partial class GameManager : Node
 
 	private void InitializeCamps()
 	{
-		// Reset de l'or entre les parties (GameManager est un autoload persistant)
+		// Reset gold between matches (GameManager is a persistent autoload)
 		_teamGold.Clear();
 		_teamGoldVersion.Clear();
 		_homeRegions.Clear();
@@ -81,7 +83,7 @@ public partial class GameManager : Node
 		if (_allCamps.Count == 0)
 			return;
 
-		// Shuffle deterministe : meme resultat sur tous les peers grace a la seed partagee
+		// Deterministic shuffle: same result on all peers thanks to shared seed
 		var gameState = GetNodeOrNull<GameState>("/root/GameState");
 		int seed = gameState != null ? gameState.GetEffectiveMapSeed() : (int)GD.Randi();
 
@@ -156,8 +158,6 @@ public partial class GameManager : Node
 
 		foreach (var camp in _allCamps)
 			camp.UpdateDefendersAuthority();
-
-		BroadcastCampAssignments();
 	}
 
 	public List<int> GetBotTeamIds()
@@ -170,26 +170,6 @@ public partial class GameManager : Node
 				botTeams.Add(teamId);
 		}
 		return botTeams;
-	}
-
-	private void BroadcastCampAssignments()
-	{
-		if (NetworkSync.Instance == null || !NetworkSync.Instance.IsMultiplayer()) return;
-		if (NetworkSync.Instance.IsRelayMode()) return;
-		if (!NetworkSync.Instance.IsServer()) return;
-
-		var campIds = new List<int>();
-		var teamIds = new List<int>();
-		var isNeutral = new List<bool>();
-
-		foreach (var camp in _allCamps)
-		{
-			campIds.Add(camp.GetCampId());
-			teamIds.Add(camp.GetTeamId());
-			isNeutral.Add(camp.IsNeutralCamp);
-		}
-
-		NetworkSync.Instance.SendSyncCampAssignments(campIds.ToArray(), teamIds.ToArray(), isNeutral.ToArray());
 	}
 
 	private void ShuffleList(List<CampSimple> list, int seed)
@@ -205,18 +185,7 @@ public partial class GameManager : Node
 		}
 	}
 
-	private bool IsMultiplayerActive()
-	{
-		return NetworkSync.Instance != null
-			&& GodotObject.IsInstanceValid(NetworkSync.Instance)
-			&& NetworkSync.Instance.IsMultiplayer();
-	}
-
-	private bool IsNakamaRelayMode()
-	{
-		var gameState = GetNodeOrNull<GameState>("/root/GameState");
-		return gameState?.IsOnline == true && NakamaService.Instance?.IsSocketConnected == true;
-	}
+	private static bool IsMultiplayerActive() => GameState.IsOnlineMultiplayer;
 
 	private int GetLocalTeamId()
 	{
@@ -249,7 +218,7 @@ public partial class GameManager : Node
 
 			if (IsMultiplayerActive())
 			{
-				// Multi : chaque peer gere uniquement l'or de sa propre equipe (pas de sync or)
+				// Multiplayer: each peer manages only its own team gold (no gold sync)
 				var gameState = GetNodeOrNull<GameState>("/root/GameState");
 				int localTeamId = gameState?.LocalTeamId ?? 1;
 
@@ -260,11 +229,11 @@ public partial class GameManager : Node
 			}
 			else
 			{
-				// Solo / IA : toutes les equipes recoivent l'or passif
+				// Solo / AI: all teams receive passive gold
 				foreach (var teamId in new List<int>(_teamGold.Keys))
 					_teamGold[teamId] += PassiveGoldPerSecond;
 
-				CheckRegionBonuses(-1); // -1 = toutes les equipes
+				CheckRegionBonuses(-1); // -1 = all teams
 			}
 
 			UpdateSpeedMultipliers();
@@ -414,7 +383,7 @@ public partial class GameManager : Node
 			if (camps.Count < 2) continue;
 
 			int firstTeam = camps[0].GetTeamId();
-			if (firstTeam <= 0) continue; // neutre
+			if (firstTeam <= 0) continue; // neutral
 
 			bool allSameTeam = true;
 			foreach (var camp in camps)
@@ -439,9 +408,9 @@ public partial class GameManager : Node
 		return _allCamps;
 	}
 
-	// ── Limite globale d'unités par équipe ───────────────────────────────────
-	// 10 unités par camp contrôlé. Toutes les unités de l'équipe comptent,
-	// peu importe quel camp les a produites.
+	// -- Global per-team unit limit -----------------------------------------------
+	// 10 units per controlled camp. All team units count,
+	// regardless of which camp produced them.
 	public const int MaxUnitsPerCamp = 10;
 
 	public int GetTeamUnitCount(int teamId)
@@ -520,7 +489,7 @@ public partial class GameManager : Node
 	{
 		_speedMultipliers.Clear();
 
-		// Détection dynamique des RegionIds présents (variable selon la map : 3 pour Irridium, 4 pour Alabasta)
+		// Dynamic detection of present RegionIds (map-dependent: 3 for Irridium, 4 for Alabasta)
 		var regionCamps = new Dictionary<int, List<CampSimple>>();
 		foreach (var camp in _allCamps)
 		{
@@ -537,7 +506,7 @@ public partial class GameManager : Node
 			if (camps.Count == 0) continue;
 
 			int firstTeam = camps[0].TeamId;
-			if (firstTeam <= 0) continue; // région neutre
+			if (firstTeam <= 0) continue; // neutral region
 
 			bool allSameTeam = true;
 			foreach (var camp in camps)
@@ -559,7 +528,7 @@ public partial class GameManager : Node
 		}
 	}
 
-	// ── Système de tiers de déverrouillage ───────────────────────────────────
+	// -- Tier unlock system --------------------------------------------------------
 
 	public static int GetUnitTier(string unitType) => unitType switch
 	{
@@ -584,26 +553,26 @@ public partial class GameManager : Node
 	public const int Tier2Cost = 1500;
 
 	/// <summary>
-	/// Tente d'acheter le palier 2 pour une équipe (coûte Tier2Cost or).
-	/// Retourne true si l'achat a réussi.
+	/// Attempts to purchase tier 2 for a team (costs Tier2Cost gold).
+	/// Returns true if purchase succeeds.
 	/// </summary>
 	public bool UnlockTier2(int teamId)
 	{
-		if (_tier2Unlocked.Contains(teamId)) return false; // déjà acheté
+		if (_tier2Unlocked.Contains(teamId)) return false; // already purchased
 		if (!CanAfford(teamId, Tier2Cost)) return false;
 
 		SpendGold(teamId, Tier2Cost);
 		_tier2Unlocked.Add(teamId);
-		GD.Print($"[TIER] Équipe {teamId} a débloqué le palier 2 !");
+		GD.Print($"[TIER] Team {teamId} unlocked tier 2!");
 		return true;
 	}
 
 	public int GetUnlockedTier(int teamId)
 	{
-		// Tier 2 : achat manuel effectué
+		// Tier 2: manual purchase
 		if (!_tier2Unlocked.Contains(teamId)) return 1;
 
-		// Tier 3 : contrôle tous les camps de sa région d'origine (nombre calculé dynamiquement)
+		// Tier 3: controls all camps in home region (count computed dynamically)
 		if (!_homeRegions.TryGetValue(teamId, out int homeRegion)) return 2;
 
 		var homeCamps = _allCamps.FindAll(c => c.RegionId == homeRegion);
@@ -644,6 +613,9 @@ public partial class GameManager : Node
 		_teamGoldVersion.Remove(leavingTeamId);
 		_homeRegions.Remove(leavingTeamId);
 		_tier2Unlocked.Remove(leavingTeamId);
+
+		if (GameState.IsOnlineMultiplayer)
+			EmitSignal(SignalName.OnlinePlayerLeft, leavingTeamId);
 	}
 
 }

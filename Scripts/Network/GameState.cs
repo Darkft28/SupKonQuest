@@ -3,19 +3,21 @@ using System;
 
 public partial class GameState : Node
 {
+	public static GameState Instance { get; private set; }
+
 	public enum PlayMode { Offline, Online }
 	public enum MapSizePreset { Small, Medium, Large }
 	public enum MapType { Irridium, Alabasta, Torskey }
 
 	public PlayMode CurrentPlayMode { get; private set; } = PlayMode.Offline;
 
-	// Seed de la map pour génération identique sur tous les peers (déterminisme réseau)
+	// Map seed for identical generation across all peers (network determinism)
 	public int MapSeed { get; private set; }
 
-	// Equipe locale : Server=1, Client=2
+	// Local team: Server=1, Client=2
 	public int LocalTeamId { get; set; } = 1;
 
-	// Mode test : temps x3 via Engine.TimeScale
+	// Test mode: time x3 via Engine.TimeScale
 	public bool FastMode { get; set; } = false;
 
 	public MapSizePreset MapSize { get; set; } = MapSizePreset.Medium;
@@ -30,19 +32,27 @@ public partial class GameState : Node
 	public string MatchmakerTicket { get; private set; } = "";
 	public bool IsOnline => CurrentPlayMode == PlayMode.Online;
 
-	/// <summary>Nombre de joueurs humains dans la partie (1 solo, 2-8 en ligne).</summary>
+	public static bool IsOnlineMultiplayer =>
+		Instance?.IsOnline == true && NakamaService.Instance?.IsSocketConnected == true;
+
+	/// <summary>Number of human players in the match (1 solo, 2-8 online).</summary>
 	public int ActivePlayerCount { get; private set; } = 1;
 
 	[Signal] public delegate void GameStartingEventHandler(int seed);
 	[Signal] public delegate void PlayerListUpdatedEventHandler();
 
-	private NetworkManager _networkManager;
 	private NakamaService _nakamaService;
 
 	public override void _Ready()
 	{
-		_networkManager = GetNodeOrNull<NetworkManager>("/root/NetworkManager");
+		Instance = this;
 		_nakamaService = GetNodeOrNull<NakamaService>("/root/NakamaService");
+	}
+
+	public override void _ExitTree()
+	{
+		if (Instance == this)
+			Instance = null;
 	}
 
 	public int GenerateSeed()
@@ -64,7 +74,7 @@ public partial class GameState : Node
 		MapSeed = 0;
 	}
 
-	/// <summary>Mode solo vs IA : ne pas appeler ResetOnlineMatchFlags (reserve au multi).</summary>
+	/// <summary>Solo vs AI mode: do not call ResetOnlineMatchFlags (reserved for multiplayer).</summary>
 	public void StartSoloGame(MapType mapType, bool fastMode, AIController.Difficulty aiLevel)
 	{
 		ClearOnlineSessionFields();
@@ -160,10 +170,6 @@ public partial class GameState : Node
 		PlayerDisplayName = "";
 	}
 
-	/// <summary>
-	/// Appelé par l'hôte pour lancer la partie.
-	/// Envoie la seed à tous les clients puis charge la scène de jeu.
-	/// </summary>
 	public void StartGame()
 	{
 		if (IsOnline && !string.IsNullOrWhiteSpace(MatchId))
@@ -189,21 +195,6 @@ public partial class GameState : Node
 		CallDeferred(nameof(LoadGameScene));
 	}
 
-	/// <summary>
-	/// RPC reçu par les clients avec la seed et l'ordre de démarrer.
-	/// Authority mode : seul le serveur peut appeler ce RPC.
-	/// </summary>
-	[Rpc(MultiplayerApi.RpcMode.Authority, CallLocal = false, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
-	private void RpcReceiveSeedAndStart(int seed, int mapTypeInt)
-	{
-		LocalTeamId = 2;
-		GD.Print($"Seed reçue du serveur: {seed}");
-		SetSeed(seed);
-		SelectedMapType = (MapType)mapTypeInt;
-		EmitSignal(SignalName.GameStarting, seed);
-		LoadGameScene();
-	}
-
 	private void LoadGameScene()
 	{
 		AudioSettings.Instance?.StopMenuMusic();
@@ -218,7 +209,6 @@ public partial class GameState : Node
 	public void ReturnToMainMenu()
 	{
 		_nakamaService?.Disconnect();
-		_networkManager?.Disconnect();
 		ClearOnlineSession();
 		MapSeed = 0;
 		FastMode = false;

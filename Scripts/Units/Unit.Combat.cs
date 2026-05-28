@@ -172,9 +172,8 @@ public partial class Unit
 		if (UnitType == "AntiArmor" && target.GetUnitType() == "Heavy")
 			attackDamage *= 2f;
 
-		// Réseau : si la cible est un puppet, envoyer via RPC
 		bool isMulti = NetworkSync.Instance?.IsMultiplayer() == true;
-		if (isMulti && !target.IsLocalAuthority && !string.IsNullOrEmpty(target.NetworkId))
+		if (isMulti && !string.IsNullOrEmpty(target.NetworkId))
 		{
 			NetworkSync.Instance?.SendUnitDamage(target.NetworkId, attackDamage, TeamId);
 			return;
@@ -222,7 +221,7 @@ public partial class Unit
 			OwnerCamp.OnDefenderDied(_lastAttackerTeamId, mutualKill);
 		}
 
-		if (IsLocalAuthority && !string.IsNullOrEmpty(NetworkId))
+		if (NetworkSync.Instance?.IsMultiplayer() == true && !string.IsNullOrEmpty(NetworkId))
 			NetworkSync.Instance?.SendEntityDied(NetworkId);
 
 		QueueFree();

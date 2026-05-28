@@ -176,18 +176,6 @@ public partial class Ship : CharacterBody2D
 
 	public override void _PhysicsProcess(double delta)
 	{
-		// Puppet : interpoler vers la position reseau, pas d'IA (multi seulement)
-		bool isMulti = NetworkSync.Instance?.IsMultiplayer() == true;
-		bool isRelay = NetworkSync.Instance?.IsRelayMode() == true;
-		if (isMulti && !isRelay && !IsLocalAuthority)
-		{
-			if (_networkTargetPosition.HasValue)
-			{
-				GlobalPosition = GlobalPosition.Lerp(_networkTargetPosition.Value, 10f * (float)delta);
-			}
-			return;
-		}
-
 		switch (_currentState)
 		{
 			case ShipState.Idle:

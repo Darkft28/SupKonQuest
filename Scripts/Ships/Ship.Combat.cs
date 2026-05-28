@@ -76,10 +76,8 @@ public partial class Ship
 		if (_loadedUnits.Count > 0)
 			_loadedUnits.Clear();
 
-		if (IsLocalAuthority && !string.IsNullOrEmpty(NetworkId))
-		{
+		if (NetworkSync.Instance?.IsMultiplayer() == true && !string.IsNullOrEmpty(NetworkId))
 			NetworkSync.Instance?.SendEntityDied(NetworkId);
-		}
 
 		QueueFree();
 	}

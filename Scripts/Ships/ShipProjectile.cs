@@ -138,7 +138,7 @@ public partial class ShipProjectile : Node2D
 	private void ApplyShipDamage(Ship ship, float damage)
 	{
 		bool isMulti = NetworkSync.Instance?.IsMultiplayer() == true;
-		if (isMulti && !ship.IsLocalAuthority && !string.IsNullOrEmpty(ship.NetworkId))
+		if (isMulti && !string.IsNullOrEmpty(ship.NetworkId))
 			NetworkSync.Instance?.SendShipDamage(ship.NetworkId, damage, _attackerTeamId);
 		else
 			ship.TakeDamageFrom(damage, _attackerTeamId);

@@ -65,13 +65,13 @@ public partial class GameHUD : Control
 		BindSceneHudControls();
 		CreateAbilityButtons();
 
-		var networkManager = GetNodeOrNull<NetworkManager>("/root/NetworkManager");
-		if (networkManager != null)
-		{
-			networkManager.PlayerDisconnected += OnPlayerDisconnected;
-			networkManager.ServerDisconnected += OnServerDisconnectedHUD;
-		}
+		var nakama = GetNodeOrNull<NakamaService>("/root/NakamaService");
+		if (nakama != null)
+			nakama.Disconnected += OnNakamaDisconnected;
 
+		var gameManager = GetNodeOrNull<GameManager>("/root/GameManager");
+		if (gameManager != null)
+			gameManager.OnlinePlayerLeft += OnOnlinePlayerLeft;
 	}
 
 	private void BindSceneHudControls()
@@ -253,14 +253,17 @@ public partial class GameHUD : Control
 			TerritoryManager.Instance?.StartPortPlacement(camp);
 	}
 
-	private void OnPlayerDisconnected(long id)
-	{
-		ShowDisconnectMessage("Adversaire déconnecté\nRetour au menu dans 5s...");
-	}
-
-	private void OnServerDisconnectedHUD()
+	private void OnNakamaDisconnected()
 	{
 		ShowDisconnectMessage("Connexion au serveur perdue\nRetour au menu dans 5s...");
+	}
+
+	private void OnOnlinePlayerLeft(int teamId)
+	{
+		if (teamId == GetLocalTeamId())
+			return;
+
+		ShowDisconnectMessage("Adversaire déconnecté\nRetour au menu dans 5s...");
 	}
 
 	private void ShowDisconnectMessage(string message)
@@ -268,16 +271,23 @@ public partial class GameHUD : Control
 		if (_disconnectPanel == null || _disconnectLabel == null) return;
 		_disconnectLabel.Text = message;
 		_disconnectPanel.Visible = true;
+
+		GetTree().CreateTimer(5.0).Timeout += () =>
+		{
+			if (IsInstanceValid(this))
+				GetTree().ChangeSceneToFile("res://Scenes/MainMenu.tscn");
+		};
 	}
 
 	public override void _ExitTree()
 	{
-		var networkManager = GetNodeOrNull<NetworkManager>("/root/NetworkManager");
-		if (networkManager != null)
-		{
-			networkManager.PlayerDisconnected -= OnPlayerDisconnected;
-			networkManager.ServerDisconnected -= OnServerDisconnectedHUD;
-		}
+		var nakama = GetNodeOrNull<NakamaService>("/root/NakamaService");
+		if (nakama != null)
+			nakama.Disconnected -= OnNakamaDisconnected;
+
+		var gameManager = GetNodeOrNull<GameManager>("/root/GameManager");
+		if (gameManager != null)
+			gameManager.OnlinePlayerLeft -= OnOnlinePlayerLeft;
 	}
 
 
@@ -392,11 +402,7 @@ public partial class GameHUD : Control
 		return gameState?.LocalTeamId ?? 1;
 	}
 
-	private bool ShouldUseRelayCommands()
-	{
-		var gameState = GetNodeOrNull<GameState>("/root/GameState");
-		return gameState?.IsOnline == true && NakamaService.Instance?.IsSocketConnected == true;
-	}
+	private static bool ShouldUseRelayCommands() => GameState.IsOnlineMultiplayer;
 
 	private void OnUnitButtonPressed(string unitType)
 	{

@@ -302,7 +302,10 @@ public partial class SelectionManager : Node2D
 						int unitTeam = _selectedUnits[0].GetTeamId();
 						if (ship.GetTeamId() == unitTeam)
 						{
-							SendUnitsToTransport(ship);
+							if (relayMode)
+								NetworkCommandRouter.RequestUnitsMoveToTransport(ship, _selectedUnits);
+							else
+								SendUnitsToTransport(ship);
 							return;
 						}
 					}
@@ -378,14 +381,29 @@ public partial class SelectionManager : Node2D
 
 				if (!isWater)
 				{
+					if (relayMode)
+					{
+						var transportsToUnload = new List<Ship>();
+						foreach (var ship in _selectedShips)
+						{
+							if (IsInstanceValid(ship) && ship.GetShipType() == "Transport" && ship.GetLoadedUnitCount() > 0
+								&& ship.IsValidUnloadPosition(target))
+							{
+								transportsToUnload.Add(ship);
+							}
+						}
+
+						if (transportsToUnload.Count > 0)
+							NetworkCommandRouter.RequestMoveShipsUnload(transportsToUnload, target);
+						return;
+					}
+
 					foreach (var ship in _selectedShips)
 					{
 						if (IsInstanceValid(ship) && ship.GetShipType() == "Transport" && ship.GetLoadedUnitCount() > 0)
 						{
 							if (ship.IsValidUnloadPosition(target))
-							{
 								ship.MoveToUnload(target);
-							}
 						}
 					}
 					return;
@@ -484,11 +502,7 @@ public partial class SelectionManager : Node2D
 		}
 	}
 
-	private bool ShouldUseRelayCommands()
-	{
-		var gameState = GetNodeOrNull<GameState>("/root/GameState");
-		return gameState?.IsOnline == true && NakamaService.Instance?.IsSocketConnected == true;
-	}
+	private static bool ShouldUseRelayCommands() => GameState.IsOnlineMultiplayer;
 
 	public void OnUnitClicked(Unit unit)
 	{

@@ -171,9 +171,9 @@ public partial class Ship
 		return tileId == 6; // IdEau
 	}
 
-	public void MoveTo(Vector2 target)
+	public void MoveTo(Vector2 target, bool trustRelayTarget = false)
 	{
-		if (!IsWaterTile(target))
+		if (!trustRelayTarget && !IsWaterTile(target))
 			return;
 
 		_pendingUnloadPosition = null; // Nouvel ordre annule le debarquement
