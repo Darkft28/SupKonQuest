@@ -174,26 +174,28 @@ public partial class Unit
 			return;
 		}
 
-		float speedMult = GameManager.Instance?.GetSpeedMultiplier(TeamId) ?? 1f;
-		// Plancher 0.5px pour éviter les faux positifs sur les unités lentes (ex: Tank Speed=50 → ~0.83px/frame)
-		float expectedMovement = Mathf.Max((_stats.Speed * speedMult) / 60f * 0.1f, 0.5f);
-		float actualMovement = GlobalPosition.DistanceTo(_lastPosition);
+		// Vérifie la progression vers la cible (pas juste le mouvement total)
+		// Une unité poussée par d'autres bouge mais ne progresse pas → doit quand même s'arrêter
+		Vector2 goal = _currentTarget?.GlobalPosition
+			?? _campTarget?.GlobalPosition
+			?? _targetPosition
+			?? GlobalPosition;
 
-		if (actualMovement < expectedMovement)
+		float distNow = GlobalPosition.DistanceTo(goal);
+		float distPrev = _lastPosition.DistanceTo(goal);
+
+		// Si on ne se rapproche pas du goal depuis 2 secondes → abandon
+		if (distNow >= distPrev - 0.5f)
 		{
 			_stuckFrames++;
 			if (_stuckFrames > MaxStuckFrames)
 			{
-				// Bloqué près de la cible (collision physique) → passer en Attacking (marge 120px)
-				if (_currentTarget != null && IsTargetValid())
+				// Bloqué près de la cible → tenter d'attaquer si applicable
+				if (_currentTarget != null && IsTargetValid() && distNow <= _stats.Range + 80f)
 				{
-					float distanceToTarget = GlobalPosition.DistanceTo(_currentTarget.GlobalPosition);
-					if (distanceToTarget <= 120f)
-					{
-						ChangeState(UnitState.Attacking);
-						_stuckFrames = 0;
-						return;
-					}
+					ChangeState(UnitState.Attacking);
+					_stuckFrames = 0;
+					return;
 				}
 
 				if (_currentState == UnitState.AttackingCamp)
@@ -206,6 +208,7 @@ public partial class Unit
 
 				_targetPosition = null;
 				ChangeState(UnitState.Idle);
+				_stuckFrames = 0;
 			}
 		}
 		else
@@ -272,8 +275,8 @@ public partial class Unit
 	{
 		if (_navAgent == null || !_navAgent.IsInsideTree())
 		{
-			// Agent pas encore prêt : mouvement direct pour ce frame
 			Vector2 dir = (targetPos - GlobalPosition).Normalized();
+			_intendedDirection = dir;
 			Velocity = dir * _stats.Speed;
 			MoveAndSlide();
 			return;
@@ -284,24 +287,25 @@ public partial class Unit
 			_navAgent.TargetPosition = targetPos;
 			_lastNavTargetPos = targetPos;
 			_navTargetDirty = false;
-			_navPathCooldown = 3; // attendre 3 frames que le chemin soit calculé
+			_navPathCooldown = 3;
 		}
 
 		if (_navPathCooldown > 0)
 		{
 			_navPathCooldown--;
-			return; // chemin pas encore prêt
+			return;
 		}
 
 		if (_navAgent.IsNavigationFinished())
 		{
-			_navPathCooldown = 60; // cible inatteignable : ne pas re-tester pendant ~1s
+			_navPathCooldown = 60;
 			Velocity = Vector2.Zero;
 			return;
 		}
 
 		Vector2 nextPos = _navAgent.GetNextPathPosition();
 		Vector2 direction = (nextPos - GlobalPosition).Normalized();
+		_intendedDirection = direction; // direction voulue, pas affectée par les collisions
 		float speedMult = GameManager.Instance?.GetSpeedMultiplier(TeamId) ?? 1f;
 		Velocity = direction * _stats.Speed * speedMult;
 		MoveAndSlide();

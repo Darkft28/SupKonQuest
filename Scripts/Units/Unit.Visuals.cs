@@ -106,7 +106,7 @@ public partial class Unit
 		collision.Shape = shape;
 
 		CollisionLayer = 1u;
-		CollisionMask = 0u;
+		CollisionMask = 1u;
 	}
 
 	private void CreateDetectionZone()
@@ -130,6 +130,10 @@ public partial class Unit
 		var circleShape = collisionShape.Shape as CircleShape2D ?? new CircleShape2D();
 		circleShape.Radius = DetectionRange;
 		collisionShape.Shape = circleShape;
+
+		// Layer 0 = invisible ; Mask 1 = détecte les unités terrestres (layer 1)
+		_detectionZone.CollisionLayer = 0u;
+		_detectionZone.CollisionMask = 1u;
 
 		_detectionZone.BodyEntered += OnBodyEnteredDetectionZone;
 	}

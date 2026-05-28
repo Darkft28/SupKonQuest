@@ -83,9 +83,9 @@ public partial class GameModeMenu : Control
 		vbox.AddChild(mapHBox);
 
 		var mapGroup = new ButtonGroup();
-		var mapNames = new[] { "Irridium", "Alabasta" };
-		var mapValues = new[] { GameState.MapType.Irridium, GameState.MapType.Alabasta };
-		for (int i = 0; i < 2; i++)
+		var mapNames = new[] { "Irridium", "Alabasta", "Torskey" };
+		var mapValues = new[] { GameState.MapType.Irridium, GameState.MapType.Alabasta, GameState.MapType.Torskey };
+		for (int i = 0; i < 3; i++)
 		{
 			var btn = new Button();
 			btn.Text = mapNames[i];

@@ -23,6 +23,7 @@ NakamaService="*res://Scripts/Network/NakamaService.cs"
 LocalizationManager="*res://Scripts/UI/LocalizationManager.cs"
 GameManager="*res://Scripts/Economy/GameManager.cs"
 AudioSettings="*res://Scripts/UI/AudioSettings.cs"
+KeybindingsManager="*res://Scripts/UI/KeybindingsManager.cs"
 
 [display]
 
