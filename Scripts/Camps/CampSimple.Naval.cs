@@ -26,7 +26,8 @@ public partial class CampSimple
 	private void ProcessShipProductionQueue(double delta)
 	{
 		if (!HasPort) return;
-		if (!IsRelayModeActive() && !IsLocallyOwned()) return;
+		// Relay : seul le propriétaire du camp fait avancer la file (le spawn est relayé via opcode SpawnShip).
+		if (!IsLocallyOwned()) return;
 
 		if (_currentShipProduction == null && _shipProductionQueue.Count > 0)
 		{
@@ -93,15 +94,8 @@ public partial class CampSimple
 
 	public bool ApplyRelayBuyShip(string shipType)
 	{
-		if (!HasPort) return false;
-		if (ShipStats.IsFleetAtCapacity(TeamId, GetTree())) return false;
-
-		int totalInQueue = _shipProductionQueue.Count + (_currentShipProduction != null ? 1 : 0);
-		if (totalInQueue >= MaxShipQueueSize)
-			return false;
-
-		_shipProductionQueue.Enqueue(shipType);
-		return true;
+		// Le peer distant ne simule pas la file : le propriétaire envoie SpawnShip à la fin de production.
+		return HasPort;
 	}
 
 	private void SpawnShip(string shipType)
@@ -147,11 +141,30 @@ public partial class CampSimple
 		GetParent().AddChild(ship);
 		_spawnedShips.Add(ship);
 
-		if (!IsRelayModeActive())
+		if (IsRelayModeActive())
+		{
+			NetworkCommandRouter.SendSpawnShip(networkId, shipType, TeamId,
+				ship.GlobalPosition.X, ship.GlobalPosition.Y, ship.GetCurrentHealth());
+		}
+		else
 		{
 			NetworkSync.Instance?.SendSpawnShip(networkId, shipType, TeamId,
 				ship.GlobalPosition.X, ship.GlobalPosition.Y, ship.GetCurrentHealth());
 		}
+	}
+
+	public void ApplyRemotePortPlacement(float posX, float posY, float rotation, bool flipH)
+	{
+		if (HasPort) return;
+
+		const float PortScale = 0.07f;
+		HasPort = true;
+		_portSprite = CreatePortVisual();
+		_portSprite.Scale = new Vector2(PortScale, PortScale);
+		_portSprite.Rotation = rotation;
+		_portSprite.FlipH = flipH;
+		AddChild(_portSprite);
+		_portSprite.GlobalPosition = new Vector2(posX, posY);
 	}
 
 	private string BuildDynamicShipNetworkId(int spawnSequence)
@@ -407,6 +420,12 @@ public partial class CampSimple
 		_portSprite.FlipH    = flips[bestDir];
 		AddChild(_portSprite);
 		_portSprite.GlobalPosition = spriteCenter;
+
+		if (IsRelayModeActive())
+		{
+			NetworkCommandRouter.SendBuildPort(this, spriteCenter.X, spriteCenter.Y, rotations[bestDir], flips[bestDir]);
+		}
+
 		return true;
 	}
 

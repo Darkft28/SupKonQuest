@@ -70,14 +70,37 @@ public partial class GameManager : Node
 		if (_allCamps.Count == 0)
 			return;
 
-		// Shuffle deterministe : meme resultat sur les 2 peers grace a la seed partagee
+		// Shuffle deterministe : meme resultat sur tous les peers grace a la seed partagee
 		var gameState = GetNodeOrNull<GameState>("/root/GameState");
-		int seed = gameState?.MapSeed ?? (int)GD.Randi();
+		int seed = gameState != null ? gameState.GetEffectiveMapSeed() : (int)GD.Randi();
 
 		List<CampSimple> shuffledCamps = new List<CampSimple>(_allCamps);
 		ShuffleList(shuffledCamps, seed);
 
-		if (gameState?.IsFreeForAll == true)
+		if (gameState?.IsOnline == true)
+		{
+			int playerCount = Math.Max(2, Math.Min(MaxHumanPlayers, gameState.ActivePlayerCount));
+			playerCount = Math.Min(playerCount, shuffledCamps.Count);
+			int campIndex = 0;
+
+			for (int playerId = 1; playerId <= playerCount; playerId++)
+			{
+				if (campIndex >= shuffledCamps.Count)
+					break;
+
+				shuffledCamps[campIndex].SetTeam(playerId, false);
+				_homeRegions[playerId] = shuffledCamps[campIndex].RegionId;
+				InitializeTeam(playerId);
+				campIndex++;
+			}
+
+			while (campIndex < shuffledCamps.Count)
+			{
+				shuffledCamps[campIndex].SetTeam(0, true);
+				campIndex++;
+			}
+		}
+		else if (gameState?.IsFreeForAll == true)
 		{
 			shuffledCamps[0].SetTeam(1, false);
 			_homeRegions[1] = shuffledCamps[0].RegionId;
@@ -93,10 +116,7 @@ public partial class GameManager : Node
 		}
 		else
 		{
-			int playerCount = gameState?.IsOnline == true
-				? Math.Max(2, Math.Min(MaxHumanPlayers, gameState.ActivePlayerCount))
-				: 2;
-
+			int playerCount = 2;
 			playerCount = Math.Min(playerCount, shuffledCamps.Count);
 			const int campsPerPlayer = 1;
 			int campIndex = 0;

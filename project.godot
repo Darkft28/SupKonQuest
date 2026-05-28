@@ -74,6 +74,6 @@ ui_down={
 [nakama]
 
 scheme="http"
-host="127.0.0.1"
+host="4.165.28.243"
 port=7350
 server_key="defaultkey"

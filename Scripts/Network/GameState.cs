@@ -99,9 +99,37 @@ public partial class GameState : Node
 		ActivePlayerCount = Math.Max(2, Math.Min(8, activePlayerCount));
 		ResetOnlineMatchFlags();
 		MatchId = matchId;
-		MapSeed = seed;
+		MapSeed = NormalizeMapSeed(seed, matchId);
 		NakamaUserId = nakamaUserId;
 		PlayerDisplayName = displayName;
+	}
+
+	public int GetEffectiveMapSeed()
+	{
+		return NormalizeMapSeed(MapSeed, MatchId);
+	}
+
+	public static int DeriveSeedFromMatchId(string matchId)
+	{
+		if (string.IsNullOrWhiteSpace(matchId))
+			return 0;
+
+		unchecked
+		{
+			int hash = 17;
+			foreach (char c in matchId)
+				hash = hash * 31 + c;
+			return hash & int.MaxValue;
+		}
+	}
+
+	private static int NormalizeMapSeed(int seed, string matchId)
+	{
+		if (seed > 0)
+			return seed;
+
+		int derived = DeriveSeedFromMatchId(matchId);
+		return derived > 0 ? derived : (int)GD.Randi();
 	}
 
 	private void ResetOnlineMatchFlags()

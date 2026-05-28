@@ -51,7 +51,7 @@ docker run --name nakama --network nakama-net -p 7350:7350 -p 7349:7349 -d heroi
 Le projet utilise par defaut ces valeurs dans `project.godot`:
 
 - `nakama/scheme = "http"`
-- `nakama/host = "127.0.0.1"`
+- `nakama/host = "4.165.28.243"` (serveur Azure ; pour du local, mettre `127.0.0.1`)
 - `nakama/port = 7350`
 - `nakama/server_key = "defaultkey"`
 
@@ -375,7 +375,14 @@ Un clic droit deplace les unites selectionnees. Clic droit sur un Transport alli
 - **Camps** : 1 camp de depart par joueur humain ; les autres camps preset restent **neutres** (defenseurs 1,5x HP).
 - **Equipes** : `LocalTeamId` = index dans la liste triee des `userId` Nakama + 1 ; `ActivePlayerCount` fige au demarrage.
 - **Lobby in-match** : apres `JoinMatch` (>= 2 joueurs), le client affiche la liste des joueurs et attend le **serveur relay** — pas de demarrage automatique cote client.
-- **Test local multi-instance** : lancer chaque client avec un slot device distinct, ex. `--nakama-slot=1` et `--nakama-slot=2`, pour eviter le meme `userId` Nakama.
+- **Test multi-instance** : un `deviceId` / `userId` Nakama distinct par instance via `--nakama-slot` (fichiers `user://nakama_device_id_1.txt` et `_2.txt`). Syntaxe recommandee Godot 4 :
+
+```powershell
+godot --path . -- --nakama-slot=1
+godot --path . -- --nakama-slot=2
+```
+
+(`--` separe les args moteur des args jeu ; le code lit aussi `OS.GetCmdlineArgs()` si `--nakama-slot=1` est passe sans `--`.)
 
 ### Contrat relay (module serveur externe)
 

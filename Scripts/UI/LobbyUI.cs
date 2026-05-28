@@ -163,6 +163,12 @@ public partial class LobbyUI : Control
 			await _nakamaService.AuthenticateGuestAsync();
 		}
 
+		if (!_nakamaService.IsAuthenticated)
+		{
+			UpdateStatus(GetText("connection_failed"));
+			return;
+		}
+
 		_isMatchmaking = true;
 		SetButtonsEnabled(false);
 		UpdateStatus(GetText("matchmaking_started"));
@@ -202,7 +208,7 @@ public partial class LobbyUI : Control
 		string hint = "";
 		string lower = reason?.ToLowerInvariant() ?? "";
 		if (lower.Contains("connection") || lower.Contains("refused") || lower.Contains("timeout") || lower.Contains("host"))
-			hint = " | Lance Nakama local (Docker) puis reessaie.";
+			hint = " | Verifie nakama/host dans project.godot et que le serveur est joignable.";
 
 		UpdateStatus($"{GetText("connection_failed")} : {reason}{hint}");
 	}

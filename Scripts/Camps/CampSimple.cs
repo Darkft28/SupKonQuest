@@ -112,9 +112,10 @@ public partial class CampSimple : Area2D
 		var gameState = GetNodeOrNull<GameState>("/root/GameState");
 		int localTeamId = gameState?.LocalTeamId ?? 1;
 
-		// Camps neutres en relay : simulation locale deterministe sur tous les peers
+		// Relay : les camps neutres ne sont pas simulés localement sur tous les peers
+		// (évite double capture / désync) — la capture arrive via opcode CampCaptured.
 		if (IsRelayModeActive() && (IsNeutralCamp || TeamId == 0))
-			return true;
+			return false;
 
 		// Camps neutres ENet : le serveur (team 1) a l'autorite
 		if (IsNeutralCamp || TeamId == 0)

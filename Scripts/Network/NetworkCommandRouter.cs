@@ -9,6 +9,8 @@ public static class NetworkCommandRouter
 {
 	public const long OpcodeBuyUnit = 1001;
 	public const long OpcodeBuyShip = 1002;
+	public const long OpcodeSpawnShip = 1003;
+	public const long OpcodeBuildPort = 1004;
 	public const long OpcodeMoveUnits = 2001;
 	public const long OpcodeAttackCamp = 2002;
 	public const long OpcodeCampCaptured = 2003;
@@ -81,6 +83,28 @@ public static class NetworkCommandRouter
 	{
 		public int CampId { get; set; }
 		public int NewTeamId { get; set; }
+	}
+
+	[Serializable]
+	private sealed class SpawnShipCommand : RelayCommandBase
+	{
+		public string NetworkId { get; set; } = "";
+		public string ShipType { get; set; } = "";
+		public int TeamId { get; set; }
+		public float PosX { get; set; }
+		public float PosY { get; set; }
+		public float Health { get; set; }
+	}
+
+	[Serializable]
+	private sealed class BuildPortCommand : RelayCommandBase
+	{
+		public int CampId { get; set; }
+		public int TeamId { get; set; }
+		public float PosX { get; set; }
+		public float PosY { get; set; }
+		public float Rotation { get; set; }
+		public bool FlipH { get; set; }
 	}
 
 	public static void RequestBuyUnit(CampSimple camp, string unitType)
@@ -188,6 +212,42 @@ public static class NetworkCommandRouter
 			Sequence = ++_sequence,
 			CampId = campId,
 			NewTeamId = newTeamId
+		});
+	}
+
+	public static void SendSpawnShip(string networkId, string shipType, int teamId, float posX, float posY, float health)
+	{
+		if (string.IsNullOrWhiteSpace(networkId) || string.IsNullOrWhiteSpace(shipType) || teamId <= 0)
+			return;
+
+		SendRelayAsync(OpcodeSpawnShip, new SpawnShipCommand
+		{
+			SenderUserId = NakamaService.Instance?.UserId ?? "",
+			Sequence = ++_sequence,
+			NetworkId = networkId,
+			ShipType = shipType,
+			TeamId = teamId,
+			PosX = posX,
+			PosY = posY,
+			Health = health
+		});
+	}
+
+	public static void SendBuildPort(CampSimple camp, float posX, float posY, float rotation, bool flipH)
+	{
+		if (camp == null || !GodotObject.IsInstanceValid(camp))
+			return;
+
+		SendRelayAsync(OpcodeBuildPort, new BuildPortCommand
+		{
+			SenderUserId = NakamaService.Instance?.UserId ?? "",
+			Sequence = ++_sequence,
+			CampId = camp.GetCampId(),
+			TeamId = camp.GetTeamId(),
+			PosX = posX,
+			PosY = posY,
+			Rotation = rotation,
+			FlipH = flipH
 		});
 	}
 
@@ -312,6 +372,36 @@ public static class NetworkCommandRouter
 				ApplyCampCaptured(command);
 				break;
 			}
+			case OpcodeSpawnShip:
+			{
+				var command = JsonSerializer.Deserialize<SpawnShipCommand>(payload, RelayJsonReadOptions);
+				if (command == null)
+				{
+					GD.PrintErr("[RELAY] SpawnShip deserialize failed.");
+					return;
+				}
+
+				if (command.SenderUserId == localUserId)
+					return;
+
+				ApplySpawnShip(command);
+				break;
+			}
+			case OpcodeBuildPort:
+			{
+				var command = JsonSerializer.Deserialize<BuildPortCommand>(payload, RelayJsonReadOptions);
+				if (command == null)
+				{
+					GD.PrintErr("[RELAY] BuildPort deserialize failed.");
+					return;
+				}
+
+				if (command.SenderUserId == localUserId)
+					return;
+
+				ApplyBuildPort(command);
+				break;
+			}
 			default:
 				GD.Print($"[RELAY] Unsupported opcode={opcode}");
 				break;
@@ -414,6 +504,65 @@ public static class NetworkCommandRouter
 			if (node is CampSimple camp && camp.GetCampId() == command.CampId)
 			{
 				camp.ApplyRemoteCapture(command.NewTeamId);
+				break;
+			}
+		}
+	}
+
+	private static void ApplySpawnShip(SpawnShipCommand command)
+	{
+		var existing = NetworkEntityRegistry.Get(command.NetworkId);
+		if (existing is Ship existingShip && GodotObject.IsInstanceValid(existingShip))
+		{
+			if (existingShip.ShipType == command.ShipType)
+			{
+				return;
+			}
+
+			existingShip.QueueFree();
+			NetworkEntityRegistry.Unregister(command.NetworkId);
+		}
+
+		var shipScene = GD.Load<PackedScene>("res://Scenes/Ship.tscn");
+		if (shipScene == null)
+			return;
+
+		var ship = shipScene.Instantiate<Ship>();
+		ship.ShipType = command.ShipType;
+		ship.TeamId = command.TeamId;
+		ship.GlobalPosition = new Vector2(command.PosX, command.PosY);
+		ship.NetworkId = command.NetworkId;
+		ship.IsLocalAuthority = false;
+
+		var scene = GetTree()?.CurrentScene;
+		if (scene == null)
+			return;
+
+		scene.AddChild(ship);
+		ship.SetTileMapSol(FindTileMapSolForSpawn());
+		ship.SetCurrentHealth(command.Health);
+	}
+
+	private static TileMapLayer FindTileMapSolForSpawn()
+	{
+		var tree = GetTree();
+		if (tree?.CurrentScene == null)
+			return null;
+
+		var mapGenerator = tree.CurrentScene.FindChild("MapGenerator", true, false);
+		return mapGenerator?.GetNodeOrNull<TileMapLayer>("Sol");
+	}
+
+	private static void ApplyBuildPort(BuildPortCommand command)
+	{
+		var camps = GetTree()?.GetNodesInGroup("camps");
+		if (camps == null) return;
+
+		foreach (var node in camps)
+		{
+			if (node is CampSimple camp && camp.GetCampId() == command.CampId)
+			{
+				camp.ApplyRemotePortPlacement(command.PosX, command.PosY, command.Rotation, command.FlipH);
 				break;
 			}
 		}
