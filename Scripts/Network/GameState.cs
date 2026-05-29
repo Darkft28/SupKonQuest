@@ -38,6 +38,9 @@ public partial class GameState : Node
 	/// <summary>Number of human players in the match (1 solo, 2-8 online).</summary>
 	public int ActivePlayerCount { get; private set; } = 1;
 
+	/// <summary>Message shown once on Auth screen after redirect from Lobby.</summary>
+	public string PendingAuthMessage { get; private set; } = "";
+
 	[Signal] public delegate void GameStartingEventHandler(int seed);
 	[Signal] public delegate void PlayerListUpdatedEventHandler();
 
@@ -151,6 +154,18 @@ public partial class GameState : Node
 	public void SetMatchmakerTicket(string ticket)
 	{
 		MatchmakerTicket = ticket;
+	}
+
+	public void SetPendingAuthMessage(string message)
+	{
+		PendingAuthMessage = message ?? "";
+	}
+
+	public string TakePendingAuthMessage()
+	{
+		string message = PendingAuthMessage;
+		PendingAuthMessage = "";
+		return message;
 	}
 
 	public void ClearOnlineSession()

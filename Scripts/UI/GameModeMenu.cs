@@ -180,7 +180,7 @@ public partial class GameModeMenu : Control
 	{
 		var gameState = GetNodeOrNull<GameState>("/root/GameState");
 		gameState?.ConfigureOnlineLobby();
-		GetTree().ChangeSceneToFile("res://Scenes/Lobby.tscn");
+		GetTree().ChangeSceneToFile("res://Scenes/Auth.tscn");
 	}
 
 	private void OnBackPressed()

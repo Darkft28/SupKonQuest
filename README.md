@@ -14,7 +14,7 @@ Le principe : chaque camp genere de l'or passivement, cet or permet d'acheter de
 
 **C# (.NET 8.0)** : typage statique, structures de donnees .NET (`Dictionary`, `Queue`, `List`). Aucune dependance NuGet externe.
 
-**Nakama** : backend multijoueur (auth guest, matchmaking, relay de commandes gameplay via WebSocket).
+**Nakama** : backend multijoueur (compte email ou invité, session chiffree locale, matchmaking, relay de commandes gameplay via WebSocket).
 
 ## Prerequis
 
@@ -34,7 +34,7 @@ Ensuite ouvrir le projet dans Godot 4.5 et lancer avec F5.
 ## Serveur Nakama local (pour le mode en ligne)
 
 Si vous n'avez pas encore de serveur, le mode solo fonctionne sans Nakama.
-Pour tester le mode en ligne (auth guest + matchmaking 2-8 + lobby in-match), lancez un Nakama local **et** le module relay (projet serveur separe) qui pilote le countdown et le demarrage de partie.
+Pour tester le mode en ligne (auth email / invité + matchmaking 2-8 + lobby in-match), lancez un Nakama local **et** le module relay (`supkonquest-server/`, `npm run build` → `build/index.js`) qui pilote le countdown et le demarrage de partie.
 
 Prerequis minimaux:
 
@@ -76,6 +76,7 @@ SupKonQuest/
 ├── Scenes/
 │   ├── MainMenu.tscn
 │   ├── GameModeMenu.tscn       # Choix mode (Solo / Multi / IA)
+│   ├── Auth.tscn               # Connexion / inscription / invité (Nakama)
 │   ├── Lobby.tscn              # Lobby multijoueur (Nakama matchmaking)
 │   ├── Game.tscn               # Scene principale du jeu
 │   ├── GameHUD.tscn            # Interface HUD (or, boutons d'achat)
@@ -90,9 +91,9 @@ SupKonQuest/
 │   ├── Selection/              # SelectionManager
 │   ├── Camera/                 # CameraController
 │   ├── Economy/                # GameManager, VictoryManager
-│   ├── Network/                # GameState, NetworkSync, NetworkEntityRegistry, NakamaService
+│   ├── Network/                # GameState, NetworkSync, NetworkEntityRegistry, NakamaService, AuthSessionStore
 │   ├── AI/                     # AIController (Easy/Medium/Hard)
-│   └── UI/                     # GameHUD, LobbyUI, Minimap, MainMenu, GameModeMenu, LocalizationManager
+│   └── UI/                     # GameHUD, LobbyUI, AuthUI, Minimap, MainMenu, GameModeMenu, LocalizationManager
 └── project.godot               # Config Godot (autoloads, inputs)
 ```
 
@@ -124,7 +125,8 @@ Root
 
 - **GameManager** : economie or par joueur/slot, bonus region, conditions de victoire via VictoryManager. Accessible via `GameManager.Instance`.
 - **GameState** : seed de carte, identifiant local de joueur (slot d'ownership), IsAIMode, AILevel, IsOnline, `IsOnlineMultiplayer`.
-- **NakamaService** : mode en ligne (guest, matchmaking, envoi de commandes relay).
+- **NakamaService** : mode en ligne (email, invité, restauration de session, matchmaking, relay).
+- **AuthSessionStore** : persistance chiffree des tokens Nakama (`user://nakama_auth_session.dat`).
 - **LocalizationManager** : 166 cles traduites en FR/EN/ES, signal `LanguageChanged`.
 - **AudioSettings** : preferences de volume.
 
@@ -368,6 +370,11 @@ Un clic droit deplace les unites selectionnees. Clic droit sur un Transport alli
 
 ### Mode en ligne (Nakama + relay)
 
+**Parcours multijoueur** : Menu principal → Mode de jeu → **Authentification** (`Auth.tscn`) → Lobby → partie.
+
+- **Compte email** : inscription (email, pseudo, mot de passe ≥ 8) ou connexion ; pseudo = `username` Nakama (fixe en v1) ; session restauree au prochain lancement.
+- **Invité** : bouton dédié ; device ID persistant ; pseudo modifiable dans le lobby.
+- **Déconnexion** : bouton dans le lobby ; efface la session chiffree et renvoie vers Auth.
 - **PvP uniquement** : pas d'IA en multijoueur (`IsAIMode = false` force a l'entree du lobby/match).
 - **Matchmaking** : 2 a 8 joueurs (`AddMatchmakerAsync` min 2 / max 8).
 - **Camps** : 1 camp de depart par joueur humain ; les autres camps preset restent **neutres** (defenseurs 1,5x HP).

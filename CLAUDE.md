@@ -21,7 +21,7 @@ SupKonQuest is a strategy and conquest game built with Godot 4.5 and C# (.NET 8.
 - `Scenes/Ship.tscn` - Prefab navire
 - `Scenes/camp_simple.tscn` - Prefab camp (Area2D, scale 4.5×)
 - `Scenes/GameHUD.tscn` - HUD en surimpression (instancié dans CanvasLayer de Game.tscn)
-- Point d'entrée : `Scenes/MainMenu.tscn` → `Scenes/GameModeMenu.tscn` → `Scenes/Lobby.tscn` → Game
+- Point d'entrée : `Scenes/MainMenu.tscn` → `Scenes/GameModeMenu.tscn` → `Scenes/Auth.tscn` (multi) → `Scenes/Lobby.tscn` → Game
 
 ## Build Commands
 
@@ -46,7 +46,7 @@ godot --path . --run
 - `Scripts/Selection/` - SelectionManager
 - `Scripts/Camera/` - CameraController
 - `Scripts/Economy/` - GameManager, VictoryManager
-- `Scripts/Network/` - GameState, NetworkSync, NetworkEntityRegistry, NakamaService, NetworkCommandRouter
+- `Scripts/Network/` - GameState, NetworkSync, NetworkEntityRegistry, NakamaService, AuthSessionStore, NetworkCommandRouter
 - `Scripts/AI/` - AIController (Utility AI, Easy/Medium/Hard, one instance per bot team)
 - `Scripts/UI/` - GameHUD, LobbyUI, Minimap, MainMenu, GameModeMenu, LocalizationManager, AudioSettings, UIStyle
 - `AI-implementation.md` - Notes de conception IA (naval et boss, stagger implémenté ; idées futures : personnalités)
@@ -56,7 +56,7 @@ godot --path . --run
 ### Singleton Managers (AutoLoads in project.godot)
 - **GameManager** - Gold economy, tiers, victory hooks (`GameManager.Instance`)
 - **GameState** - Game flow (seed, `ActivePlayerCount`, `IsAIMode`, `IsOnline`, `IsFreeForAll`, `IsOnlineMultiplayer`)
-- **NakamaService** - Auth guest, matchmaking 2–8, lobby in-match, opcodes lobby relay (`4001`/`4002`), gameplay relay
+- **NakamaService** - Email register/login, guest auth, encrypted session restore (`AuthSessionStore`), matchmaking 2–8, lobby in-match, opcodes lobby relay (`4001`/`4002`), gameplay relay
 - **LocalizationManager** - i18n (FR/EN/ES), signal `LanguageChanged`
 - **AudioSettings** - Volume music/SFX with persistence
 
@@ -114,7 +114,11 @@ Transport is pacifist (never engages enemies) but can be sunk by enemy Fregate/D
 ### Networking Architecture
 
 **Nakama relay (online multiplayer):**
-- `NakamaService` autoload handles auth (persistent device ID at `user://nakama_device_id.txt`), matchmaking, socket
+- `NakamaService` autoload : `RegisterWithEmailAsync` / `LoginWithEmailAsync` / `AuthenticateGuestAsync` / `TryRestoreSessionAsync` / `LogoutAsync`
+- `AuthSessionStore` : tokens chiffrés dans `user://nakama_auth_session.dat` (`OpenEncryptedWithPass`, clé = `OS.GetUniqueId()` SHA-256 ou GUID persistant `user://device_key.txt`) ; `auth_type` = `email` | `guest` ; **jamais** le mot de passe
+- Invité : device ID séparé `user://nakama_device_id.txt` (ou `_1`/`_2` avec `--nakama-slot`)
+- Refresh : `TryRestoreSessionAsync` appelle `SessionRefreshAsync` ; échec `ApiResponseException` → `Clear()` + clé i18n `auth_session_expired`
+- Matchmaking, socket
 - `GameState.IsOnlineMultiplayer` = `IsOnline && NakamaService.IsSocketConnected`
 - `NetworkSync.IsMultiplayer()` aliases the same check; provides local combat/transport helpers for online play
 - `NetworkEntityRegistry`: global `string networkId → Node`
@@ -145,7 +149,7 @@ Composition targets: Easy=100% Infantry. Medium/Hard use mixed compositions (Inf
 
 Camp scoring: +2500 neutral, +(1-hpRatio)×1800 if damaged, +(5-defenders)×300, +3500 home region, −distance×0.4. Medium/Hard: port/ship production when a full region is controlled; amphibious assaults via Transport (board at port, unload on enemy coast, `AttackCamp`). IA naval buys: max **2 transports** (alive + queued per port); Fregate/Destroyer not capped. Medium: Fregate patrol near port (auto-defense). Hard: escort loaded transports at sea. Land targets filtered via `TerritoryConnectivity.IsReachable`. Easy: infantry spam, nearest camp, no naval.
 
-**Multijoueur en ligne (Nakama)** - Flux : `GameModeMenu` → `LobbyUI` → matchmaking → `JoinMatch` → lobby in-match (`MatchLobbyEntered`) → **`MatchStart` relay uniquement** → `StartOnlineGameFromMatch`. Pas d'IA (`IsAIMode`/`IsFreeForAll` remis à false via `ResetOnlineMatchFlags`). 1 camp/joueur, reste neutre (`GameManager.AssignCampsToPlayers`, `ActivePlayerCount`). Signaux : `MatchLobbyEntered`, `MatchLobbyTick`, `MatchStarting`. Module relay externe : countdown ~20s (+5s/join, start à 8) puis opcode `4002`.
+**Multijoueur en ligne (Nakama)** - Flux : `GameModeMenu` → **`Auth.tscn`** (`AuthUI` : login / register / invité, restauration session) → `LobbyUI` → matchmaking → `JoinMatch` → lobby in-match (`MatchLobbyEntered`) → **`MatchStart` relay uniquement** → `StartOnlineGameFromMatch`. `LobbyUI` ne fait plus d'auth invité auto : si `!IsAuthenticated` → `AuthSessionStore.Clear()` + retour Auth. Pseudo modifiable au lobby **uniquement pour invités** (`UpdateUniqueUsernameAsync`). Logout lobby → Auth. Pas d'IA (`IsAIMode`/`IsFreeForAll` remis à false via `ResetOnlineMatchFlags`). 1 camp/joueur, reste neutre (`GameManager.AssignCampsToPlayers`, `ActivePlayerCount`). Signaux : `MatchLobbyEntered`, `MatchLobbyTick`, `MatchStarting`. Module relay (`supkonquest-server/`) : hooks `beforeAuthenticateEmail` / `afterAuthenticateEmail` + countdown ~20s (+5s/join, start à 8) puis opcode `4002`.
 Gestion déconnexion autoritaire serveur : `5002` (cleanup team) sur leave en partie. Le client applique l'événement serveur.
 Test local : `--nakama-slot=1` / `2`.
 
