@@ -462,6 +462,7 @@ public partial class MapGenerator : Node
 		int halfWidth = _mapWidth / 2, halfHeight = _mapHeight / 2;
 
 		var navPoly = BuildNavPolygon(groupSize, halfWidth, halfHeight, IsCellWalkable, out int polyCount);
+		navPoly.AgentRadius = 40f;
 
 		var navRegion = new NavigationRegion2D();
 		navRegion.Name = "NavRegion";
@@ -480,6 +481,7 @@ public partial class MapGenerator : Node
 		int halfWidth = _mapWidth / 2, halfHeight = _mapHeight / 2;
 
 		var navPoly = BuildNavPolygon(groupSize, halfWidth, halfHeight, IsCellAllWater, out int polyCount);
+		navPoly.AgentRadius = 48f;
 
 		var navRegion = new NavigationRegion2D();
 		navRegion.Name = "NavRegionWater";

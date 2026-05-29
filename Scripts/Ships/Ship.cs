@@ -71,6 +71,13 @@ public partial class Ship : CharacterBody2D
 	public float GetRange() => _stats.Range;
 	public float GetAttack() => _stats.Attack;
 	public bool GetIsMoving() => _targetPosition.HasValue;
+
+	public bool IsEngagedInNavalCombat() =>
+		ShipType != "Transport"
+		&& (_currentState == ShipState.Attacking
+			|| (_currentState == ShipState.MovingToTarget
+				&& _currentTarget != null
+				&& IsInstanceValid(_currentTarget)));
 	public int GetLoadedUnitCount() => _loadedUnits.Count;
 	public int GetCapacity() => _stats.Capacity;
 
@@ -115,8 +122,8 @@ public partial class Ship : CharacterBody2D
 		_navAgent.TargetDesiredDistance = ArrivalDistance;
 		_navAgent.AvoidanceEnabled = ShipType != "Transport";
 		_navAgent.NavigationLayers = 2u;
-		_navAgent.Radius = 42f;
-		_navAgent.MaxNeighbors = 8;
+		_navAgent.MaxSpeed = _stats.Speed;
+		_navAgent.VelocityComputed += OnNavVelocityComputed;
 
 		_currentState = ShipState.Idle;
 

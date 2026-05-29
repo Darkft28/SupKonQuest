@@ -39,9 +39,14 @@ public partial class AIController : Node
 	private static readonly int[]   MinRallyUnits    = { 1,   4,    6   };
 	// Radius used to consider a unit "arrived" at rally point
 	private static readonly float[] RallyArrivalRadius = { 0f, 600f, 500f };
-	// Hard naval offense before full home region control: tick chance + min cooldown between waves
+	// Amphibious waves: tick chance (Hard, before full home) + min cooldown between unload launches
 	private static readonly float[] NavalEarlyAttackChance = { 0f,  0f,   0.20f };
-	private static readonly float[] NavalAttackCooldown    = { 0f,  0f,   30f  };
+	private static readonly float[] NavalAttackCooldown    = { 0f,  20f,  30f  };
+	private static readonly int[]   MinAmphibiousLoad      = { 0,   4,    6    };
+	private static readonly float[] BoardingRadius         = { 0f,  500f, 600f };
+	private static readonly float[] PostUnloadAttackRadius = { 0f,  700f, 900f };
+	private static readonly float[] PortPatrolRadius       = { 0f,  400f, 0f   };
+	private const int MaxAITransports = 2;
 
 	// -- Target army composition (ratio per type) --------------------------------
 	// Easy: infantry spam, no support units
@@ -92,6 +97,10 @@ public partial class AIController : Node
 	private float _reactionTimer;
 	private CampSimple _pendingTarget;
 	private List<Unit> _pendingAttackers;
+
+	private CampSimple _amphibiousTarget;
+	private Vector2? _amphibiousUnloadLandPos;
+	private Ship _amphibiousTransport;
 
 	private readonly Random _rng = new Random();
 
@@ -153,6 +162,10 @@ public partial class AIController : Node
 
 		ManageProduction(tier, gold);
 		ManageCombat(tier, gold);
+
+		// After rally/defense orders so boarding is not overwritten in the same tick
+		if (_diffIdx > 0)
+			ManageAmphibiousWarfare(tier);
 	}
 
 	// -- Economy and production ----------------------------------------------------
@@ -278,26 +291,32 @@ public partial class AIController : Node
 
 	private string PickShipToBuy(int tier, int gold)
 	{
+		if (GameManager.GetShipTier("Transport") > tier)
+			return null;
+
+		int transportPrice = ShipStats.GetStats("Transport").Price;
+		if (GetAITotalTransportCount() < MaxAITransports && gold >= transportPrice)
+			return "Transport";
+
 		if (_diffIdx == 1)
 		{
-			if (tier >= 3 && gold >= ShipStats.GetStats("Destroyer").Price
-				&& GameManager.GetShipTier("Destroyer") <= tier)
-				return "Destroyer";
-			if (GameManager.GetShipTier("Fregate") <= tier)
+			if (CountAIShipsOfType("Fregate") == 0
+				&& gold >= ShipStats.GetStats("Fregate").Price
+				&& GameManager.GetShipTier("Fregate") <= tier)
 				return "Fregate";
 			return null;
 		}
 
 		if (_diffIdx >= 2)
 		{
-			if (_rng.NextDouble() < 0.15 && GameManager.GetShipTier("Transport") <= tier)
-				return "Transport";
-
 			if (tier >= 3 && gold >= ShipStats.GetStats("Destroyer").Price
-				&& _rng.NextDouble() < 0.4f)
+				&& GameManager.GetShipTier("Destroyer") <= tier
+				&& _rng.NextDouble() < 0.15f)
 				return "Destroyer";
 
-			if (GameManager.GetShipTier("Fregate") <= tier)
+			if (gold >= ShipStats.GetStats("Fregate").Price
+				&& GameManager.GetShipTier("Fregate") <= tier
+				&& _rng.NextDouble() < 0.25f)
 				return "Fregate";
 		}
 
@@ -438,9 +457,6 @@ public partial class AIController : Node
 	{
 		if (_gameTimer < FirstAttackDelay[_diffIdx]) return;
 
-		if (_diffIdx > 0)
-			ManageNavalCombat(tier);
-
 		bool forceAttack = _lastAttackTimer >= ForcedAttackDelay[_diffIdx];
 
 		// -- Categorize idle units (Medium/Hard) --------------------------------
@@ -554,42 +570,312 @@ public partial class AIController : Node
 		GD.Print($"[IA] {units.Count} units -> camp #{target.CampId} (team {target.GetTeamId()})");
 	}
 
-	// -- Naval combat (Medium / Hard) --------------------------------------------
+	// -- Amphibious warfare (Medium / Hard) ---------------------------------------
 
-	private void ManageNavalCombat(int tier)
+	private void ManageAmphibiousWarfare(int tier)
 	{
-		if (!CanRunNavalOffensive()) return;
+		if (_diffIdx <= 0) return;
 
-		var combatShips = GetIdleCombatShips();
-		if (combatShips.Count == 0) return;
+		TryPostAmphibiousAssault();
+		TryLaunchAmphibiousUnload();
+		if (AnyAITransportCanBoard())
+			TryBoardTransport();
+
+		if (_diffIdx >= 2)
+		{
+			var activeTransport = GetAITransports()
+				.FirstOrDefault(t => t.GetLoadedUnitCount() > 0 && t.GetIsMoving());
+			if (activeTransport != null)
+				ManageTransportEscort(activeTransport);
+		}
+		else
+		{
+			ManageWarshipPortPatrol();
+		}
+
+		ManageNavalOffensive();
+	}
+
+	private void TryPostAmphibiousAssault()
+	{
+		if (_amphibiousTarget == null || !_amphibiousUnloadLandPos.HasValue)
+			return;
+
+		if (_amphibiousTransport != null && IsInstanceValid(_amphibiousTransport)
+			&& (_amphibiousTransport.GetIsMoving() || _amphibiousTransport.GetLoadedUnitCount() > 0))
+			return;
+
+		if (_amphibiousTarget.GetTeamId() == _teamId)
+		{
+			ClearAmphibiousState();
+			return;
+		}
+
+		float radius = PostUnloadAttackRadius[_diffIdx];
+		Vector2 landPos = _amphibiousUnloadLandPos.Value;
+		var assaultUnits = GetIdleAIUnits()
+			.Where(u => u.GlobalPosition.DistanceTo(landPos) <= radius
+				|| u.GlobalPosition.DistanceTo(_amphibiousTarget.GlobalPosition) <= radius * 1.2f)
+			.ToList();
+
+		if (assaultUnits.Count > 0)
+		{
+			SendUnitsTo(_amphibiousTarget, assaultUnits);
+			GD.Print($"[IA team {_teamId}] Amphibious assault: {assaultUnits.Count} units -> camp #{_amphibiousTarget.CampId}");
+		}
+
+		ClearAmphibiousState();
+	}
+
+	private void TryLaunchAmphibiousUnload()
+	{
+		if (!CanLaunchAmphibiousWave()) return;
 
 		var targetCamp = ChooseNavalTarget();
 		if (targetCamp == null) return;
 
-		var anchorCamp = GetAICamps().FirstOrDefault(c => c.HasPort) ?? GetAICamps().FirstOrDefault();
-		if (anchorCamp == null) return;
+		var transport = GetAITransports()
+			.Where(t => !t.GetIsMoving() && t.GetLoadedUnitCount() >= MinAmphibiousLoad[_diffIdx])
+			.OrderByDescending(t => t.GetLoadedUnitCount())
+			.FirstOrDefault();
 
-		Vector2 moveTarget = anchorCamp.FindWaterApproachNear(targetCamp.GlobalPosition);
-		if (!anchorCamp.IsWaterAtWorldPos(moveTarget))
-			return;
+		if (transport == null) return;
 
-		foreach (var ship in combatShips)
-			ship.MoveTo(moveTarget + RandomOffset(120f));
+		Vector2? landPos = FindUnloadPositionNearCamp(targetCamp, transport);
+		if (!landPos.HasValue) return;
 
+		transport.MoveToUnload(landPos.Value);
+		_amphibiousTarget = targetCamp;
+		_amphibiousUnloadLandPos = landPos.Value;
+		_amphibiousTransport = transport;
 		_lastNavalAttackTimer = 0f;
-		GD.Print($"[IA team {_teamId}] {combatShips.Count} ships -> water near camp #{targetCamp.CampId}");
+		GD.Print($"[IA team {_teamId}] Transport -> unload near camp #{targetCamp.CampId} ({transport.GetLoadedUnitCount()} units)");
 	}
 
-	private bool CanRunNavalOffensive()
+	private bool IsTransportDockedForBoarding(Ship transport)
+	{
+		if (transport.GetLoadedUnitCount() >= transport.GetCapacity())
+			return false;
+
+		var portCamp = GetPortCampForShip(transport);
+		if (portCamp == null)
+			return false;
+
+		Vector2 portWater = portCamp.FindWaterApproachNear(portCamp.GetPortGlobalPosition());
+		float maxDockDist = BoardingRadius[_diffIdx] * 2f;
+		return transport.GlobalPosition.DistanceTo(portWater) <= maxDockDist;
+	}
+
+	private bool AnyAITransportCanBoard()
+	{
+		foreach (var transport in GetIdleTransports())
+		{
+			if (IsTransportDockedForBoarding(transport))
+				return true;
+		}
+		return false;
+	}
+
+	private void TryBoardTransport()
+	{
+		if (!AnyAITransportCanBoard())
+			return;
+
+		foreach (var transport in GetIdleTransports())
+		{
+			int freeSlots = transport.GetCapacity() - transport.GetLoadedUnitCount();
+			if (freeSlots <= 0) continue;
+
+			if (!IsTransportDockedForBoarding(transport))
+				continue;
+
+			// Nearest idle units (anywhere) — rally point is often far from the port
+			var boarders = GetIdleAIUnits()
+				.Where(u => u.CanBoardTransport())
+				.OrderBy(u => u.GlobalPosition.DistanceTo(transport.GlobalPosition))
+				.Take(freeSlots)
+				.ToList();
+
+			foreach (var unit in boarders)
+				unit.MoveToTransport(transport);
+
+			if (boarders.Count > 0)
+				GD.Print($"[IA team {_teamId}] Boarding {boarders.Count} units on transport");
+		}
+	}
+
+	private void ManageTransportEscort(Ship activeTransport)
+	{
+		if (activeTransport == null || !IsInstanceValid(activeTransport)) return;
+
+		var anchorCamp = GetAICamps().FirstOrDefault(c => c.HasPort);
+		if (anchorCamp == null) return;
+
+		Vector2 escortWater = anchorCamp.FindWaterApproachNear(activeTransport.GlobalPosition);
+		if (!anchorCamp.IsWaterAtWorldPos(escortWater))
+			escortWater = activeTransport.GlobalPosition;
+
+		foreach (var ship in GetCombatShipsAvailableForOrders().Take(2))
+			ship.MoveTo(escortWater + RandomOffset(200f), trustRelayTarget: true);
+	}
+
+	private void ManageWarshipPortPatrol()
+	{
+		var portCamp = GetAICamps().FirstOrDefault(c => c.HasPort);
+		if (portCamp == null) return;
+
+		Vector2 patrolWater = portCamp.FindWaterApproachNear(portCamp.GlobalPosition);
+		if (!portCamp.IsWaterAtWorldPos(patrolWater))
+			return;
+
+		float radius = PortPatrolRadius[_diffIdx];
+		foreach (var ship in GetCombatShipsAvailableForOrders())
+			ship.MoveTo(patrolWater + RandomOffset(radius * 0.35f));
+	}
+
+	private void ManageNavalOffensive()
+	{
+		var target = FindEnemyNavalTarget();
+		if (target == null) return;
+
+		var hunters = GetCombatShipsAvailableForOrders();
+		Vector2 targetPos = target.GlobalPosition;
+		foreach (var ship in hunters)
+			ship.MoveTo(targetPos + RandomOffset(180f), trustRelayTarget: true);
+	}
+
+	private Ship FindEnemyNavalTarget()
+	{
+		Ship bestTransport = null;
+		float bestTransportDist = float.MaxValue;
+		Ship bestWarship = null;
+		float bestWarshipDist = float.MaxValue;
+		Vector2 aiCenter = GetAICenter();
+
+		foreach (var node in GetTree().GetNodesInGroup("ships"))
+		{
+			if (node is not Ship ship || !IsInstanceValid(ship)) continue;
+			if (ship.GetTeamId() == _teamId || ship.GetTeamId() <= 0) continue;
+			if (ship.GetCurrentHealth() <= 0) continue;
+
+			float dist = aiCenter.DistanceTo(ship.GlobalPosition);
+			if (ship.GetShipType() == "Transport")
+			{
+				if (dist < bestTransportDist)
+				{
+					bestTransportDist = dist;
+					bestTransport = ship;
+				}
+			}
+			else
+			{
+				if (dist < bestWarshipDist)
+				{
+					bestWarshipDist = dist;
+					bestWarship = ship;
+				}
+			}
+		}
+
+		return bestTransport ?? bestWarship;
+	}
+
+	private bool CanLaunchAmphibiousWave()
 	{
 		if (_diffIdx <= 0) return false;
-		if (ControlsHomeRegionFully()) return true;
-		if (_diffIdx < 2) return false;
-
 		if (_lastNavalAttackTimer < NavalAttackCooldown[_diffIdx])
 			return false;
 
+		if (ControlsHomeRegionFully()) return true;
+		if (_diffIdx < 2) return false;
+
 		return _rng.NextDouble() < NavalEarlyAttackChance[_diffIdx];
+	}
+
+	private void ClearAmphibiousState()
+	{
+		_amphibiousTarget = null;
+		_amphibiousUnloadLandPos = null;
+		_amphibiousTransport = null;
+	}
+
+	private Vector2? FindUnloadPositionNearCamp(CampSimple camp, Ship transport)
+	{
+		if (camp == null || transport == null) return null;
+
+		Vector2 center = camp.GlobalPosition;
+		float[] distances = { 250f, 400f, 550f, 700f };
+		Vector2? best = null;
+		float bestScore = float.MaxValue;
+
+		foreach (float dist in distances)
+		{
+			for (int i = 0; i < 12; i++)
+			{
+				float angle = i * Mathf.Tau / 12f;
+				Vector2 pos = center + new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * dist;
+				if (!transport.IsValidUnloadPosition(pos)) continue;
+
+				float score = GetAICenter().DistanceTo(pos);
+				if (score < bestScore)
+				{
+					bestScore = score;
+					best = pos;
+				}
+			}
+		}
+
+		return best;
+	}
+
+	private CampSimple GetPortCampForShip(Ship transport)
+	{
+		return GetAICamps()
+			.Where(c => c.HasPort)
+			.OrderBy(c => c.GlobalPosition.DistanceTo(transport.GlobalPosition))
+			.FirstOrDefault();
+	}
+
+	private List<Unit> GetUnitsNearPosition(Vector2 pos, float radius)
+		=> GetIdleAIUnits()
+			.Where(u => u.GlobalPosition.DistanceTo(pos) <= radius)
+			.ToList();
+
+	private List<Ship> GetAITransports()
+		=> GetTree().GetNodesInGroup("ships")
+			.OfType<Ship>()
+			.Where(s => IsInstanceValid(s)
+				&& s.GetTeamId() == _teamId
+				&& s.GetCurrentHealth() > 0
+				&& s.GetShipType() == "Transport")
+			.ToList();
+
+	private List<Ship> GetIdleTransports()
+		=> GetAITransports().Where(t => !t.GetIsMoving()).ToList();
+
+	private int CountAIShipsOfType(string shipType)
+		=> GetTree().GetNodesInGroup("ships")
+			.OfType<Ship>()
+			.Count(s => IsInstanceValid(s)
+				&& s.GetTeamId() == _teamId
+				&& s.GetCurrentHealth() > 0
+				&& s.GetShipType() == shipType);
+
+	private int GetAITotalTransportCount()
+	{
+		int alive = CountAIShipsOfType("Transport");
+		int queued = 0;
+		foreach (var camp in GetAICamps().Where(c => c.HasPort))
+		{
+			if (camp.GetCurrentShipProduction() == "Transport")
+				queued++;
+			foreach (string shipType in camp.GetQueuedShips())
+			{
+				if (shipType == "Transport")
+					queued++;
+			}
+		}
+		return alive + queued;
 	}
 
 	private CampSimple ChooseNavalTarget()
@@ -611,7 +897,7 @@ public partial class AIController : Node
 		return coastalEnemies[pick];
 	}
 
-	private List<Ship> GetIdleCombatShips()
+	private List<Ship> GetCombatShipsAvailableForOrders()
 	{
 		return GetTree().GetNodesInGroup("ships")
 			.OfType<Ship>()
@@ -619,7 +905,7 @@ public partial class AIController : Node
 				&& s.GetTeamId() == _teamId
 				&& s.GetCurrentHealth() > 0
 				&& s.GetShipType() != "Transport"
-				&& !s.GetIsMoving())
+				&& !s.IsEngagedInNavalCombat())
 			.ToList();
 	}
 

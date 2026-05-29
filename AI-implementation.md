@@ -42,16 +42,17 @@
 Comportement actuel dans `AIController.cs` :
 
 
-| Niveau | Ports / prod navale                       | Offensive navale                                             |
-| ------ | ----------------------------------------- | ------------------------------------------------------------ |
-| Easy   | Non                                       | Non                                                          |
-| Medium | Si region d'origine entierement controlee | Si region d'origine complete                                 |
-| Hard   | Des qu'une region entiere est controlee   | Oui ; 20% par tick avant home region complete (cooldown 30s) |
+| Niveau | Ports / prod navale                       | Offensive navale                                                                 |
+| ------ | ----------------------------------------- | -------------------------------------------------------------------------------- |
+| Easy   | Non                                       | Non                                                                              |
+| Medium | Si region d'origine entierement controlee | Transports : embarquement au port, debarquement cote ennemie, assaut terrestre ; frégates en patrouille port (défense auto) |
+| Hard   | Des qu'une region entiere est controlee   | Meme boucle amphibie ; escorte (2 navires max) si transport chargé en route ; sinon chasse des transports/navires ennemis (`ManageNavalOffensive`) |
 
+Cooldown entre vagues de debarquement : 20s (Medium, home complete) / 30s (Hard) ou 20% par tick avant home complete (Hard).
 
-Ciblage terrestre : camps hors composant connexe terrestre ignores (`IsLandReachable`). Pas encore d'embarquement automatique des unites dans les Transports.
+Ciblage terrestre : camps hors composant connexe terrestre ignores (`IsLandReachable`). Cibles amphibies : camps côtiers ennemis (`ChooseNavalTarget`).
 
-**Améliorations possibles** : embarquement/debarquement IA, Transports pour camps uniquement maritimes.
+Plafond IA : **2 transports** max (`GetAITotalTransportCount`, vivants + file type Transport) ; frégates/destroyers illimités. Embarquement : `CanBoardTransport()` exclut les **Mortier** (joueur + IA).
 
 ---
 

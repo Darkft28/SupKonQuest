@@ -268,19 +268,24 @@ public partial class Unit
 		}
 	}
 
-	// Déplacement avec pathfinding.
+	// Déplacement avec pathfinding + RVO (velocity_computed).
 	// Le chemin n'est recalculé que si la cible a bougé de plus de NavUpdateDistance
 	// ou si un nouvel ordre vient d'être donné (_navTargetDirty).
 	private void MoveWithNav(Vector2 targetPos)
 	{
+		float speedMult = GameManager.Instance?.GetSpeedMultiplier(TeamId) ?? 1f;
+		float moveSpeed = _stats.Speed * speedMult;
+
 		if (_navAgent == null || !_navAgent.IsInsideTree())
 		{
 			Vector2 dir = (targetPos - GlobalPosition).Normalized();
 			_intendedDirection = dir;
-			Velocity = dir * _stats.Speed;
-			MoveAndSlide();
+			ApplyMovementVelocity(dir * moveSpeed);
 			return;
 		}
+
+		if (NavigationServer2D.MapGetIterationId(_navAgent.GetNavigationMap()) == 0)
+			return;
 
 		if (_navTargetDirty || targetPos.DistanceTo(_lastNavTargetPos) > NavUpdateDistance)
 		{
@@ -305,9 +310,21 @@ public partial class Unit
 
 		Vector2 nextPos = _navAgent.GetNextPathPosition();
 		Vector2 direction = (nextPos - GlobalPosition).Normalized();
-		_intendedDirection = direction; // direction voulue, pas affectée par les collisions
-		float speedMult = GameManager.Instance?.GetSpeedMultiplier(TeamId) ?? 1f;
-		Velocity = direction * _stats.Speed * speedMult;
+		_intendedDirection = direction;
+		ApplyMovementVelocity(direction * moveSpeed);
+	}
+
+	private void OnNavVelocityComputed(Vector2 safeVelocity)
+	{
+		Velocity = safeVelocity;
 		MoveAndSlide();
+	}
+
+	private void ApplyMovementVelocity(Vector2 desiredVelocity)
+	{
+		if (_navAgent != null && _navAgent.IsInsideTree() && _navAgent.AvoidanceEnabled)
+			_navAgent.Velocity = desiredVelocity;
+		else
+			OnNavVelocityComputed(desiredVelocity);
 	}
 }

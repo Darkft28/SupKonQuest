@@ -214,7 +214,8 @@ public partial class Unit : CharacterBody2D
 		_navAgent.TargetDesiredDistance = ArrivalDistance;
 		_navAgent.AvoidanceEnabled = true;
 		_navAgent.NavigationLayers = 1u;
-		_navAgent.Radius = 40f; // rayon collision unité
+		_navAgent.MaxSpeed = _stats.Speed;
+		_navAgent.VelocityComputed += OnNavVelocityComputed;
 
 		_currentState = UnitState.Idle;
 	}

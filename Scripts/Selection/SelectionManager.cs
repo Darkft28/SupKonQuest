@@ -24,8 +24,18 @@ public partial class SelectionManager : Node2D
 		AddChild(_selectionRect);
 	}
 
+	private bool IsLocalPlayerSpectating()
+		=> GameManager.Instance?.IsLocalPlayerEliminated() ?? false;
+
 	public override void _UnhandledInput(InputEvent @event)
 	{
+		if (IsLocalPlayerSpectating())
+		{
+			if (@event is InputEventKey key && key.Pressed && !string.IsNullOrWhiteSpace(_pendingAbilityId))
+				CancelAbilityTargeting();
+			return;
+		}
+
 		if (@event is InputEventMouseButton mb)
 		{
 			if (mb.ButtonIndex == MouseButton.Left)
@@ -464,7 +474,7 @@ public partial class SelectionManager : Node2D
 
 		foreach (var unit in _selectedUnits)
 		{
-			if (IsInstanceValid(unit) && sent < capacity)
+			if (IsInstanceValid(unit) && sent < capacity && unit.CanBoardTransport())
 			{
 				unit.MoveToTransport(transport);
 				sent++;

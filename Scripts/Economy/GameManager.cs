@@ -5,6 +5,9 @@ using System.Collections.Generic;
 public partial class GameManager : Node
 {
 	[Signal] public delegate void OnlinePlayerLeftEventHandler(int teamId);
+	[Signal] public delegate void LocalPlayerEliminatedEventHandler();
+
+	public const int MaxGold = 9999;
 
 	private static GameManager _instance;
 
@@ -46,6 +49,7 @@ public partial class GameManager : Node
 	private const int MaxHumanPlayers = 8;
 
 	private VictoryManager _victoryManager;
+	private bool _localEliminationNotified;
 
 	public override void _Ready()
 	{
@@ -67,6 +71,7 @@ public partial class GameManager : Node
 		_allCamps.Clear();
 		_tier2Unlocked.Clear();
 		_teamUltimateCooldowns.Clear();
+		_localEliminationNotified = false;
 
 		var campNodes = GetTree().GetNodesInGroup("camps");
 		foreach (var node in campNodes)
@@ -222,8 +227,8 @@ public partial class GameManager : Node
 				var gameState = GetNodeOrNull<GameState>("/root/GameState");
 				int localTeamId = gameState?.LocalTeamId ?? 1;
 
-				if (_teamGold.ContainsKey(localTeamId))
-					_teamGold[localTeamId] += PassiveGoldPerSecond;
+				if (_teamGold.ContainsKey(localTeamId) && ShouldAccrueGold(localTeamId))
+					_teamGold[localTeamId] = Mathf.Min(MaxGold, _teamGold[localTeamId] + PassiveGoldPerSecond);
 
 				CheckRegionBonuses(localTeamId);
 			}
@@ -231,9 +236,14 @@ public partial class GameManager : Node
 			{
 				// Solo / AI: all teams receive passive gold
 				foreach (var teamId in new List<int>(_teamGold.Keys))
-					_teamGold[teamId] += PassiveGoldPerSecond;
+				{
+					if (!ShouldAccrueGold(teamId))
+						continue;
+					_teamGold[teamId] = Mathf.Min(MaxGold, _teamGold[teamId] + PassiveGoldPerSecond);
+				}
 
 				CheckRegionBonuses(-1); // -1 = all teams
+				CheckLocalPlayerElimination();
 			}
 
 			UpdateSpeedMultipliers();
@@ -398,9 +408,50 @@ public partial class GameManager : Node
 			if (!allSameTeam) continue;
 
 			bool shouldGive = localTeamId == -1 || firstTeam == localTeamId;
-			if (shouldGive && _teamGold.ContainsKey(firstTeam))
-				_teamGold[firstTeam] += RegionBonusGold;
+			if (shouldGive && _teamGold.ContainsKey(firstTeam) && ShouldAccrueGold(firstTeam))
+				_teamGold[firstTeam] = Mathf.Min(MaxGold, _teamGold[firstTeam] + RegionBonusGold);
 		}
+	}
+
+	private void CheckLocalPlayerElimination()
+	{
+		if (GameState.IsOnlineMultiplayer || _localEliminationNotified)
+			return;
+
+		if (!IsLocalPlayerEliminated())
+			return;
+
+		_localEliminationNotified = true;
+		EmitSignal(SignalName.LocalPlayerEliminated);
+	}
+
+	public bool TeamOwnsAnyCamp(int teamId)
+	{
+		if (teamId <= 0)
+			return false;
+
+		foreach (var camp in _allCamps)
+		{
+			if (camp == null || !IsInstanceValid(camp) || camp.IsNeutralCamp)
+				continue;
+			if (camp.GetTeamId() == teamId)
+				return true;
+		}
+		return false;
+	}
+
+	public bool IsTeamEliminated(int teamId) => teamId > 0 && !TeamOwnsAnyCamp(teamId);
+
+	public bool IsLocalPlayerEliminated() =>
+		!GameState.IsOnlineMultiplayer && IsTeamEliminated(GetLocalTeamId());
+
+	public bool ShouldAccrueGold(int teamId)
+	{
+		if (teamId <= 0)
+			return false;
+		if (!GameState.IsOnlineMultiplayer && IsTeamEliminated(teamId))
+			return false;
+		return true;
 	}
 
 	public List<CampSimple> GetAllCamps()
@@ -439,7 +490,7 @@ public partial class GameManager : Node
 			return;
 
 		if (!_teamGold.ContainsKey(teamId))
-			_teamGold[teamId] = StartingGold;
+			_teamGold[teamId] = Mathf.Min(MaxGold, StartingGold);
 
 		if (!_teamGoldVersion.ContainsKey(teamId))
 			_teamGoldVersion[teamId] = 0;
@@ -447,7 +498,9 @@ public partial class GameManager : Node
 
 	public int GetGold(int teamId)
 	{
-		return _teamGold.TryGetValue(teamId, out int gold) ? gold : 0;
+		if (!_teamGold.TryGetValue(teamId, out int gold))
+			return 0;
+		return Mathf.Min(MaxGold, gold);
 	}
 
 	public bool CanAfford(int teamId, int cost)
@@ -465,14 +518,18 @@ public partial class GameManager : Node
 		return true;
 	}
 
-	public void AddGold(int teamId, int amount)
+	public void AddGold(int teamId, int amount) => CreditGold(teamId, amount);
+
+	private void CreditGold(int teamId, int amount)
 	{
+		if (amount <= 0 || !ShouldAccrueGold(teamId))
+			return;
+
 		if (!_teamGold.ContainsKey(teamId))
-		{
 			_teamGold[teamId] = 0;
-		}
-		_teamGold[teamId] += amount;
-		int version = IncrementGoldVersion(teamId);
+
+		_teamGold[teamId] = Mathf.Min(MaxGold, _teamGold[teamId] + amount);
+		IncrementGoldVersion(teamId);
 	}
 
 	public void GiveCaptureBonus(int teamId)

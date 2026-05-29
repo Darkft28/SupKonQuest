@@ -13,6 +13,7 @@ public partial class Ship
 		if (ShipType != "Transport") return false;
 		if (_loadedUnits.Count >= _stats.Capacity) return false;
 		if (unit == null || !IsInstanceValid(unit)) return false;
+		if (!unit.CanBoardTransport()) return false;
 
 		string unitNetId = unit.NetworkId;
 		string unitType = unit.GetUnitType();
@@ -141,7 +142,7 @@ public partial class Ship
 
 			string networkId = $"{NetworkId}_unload_{unloadBatch}_{i}";
 			unit.NetworkId = networkId;
-			unit.IsLocalAuthority = false;
+			unit.IsLocalAuthority = !IsOnlineMultiplayer();
 
 			GetTree().CurrentScene.AddChild(unit);
 			unit.SetCurrentHealth(health);
@@ -187,7 +188,7 @@ public partial class Ship
 			unit.IsNeutralCampUnit = false;
 			unit.GlobalPosition = new Vector2(posXs[i], posYs[i]);
 			unit.NetworkId = unitNetworkIds[i];
-			unit.IsLocalAuthority = false;
+			unit.IsLocalAuthority = !IsOnlineMultiplayer();
 
 			GetTree().CurrentScene.AddChild(unit);
 			unit.SetCurrentHealth(healths[i]);

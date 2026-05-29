@@ -17,8 +17,8 @@ public partial class Unit
 		if (distanceToAlly > _stats.Range)
 		{
 			Vector2 direction = (_healTarget.GlobalPosition - GlobalPosition).Normalized();
-			Velocity = direction * _stats.Speed;
-			MoveAndSlide();
+			_intendedDirection = direction;
+			ApplyMovementVelocity(direction * _stats.Speed);
 			return;
 		}
 

@@ -5,6 +5,9 @@ public partial class Unit
 {
 	private const int WaterTileSourceId = 6;
 	private const float BoardingApproachNavDistance = 120f;
+	private const float BoardingCoastArrivalDistance = 100f;
+	// Ship center is on water; coast tile can be several hundred px away
+	private const float BoardingShipMaxDistance = 600f;
 	private const int BoardingSearchTileRadius = 12;
 
 	private TileMapLayer _tileMapSol;
@@ -79,7 +82,7 @@ public partial class Unit
 						continue;
 
 					Vector2 world = _tileMapSol.ToGlobal(_tileMapSol.MapToLocal(tile));
-					if (world.DistanceTo(transport.GlobalPosition) > BoardingDistance * 1.25f)
+					if (world.DistanceTo(transport.GlobalPosition) > BoardingShipMaxDistance)
 						continue;
 
 					float distToUnit = GlobalPosition.DistanceTo(world);
@@ -99,8 +102,17 @@ public partial class Unit
 		return true;
 	}
 
+	public bool CanBoardTransport() => UnitType != "Mortar";
+
 	public void MoveToTransport(Ship transport)
 	{
+		if (!CanBoardTransport())
+			return;
+		if (transport == null || !IsInstanceValid(transport))
+			return;
+		if (transport.GetLoadedUnitCount() >= transport.GetCapacity())
+			return;
+
 		_targetTransport = transport;
 		_stuckFrames = 0;
 		_moveStartDelay = MoveStartDelayFrames;
@@ -132,20 +144,20 @@ public partial class Unit
 			return;
 		}
 
-		Vector2 approachTarget = _boardingPoint ?? _targetTransport.GlobalPosition;
-		float distanceToTransport = GlobalPosition.DistanceTo(_targetTransport.GlobalPosition);
-		float distanceToApproach = GlobalPosition.DistanceTo(approachTarget);
-
-		if (distanceToTransport < BoardingDistance && !IsWaterTileAt(GlobalPosition))
+		if (_targetTransport.GetLoadedUnitCount() >= _targetTransport.GetCapacity())
 		{
-			if (_targetTransport.BoardUnit(this))
-				return;
-
 			_targetTransport = null;
 			_boardingPoint = null;
 			ChangeState(UnitState.Idle);
 			return;
 		}
+
+		Vector2 approachTarget = _boardingPoint ?? _targetTransport.GlobalPosition;
+		float distanceToTransport = GlobalPosition.DistanceTo(_targetTransport.GlobalPosition);
+		float distanceToApproach = GlobalPosition.DistanceTo(approachTarget);
+
+		if (!IsWaterTileAt(GlobalPosition) && TryCompleteBoarding(distanceToTransport, distanceToApproach))
+			return;
 
 		if (distanceToApproach > BoardingApproachNavDistance)
 		{
@@ -153,10 +165,19 @@ public partial class Unit
 		}
 		else
 		{
-			Vector2 direction = (_targetTransport.GlobalPosition - GlobalPosition).Normalized();
-			_intendedDirection = direction;
-			Velocity = direction * _stats.Speed;
-			MoveAndSlide();
+			Vector2 direction = (approachTarget - GlobalPosition).Normalized();
+			if (direction.LengthSquared() < 0.01f)
+				direction = (_targetTransport.GlobalPosition - GlobalPosition).Normalized();
+
+			Vector2 nextPos = GlobalPosition + direction * (_stats.Speed / 60f);
+			if (!IsWaterTileAt(nextPos))
+			{
+				_intendedDirection = direction;
+				ApplyMovementVelocity(direction * _stats.Speed);
+			}
+
+			if (!IsWaterTileAt(GlobalPosition) && TryCompleteBoarding(distanceToTransport, distanceToApproach))
+				return;
 		}
 
 		if (_moveStartDelay > 0)
@@ -170,14 +191,12 @@ public partial class Unit
 		float distNow = GlobalPosition.DistanceTo(goal);
 		float distPrev = _lastPosition.DistanceTo(goal);
 
-		if (distNow >= distPrev - 0.5f)
+		if (distNow >= distPrev - 0.4f)
 		{
 			_stuckFrames++;
-			if (_stuckFrames > 60 && distanceToTransport < BoardingDistance && !IsWaterTileAt(GlobalPosition))
-			{
-				if (_targetTransport.BoardUnit(this))
-					return;
-			}
+			if (_stuckFrames > 60 && !IsWaterTileAt(GlobalPosition)
+				&& TryCompleteBoarding(distanceToTransport, distanceToApproach))
+				return;
 
 			if (_stuckFrames > MaxStuckFrames)
 			{
@@ -192,5 +211,25 @@ public partial class Unit
 		}
 
 		_lastPosition = GlobalPosition;
+	}
+
+	private bool TryCompleteBoarding(float distanceToTransport, float distanceToApproach)
+	{
+		if (IsWaterTileAt(GlobalPosition)) return false;
+
+		bool inRange;
+		if (_boardingPoint.HasValue)
+		{
+			inRange = distanceToApproach <= BoardingCoastArrivalDistance
+				&& distanceToTransport <= BoardingShipMaxDistance;
+		}
+		else
+		{
+			inRange = distanceToTransport <= BoardingDistance;
+		}
+
+		if (!inRange) return false;
+
+		return _targetTransport.BoardUnit(this);
 	}
 }

@@ -23,9 +23,15 @@ LocalizationManager="*res://Scripts/UI/LocalizationManager.cs"
 GameManager="*res://Scripts/Economy/GameManager.cs"
 AudioSettings="*res://Scripts/UI/AudioSettings.cs"
 KeybindingsManager="*res://Scripts/UI/KeybindingsManager.cs"
+DebugMenu="*res://addons/debug_menu/debug_menu.tscn"
+
+[debug]
+
+settings/stdout/print_fps=true
 
 [display]
 
+window/size/always_on_top=true
 window/stretch/mode="canvas_items"
 
 [dotnet]
@@ -34,7 +40,7 @@ project/assembly_name="SupKonQuest"
 
 [editor_plugins]
 
-enabled=PackedStringArray("res://addons/godot_mcp/plugin.cfg")
+enabled=PackedStringArray("res://addons/debug_menu/plugin.cfg", "res://addons/godot_mcp/plugin.cfg")
 
 [input]
 

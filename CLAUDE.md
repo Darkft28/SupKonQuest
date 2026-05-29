@@ -62,7 +62,7 @@ godot --path . --run
 
 ### Core Systems
 
-**GameManager** - Gold economy per team. `PassiveGoldPerSecond = 500` given each second per team regardless of camp count. `CaptureBonus = 50` gold on capture. `StartingGold = 100`. `RegionBonusGold = 30` or/s if team controls all camps in a region. `RegionSpeedBonusPerRegion = 0.20f` (cumulative speed multiplier per full region). `MaxUnitsPerCamp = 10` (global cap = owned camps × 10). 3-tier unlock: Tier 1 default, Tier 2 manual purchase `Tier2Cost = 1500`, Tier 3 auto-unlock when controlling 100% of home region camps.
+**GameManager** - Gold economy per team. `PassiveGoldPerSecond = 500` given each second per team regardless of camp count. `MaxGold = 9999` (all credits capped). Solo defeat (0 camps): spectator mode — no gold accrual/display, `LocalPlayerEliminated` + 5s defeat banner; game continues until victory. `CaptureBonus = 50` gold on capture. `StartingGold = 100`. `RegionBonusGold = 30` or/s if team controls all camps in a region. `RegionSpeedBonusPerRegion = 0.20f` (cumulative speed multiplier per full region). `MaxUnitsPerCamp = 10` (global cap = owned camps × 10). 3-tier unlock: Tier 1 default, Tier 2 manual purchase `Tier2Cost = 1500`, Tier 3 auto-unlock when controlling 100% of home region camps.
 
 **Unit System** - CharacterBody2D with state machine (Idle, MovingToPoint, MovingToTarget, Attacking, AttackingCamp, Healing, MovingToTransport). Navigation layer 1 (ground only). Detection zone = `stats.Range + 400px`. Enemy search throttled to 0.5s. Stuck detection: 120 frames (≈2s) of insufficient movement.
 
@@ -97,7 +97,7 @@ Ship tiers: Transport = Tier 1, Fregate + Destroyer = Tier 3.
 | Fregate | 180 | 20 | 15 | 100 | — | 200g | 5s |
 | Destroyer | 250 | 35 | 20 | 80 | — | 300g | 7s |
 
-Transport is pacifist (never engages enemies) but can be sunk by enemy Fregate/Destroyer. Destroyer textures: `Assets/Units/Ships/Destroyer/Destroyers_*.png`. Fregate: `Assets/Units/Ships/Frégate/frégate_*.png` (accented folder). Unload radius max 2000px, requires coastal tile with adjacent water in 3×3 grid.
+Transport is pacifist (never engages enemies) but can be sunk by enemy Fregate/Destroyer. **Mortar** cannot board transports (`Unit.CanBoardTransport()`). Destroyer textures: `Assets/Units/Ships/Destroyer/Destroyers_*.png`. Fregate: `Assets/Units/Ships/Frégate/frégate_*.png` (accented folder). Unload radius max 2000px, requires coastal tile with adjacent water in 3×3 grid.
 
 **SelectionManager** - Click/box selection. Priority: port (<100px) → camp (<200px) → ship (<80px) → unit (<64px). Right-click: detects Transport within 150px (auto-board), enemy camp within 400px (AttackCamp), otherwise MoveTo. In Nakama relay mode, routes commands through `NetworkCommandRouter` instead of calling directly.
 
@@ -143,7 +143,7 @@ Boss designation: MapGenerator finds the bot team most geographically distant fr
 
 Composition targets: Easy=100% Infantry. Medium/Hard use mixed compositions (Infantry/Range/Support/Heal/AntiArmor). Hard counter-comp: if enemy has ≥3 Heavy → prioritize AntiArmor. Medium/Hard use rally-point strategy before attacking. Reactive defense: sends DefenseRatio% of idle units if a camp is at <60% HP or enemy within 700px.
 
-Camp scoring: +2500 neutral, +(1-hpRatio)×1800 if damaged, +(5-defenders)×300, +3500 home region, −distance×0.4. Medium/Hard: port/ship production when a full region is controlled, naval offensives (Fregate/Destroyer). Land targets filtered via `TerritoryConnectivity.IsReachable`. Easy: infantry spam, nearest camp, no naval.
+Camp scoring: +2500 neutral, +(1-hpRatio)×1800 if damaged, +(5-defenders)×300, +3500 home region, −distance×0.4. Medium/Hard: port/ship production when a full region is controlled; amphibious assaults via Transport (board at port, unload on enemy coast, `AttackCamp`). IA naval buys: max **2 transports** (alive + queued per port); Fregate/Destroyer not capped. Medium: Fregate patrol near port (auto-defense). Hard: escort loaded transports at sea. Land targets filtered via `TerritoryConnectivity.IsReachable`. Easy: infantry spam, nearest camp, no naval.
 
 **Multijoueur en ligne (Nakama)** - Flux : `GameModeMenu` → `LobbyUI` → matchmaking → `JoinMatch` → lobby in-match (`MatchLobbyEntered`) → **`MatchStart` relay uniquement** → `StartOnlineGameFromMatch`. Pas d'IA (`IsAIMode`/`IsFreeForAll` remis à false via `ResetOnlineMatchFlags`). 1 camp/joueur, reste neutre (`GameManager.AssignCampsToPlayers`, `ActivePlayerCount`). Signaux : `MatchLobbyEntered`, `MatchLobbyTick`, `MatchStarting`. Module relay externe : countdown ~20s (+5s/join, start à 8) puis opcode `4002`.
 Gestion déconnexion autoritaire serveur : `5002` (cleanup team) sur leave en partie. Le client applique l'événement serveur.

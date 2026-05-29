@@ -265,6 +265,22 @@ public partial class LocalizationManager : Node
 			{ Language.ES, " (Anfitrión)" }
 		}},
 
+		{ "defeat", new Dictionary<Language, string> {
+			{ Language.FR, "Défaite" },
+			{ Language.EN, "Defeat" },
+			{ Language.ES, "Derrota" }
+		}},
+		{ "victory", new Dictionary<Language, string> {
+			{ Language.FR, "VICTOIRE !" },
+			{ Language.EN, "VICTORY!" },
+			{ Language.ES, "¡VICTORIA!" }
+		}},
+		{ "main_menu", new Dictionary<Language, string> {
+			{ Language.FR, "Menu principal" },
+			{ Language.EN, "Main menu" },
+			{ Language.ES, "Menú principal" }
+		}},
+
 		// Classement en jeu
 		{ "ranking_title", new Dictionary<Language, string> {
 			{ Language.FR, "⚔  Classement" },

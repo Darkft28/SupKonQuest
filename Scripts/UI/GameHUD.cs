@@ -21,6 +21,9 @@ public partial class GameHUD : Control
 
 	private Panel _disconnectPanel;
 	private Label _disconnectLabel;
+	private Panel _defeatPanel;
+	private Label _defeatLabel;
+	private bool _defeatBannerShown;
 	private Panel _leaderboardPanel;
 	private VBoxContainer _leaderboardVBox;
 	private Label _leaderboardTitle;
@@ -31,8 +34,10 @@ public partial class GameHUD : Control
 	private bool _leaderboardExpanded = true;
 	private int  _leaderboardLastLineCount = 0;
 	private float _leaderboardRefreshTimer = 0f;
-	private const float LeaderboardRefreshInterval = 0.5f;
+	private const float LeaderboardRefreshInterval = 2.5f;
 	private const float LeaderboardCollapsedHeight = 50f;
+	private float _goldRefreshTimer = 0f;
+	private const float GoldRefreshInterval = 1.0f;
 
 		private static readonly string[] UnitTypes = new[]
 	{
@@ -71,7 +76,10 @@ public partial class GameHUD : Control
 
 		var gameManager = GetNodeOrNull<GameManager>("/root/GameManager");
 		if (gameManager != null)
+		{
 			gameManager.OnlinePlayerLeft += OnOnlinePlayerLeft;
+			gameManager.LocalPlayerEliminated += OnLocalPlayerEliminated;
+		}
 	}
 
 	private void BindSceneHudControls()
@@ -98,6 +106,15 @@ public partial class GameHUD : Control
 		style.BgColor = new Color(0f, 0f, 0f, 0.6f);
 		_disconnectPanel.AddThemeStyleboxOverride("panel", style);
 		_disconnectPanel.Visible = false;
+
+		_defeatPanel = GetNodeOrNull<Panel>("DefeatPanel");
+		_defeatLabel = GetNodeOrNull<Label>("DefeatPanel/DefeatLabel");
+		if (_defeatPanel != null)
+		{
+			_defeatPanel.AddThemeStyleboxOverride("panel", style);
+			_defeatPanel.Visible = false;
+			_defeatPanel.MouseFilter = Control.MouseFilterEnum.Ignore;
+		}
 
 		SetupLeaderboardUi();
 	}
@@ -247,10 +264,14 @@ public partial class GameHUD : Control
 
 	private void OnPortButtonPressed()
 	{
+		if (GameManager.Instance?.IsLocalPlayerEliminated() == true) return;
 		var camp = _selectionManager?.GetSelectedCamp();
 		if (camp == null || !IsInstanceValid(camp)) return;
 		if (camp.BuyPort())
+		{
+			RefreshGoldDisplayNow();
 			TerritoryManager.Instance?.StartPortPlacement(camp);
+		}
 	}
 
 	private void OnNakamaDisconnected()
@@ -264,6 +285,27 @@ public partial class GameHUD : Control
 			return;
 
 		ShowDisconnectMessage("Adversaire déconnecté\nRetour au menu dans 5s...");
+	}
+
+	private void OnLocalPlayerEliminated() => ShowDefeatBanner();
+
+	private void ShowDefeatBanner()
+	{
+		if (_defeatBannerShown || _defeatPanel == null || _defeatLabel == null)
+			return;
+
+		_defeatBannerShown = true;
+		_goldPanel.Visible = false;
+
+		string defeatText = LocalizationManager.Instance?.GetText("defeat") ?? "Défaite";
+		_defeatLabel.Text = defeatText;
+		_defeatPanel.Visible = true;
+
+		GetTree().CreateTimer(5.0).Timeout += () =>
+		{
+			if (IsInstanceValid(_defeatPanel))
+				_defeatPanel.Visible = false;
+		};
 	}
 
 	private void ShowDisconnectMessage(string message)
@@ -287,7 +329,10 @@ public partial class GameHUD : Control
 
 		var gameManager = GetNodeOrNull<GameManager>("/root/GameManager");
 		if (gameManager != null)
+		{
 			gameManager.OnlinePlayerLeft -= OnOnlinePlayerLeft;
+			gameManager.LocalPlayerEliminated -= OnLocalPlayerEliminated;
+		}
 	}
 
 
@@ -352,8 +397,10 @@ public partial class GameHUD : Control
 
 	private void OnUnlockTier2Pressed()
 	{
+		if (GameManager.Instance?.IsLocalPlayerEliminated() == true) return;
 		int teamId = GetLocalTeamId();
-		GameManager.Instance?.UnlockTier2(teamId);
+		if (GameManager.Instance?.UnlockTier2(teamId) == true)
+			RefreshGoldDisplayNow();
 	}
 
 	private void ConnectUnitButtons()
@@ -406,6 +453,7 @@ public partial class GameHUD : Control
 
 	private void OnUnitButtonPressed(string unitType)
 	{
+		if (GameManager.Instance?.IsLocalPlayerEliminated() == true) return;
 		if (_selectionManager == null) return;
 
 		var selectedCamp = _selectionManager.GetSelectedCamp();
@@ -421,15 +469,19 @@ public partial class GameHUD : Control
 		if (ShouldUseRelayCommands())
 		{
 			NetworkCommandRouter.RequestBuyUnit(selectedCamp, unitType);
+			RefreshGoldDisplayNow();
 			return;
 		}
 
-		if (!selectedCamp.BuyUnit(unitType))
+		if (selectedCamp.BuyUnit(unitType))
+			RefreshGoldDisplayNow();
+		else
 			GD.Print($"[HUD] Achat {unitType} refusé : {selectedCamp.GetBuyUnitDenyReason(unitType)}");
 	}
 
 	private void OnShipButtonPressed(string shipType)
 	{
+		if (GameManager.Instance?.IsLocalPlayerEliminated() == true) return;
 		if (_selectionManager == null) return;
 
 		var selectedPort = _selectionManager.GetSelectedPort();
@@ -440,10 +492,12 @@ public partial class GameHUD : Control
 		if (ShouldUseRelayCommands())
 		{
 			NetworkCommandRouter.RequestBuyShip(selectedPort, shipType);
+			RefreshGoldDisplayNow();
 			return;
 		}
 
-		selectedPort.BuyShip(shipType);
+		if (selectedPort.BuyShip(shipType))
+			RefreshGoldDisplayNow();
 	}
 
 	public override void _Process(double delta)
@@ -453,7 +507,7 @@ public partial class GameHUD : Control
 			FindSelectionManager();
 		}
 
-		UpdateGoldDisplay();
+		UpdateGoldDisplayThrottled(delta);
 		UpdateContainerVisibility();
 		UpdateUnitButtons();
 		UpdateShipButtons();
@@ -735,6 +789,13 @@ public partial class GameHUD : Control
 	{
 		if (_selectionManager == null) return;
 
+		if (GameManager.Instance?.IsLocalPlayerEliminated() == true)
+		{
+			if (_tierInfoLabel != null) _tierInfoLabel.Visible = false;
+			SetAllUnitButtonsDisabled(null);
+			return;
+		}
+
 		var selectedCamp = _selectionManager.GetSelectedCamp();
 
 		int localTeam = GetLocalTeamId();
@@ -905,6 +966,17 @@ public partial class GameHUD : Control
 	{
 		if (_selectionManager == null) return;
 
+		if (GameManager.Instance?.IsLocalPlayerEliminated() == true)
+		{
+			_unitsContainer.Visible = false;
+			_shipsContainer.Visible = false;
+			if (_portButton != null)
+				_portButton.Visible = false;
+			if (_tierInfoLabel != null)
+				_tierInfoLabel.Visible = false;
+			return;
+		}
+
 		var selectedCamp = _selectionManager.GetSelectedCamp();
 		var selectedPort = _selectionManager.GetSelectedPort();
 
@@ -936,14 +1008,38 @@ public partial class GameHUD : Control
 		}
 	}
 
+	private void UpdateGoldDisplayThrottled(double delta)
+	{
+		_goldRefreshTimer -= (float)delta;
+		if (_goldRefreshTimer > 0f)
+			return;
+
+		_goldRefreshTimer = GoldRefreshInterval;
+		UpdateGoldDisplay();
+	}
+
+	private void RefreshGoldDisplayNow()
+	{
+		_goldRefreshTimer = 0f;
+		UpdateGoldDisplay();
+	}
+
 	private void UpdateGoldDisplay()
 	{
 		if (GameManager.Instance == null)
 		{
+			_goldPanel.Visible = false;
 			_goldLabel.Text = "0";
 			return;
 		}
 
+		if (GameManager.Instance.IsLocalPlayerEliminated())
+		{
+			_goldPanel.Visible = false;
+			return;
+		}
+
+		_goldPanel.Visible = true;
 		int gold = GameManager.Instance.GetGold(GetLocalTeamId());
 		_goldLabel.Text = $"{gold}";
 	}
