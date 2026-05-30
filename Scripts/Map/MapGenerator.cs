@@ -14,11 +14,11 @@ public partial class MapGenerator : Node
 	private Node2D _objectsContainer;
 	private SelectionManager _selectionManager;
 	private TerritoryManager _territoryManager;
-	// Grille de territoires (256×256) décodée depuis le RLE de la map preset
+	// Territory grid (256x256) decoded from preset map RLE
 	private int[,] _territoryGrid;
 	private string[] _territoireNoms;
 
-	// Graphe de connectivité des territoires (exposé pour l'IA et les unités)
+	// Territory connectivity graph (exposed for AI and units)
 	public static Dictionary<int, HashSet<int>> TerritoryGraph { get; private set; }
 
 	private PackedScene _campScene;
@@ -43,11 +43,11 @@ public partial class MapGenerator : Node
 
 		_unitsContainer = GetNodeOrNull<Node2D>("Units");
 		if (_unitsContainer == null && !Engine.IsEditorHint())
-			GD.PrintErr("[MAP] Noeud 'Units' manquant dans Game.tscn");
+			GD.PrintErr("[MAP] Missing 'Units' node in Game.tscn");
 
 		_selectionManager = GetNodeOrNull<SelectionManager>("SelectionManager");
 		if (_selectionManager == null && !Engine.IsEditorHint())
-			GD.PrintErr("[MAP] Noeud 'SelectionManager' manquant dans Game.tscn");
+			GD.PrintErr("[MAP] Missing 'SelectionManager' node in Game.tscn");
 
 		if (_camera != null)
 		{
@@ -65,27 +65,27 @@ public partial class MapGenerator : Node
 		if (!Engine.IsEditorHint())
 		{
 			if (GetNodeOrNull<NetworkSync>("NetworkSync") == null)
-				GD.PrintErr("[MAP] Noeud 'NetworkSync' manquant dans Game.tscn");
+				GD.PrintErr("[MAP] Missing 'NetworkSync' node in Game.tscn");
 
 			await LancerAvecChargement();
 		}
 	}
 
-	// Lance la génération de map + attend la synchronisation nav avant de démarrer l'IA
+	// Starts map generation and waits for nav sync before starting AI
 	private async System.Threading.Tasks.Task LancerAvecChargement()
 	{
-		ShowLoadingScreen("Génération de la carte...");
+		ShowLoadingScreen("Generating map...");
 
-		// Laisser un frame pour que l'overlay s'affiche avant le travail lourd
+		// Allow one frame so the overlay is visible before heavy work
 		await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
 
 		GenererMap();
 
-		// Le NavigationServer2D traite les régions de nav de façon asynchrone.
-		// Il faut attendre qu'il ait synchronisé le navmesh avant que les unités
-		// puissent calculer des chemins — sinon deux IA entre les mêmes points
-		// peuvent obtenir des chemins différents selon qui calcule en premier.
-		SetLoadingStatus("Pré-calcul des chemins...");
+		// NavigationServer2D processes nav regions asynchronously.
+		// Wait until navmesh sync is done before units compute paths,
+		// otherwise two AIs between identical points can produce different
+		// paths depending on which one computes first.
+		SetLoadingStatus("Precomputing paths...");
 		for (int i = 0; i < 5; i++)
 			await ToSignal(GetTree(), SceneTree.SignalName.PhysicsFrame);
 
@@ -98,17 +98,17 @@ public partial class MapGenerator : Node
 	private void ShowLoadingScreen(string status)
 	{
 		_loadingOverlay = new CanvasLayer();
-		_loadingOverlay.Layer = 128; // au-dessus de tout
+		_loadingOverlay.Layer = 128; // above everything
 		AddChild(_loadingOverlay);
 
-		// Fond opaque
+		// Opaque background
 		var bg = new ColorRect();
 		bg.Color = new Color(0.06f, 0.07f, 0.1f, 1f);
 		bg.SetAnchorsPreset(Control.LayoutPreset.FullRect);
-		bg.MouseFilter = Control.MouseFilterEnum.Stop; // bloque tous les clics joueur
+		bg.MouseFilter = Control.MouseFilterEnum.Stop; // blocks all player clicks
 		_loadingOverlay.AddChild(bg);
 
-		// Conteneur centré
+		// Centered container
 		var vbox = new VBoxContainer();
 		vbox.SetAnchorsPreset(Control.LayoutPreset.Center);
 		vbox.GrowHorizontal = Control.GrowDirection.Both;
@@ -154,7 +154,7 @@ public partial class MapGenerator : Node
 
 	private void GenererMap()
 	{
-		// Reset les IDs déterministes pour le multijoueur
+		// Reset deterministic IDs for multiplayer
 		CampSimple.ResetCampIdCounter();
 		NetworkEntityRegistry.Clear();
 
@@ -164,10 +164,10 @@ public partial class MapGenerator : Node
 		_tileMapObjets.Clear();
 		_tileMapObjets.Visible = true;
 
-		// Reset complet du contenu sans recréer les noeuds pré-instanciés dans la scène.
+		// Full content reset without recreating pre-instanced scene nodes.
 		if (_unitsContainer == null)
 		{
-			GD.PrintErr("[MAP] Noeud 'Units' manquant, génération annulée.");
+			GD.PrintErr("[MAP] Missing 'Units' node, generation cancelled.");
 			return;
 		}
 		ClearContainerChildren(_unitsContainer);
@@ -184,7 +184,7 @@ public partial class MapGenerator : Node
 		int halfWidth = _mapWidth / 2;
 		int halfHeight = _mapHeight / 2;
 
-		// Générer le terrain depuis la map preset sélectionnée
+		// Generate terrain from selected preset map
 		var gsMap = GetNodeOrNull<GameState>("/root/GameState");
 		int baseSeed = _networkSeed ?? (int)GD.Randi();
 		_seededRandom = new Random(baseSeed + 2000);
@@ -193,19 +193,19 @@ public partial class MapGenerator : Node
 		armAngles = ApplyPresetMap(gsMap?.SelectedMapType ?? GameState.MapType.Irridium, halfWidth, halfHeight, out presetCampPositions);
 		SpawnPresetObjectSprites(halfWidth, halfHeight);
 
-		// Construire les meshes de navigation (terrestre pour unités, maritime pour bateaux)
+		// Build navigation meshes (land for units, water for ships)
 		BuildNavigationMesh();
 		BuildWaterNavigationMesh();
 
-		// Les arbres et montagnes sont rendus via Sprite2D dans _objectsContainer (plus grands).
-		// La couche Objets reste active pour la navigation (GetCellSourceId) mais n'est pas affichée.
+		// Trees and mountains are rendered via Sprite2D in _objectsContainer (larger visuals).
+		// The Objects layer stays active for navigation checks (GetCellSourceId) but is hidden.
 		_tileMapObjets.Visible = false;
 
-		// Placer les camps depuis les positions prédéfinies de la map preset
+		// Place camps from preset map positions
 		CampPlacer.PlacePresetCamps(presetCampPositions, _tileMapSol, _unitsContainer, _campScene,
 			_seededRandom, TileSize, armAngles, _territoryGrid, halfWidth, halfHeight);
 
-		// Construire le graphe de connectivité des territoires
+		// Build territory connectivity graph
 		TerritoryGraph = TerritoryConnectivity.Build(_territoryGrid, _tileMapSol, halfWidth, halfHeight);
 
 		if (GameManager.Instance != null)
@@ -213,11 +213,11 @@ public partial class MapGenerator : Node
 			GameManager.Instance.OnMapGenerationComplete();
 		}
 
-		// Mettre à jour les limites de la caméra avec la vraie taille de map
+		// Update camera bounds using actual map size
 		if (_camera is SupKonQuest.CameraController cam)
 			cam.SetupForMap(_mapWidth, _mapHeight);
 
-		// Zoom intro vers la base du joueur local
+		// Intro zoom to local player's base
 		TriggerIntroZoom();
 	}
 
@@ -264,10 +264,10 @@ public partial class MapGenerator : Node
 		// skipCamps=true : les camps (ID 102) ne sont pas placés sur le tilemap pour ne pas bloquer le nav mesh
 		ApplyPresetLayer(_tileMapObjets, objetsRle, width, height, -halfWidth, -halfHeight, skipId: -1, addVariants: false, skipCamps: true);
 
-		// Collecter les positions de camps depuis le RLE pour un placement aléatoire ensuite
+		// Collect camp positions from RLE for later randomized assignment
 		campPositions = CollectPresetCampPositions(objetsRle, width, height, -halfWidth, -halfHeight);
 
-		// Charger la grille de territoires depuis le RLE de la map preset
+		// Load territory grid from preset map RLE
 		int[] territoiresRle = mapType switch
 		{
 			GameState.MapType.Alabasta => AlabastaMap.TerritoiresRle,
@@ -282,12 +282,12 @@ public partial class MapGenerator : Node
 		};
 		LoadTerritoryMap(territoiresRle, width, height, halfWidth, halfHeight);
 
-		// Angles de régions par défaut pour les presets (3 secteurs à 120°)
+		// Default region angles for presets (3 sectors at 120 deg)
 		return new float[] { 0f, 2.094f, 4.189f }; // 0°, 120°, 240°
 	}
 
-	// Décode le RLE territoire (paires count/id) et remplit _territoryGrid[256,256].
-	// id 0 = pas de territoire assigné.
+	// Decode territory RLE (count/id pairs) into _territoryGrid[256,256].
+	// id 0 = unassigned territory.
 	private void LoadTerritoryMap(int[] rleData, int width, int height, int halfWidth, int halfHeight)
 	{
 		_territoryGrid = new int[width, height];
@@ -302,7 +302,7 @@ public partial class MapGenerator : Node
 				if (x >= width) { x = 0; y++; }
 				if (y >= height) return;
 
-				// Stocker en coordonnées de grille [0, width[ × [0, height[
+				// Store in grid coordinates [0, width[ x [0, height[
 				_territoryGrid[x, y] = id;
 				x++;
 			}
@@ -363,7 +363,7 @@ public partial class MapGenerator : Node
 		var camera = _camera as SupKonQuest.CameraController;
 		if (camera == null)
 		{
-			GD.PrintErr("[INTRO] Camera introuvable ou n'est pas un CameraController");
+			GD.PrintErr("[INTRO] Camera not found or not a CameraController");
 			return;
 		}
 
@@ -382,7 +382,7 @@ public partial class MapGenerator : Node
 
 		if (playerCamp == null)
 		{
-			GD.PrintErr($"[INTRO] Aucun camp trouvé pour team {localTeamId}");
+			GD.PrintErr($"[INTRO] No camp found for team {localTeamId}");
 			return;
 		}
 
@@ -394,13 +394,13 @@ public partial class MapGenerator : Node
 		_territoryManager = new TerritoryManager();
 		_territoryManager.Name = "TerritoryManager";
 		AddChild(_territoryManager);
-		MoveChild(_territoryManager, 1); // après Sol pour le Z-order
+		MoveChild(_territoryManager, 1); // after Sol for z-order
 		_territoryManager.SetSolLayer(_tileMapSol);
 		_territoryManager.SetTerritoryGrid(_territoryGrid);
 		_territoryManager.Initialize();
 	}
 
-	// Helper commun : construit un NavigationPolygon à partir d'un prédicat de marchabilité
+	// Shared helper: builds a NavigationPolygon from a walkability predicate
 	private NavigationPolygon BuildNavPolygon(
 		int groupSize, int halfWidth, int halfHeight,
 		System.Func<int, int, int, int, int, bool> cellPredicate,
@@ -409,7 +409,7 @@ public partial class MapGenerator : Node
 		int cellCols = _mapWidth  / groupSize;
 		int cellRows = _mapHeight / groupSize;
 
-		// 1) Collecter vertices ET polygones
+		// 1) Collect vertices and polygons
 		var verticesList = new System.Collections.Generic.List<Vector2>();
 		var vertexMap    = new System.Collections.Generic.Dictionary<long, int>();
 		var polygonList  = new System.Collections.Generic.List<int[]>();
@@ -419,7 +419,7 @@ public partial class MapGenerator : Node
 			long key = ((long)vx << 32) | (uint)vy;
 			if (vertexMap.TryGetValue(key, out int idx))
 				return idx;
-			// Coordonnées monde alignées exactement sur les bords de tuiles
+			// World coordinates aligned exactly on tile edges
 			float wx = (vx * groupSize - halfWidth)  * TileSize;
 			float wy = (vy * groupSize - halfHeight) * TileSize;
 			int newIdx = verticesList.Count;
@@ -443,7 +443,7 @@ public partial class MapGenerator : Node
 			}
 		}
 
-		// 2) Construire le NavigationPolygon : Vertices d'abord, polygones ensuite
+		// 2) Build NavigationPolygon: vertices first, polygons after
 		var navPoly = new NavigationPolygon();
 		navPoly.Vertices = verticesList.ToArray();
 		foreach (var poly in polygonList)
@@ -462,10 +462,11 @@ public partial class MapGenerator : Node
 		int halfWidth = _mapWidth / 2, halfHeight = _mapHeight / 2;
 
 		var navPoly = BuildNavPolygon(groupSize, halfWidth, halfHeight, IsCellWalkable, out int polyCount);
+		navPoly.AgentRadius = 40f;
 
 		var navRegion = new NavigationRegion2D();
 		navRegion.Name = "NavRegion";
-		navRegion.NavigationLayers = 1u; // Couche 1 : terrestre (unités)
+		navRegion.NavigationLayers = 1u; // Layer 1: land (units)
 		navRegion.NavigationPolygon = navPoly;
 		AddChild(navRegion);
 
@@ -480,10 +481,11 @@ public partial class MapGenerator : Node
 		int halfWidth = _mapWidth / 2, halfHeight = _mapHeight / 2;
 
 		var navPoly = BuildNavPolygon(groupSize, halfWidth, halfHeight, IsCellAllWater, out int polyCount);
+		navPoly.AgentRadius = 48f;
 
 		var navRegion = new NavigationRegion2D();
 		navRegion.Name = "NavRegionWater";
-		navRegion.NavigationLayers = 2u; // Couche 2 : maritime (bateaux)
+		navRegion.NavigationLayers = 2u; // Layer 2: sea (ships)
 		navRegion.NavigationPolygon = navPoly;
 		AddChild(navRegion);
 
@@ -498,7 +500,7 @@ public partial class MapGenerator : Node
 				int tx = cx * groupSize - halfWidth  + dx;
 				int ty = cy * groupSize - halfHeight + dy;
 				if (_tileMapSol.GetCellSourceId(new Vector2I(tx, ty)) != 6)
-					return false; // une tuile non-eau → cellule invalide
+					return false; // one non-water tile -> invalid cell
 			}
 		}
 		return true;
@@ -517,18 +519,18 @@ public partial class MapGenerator : Node
 
 				int solId = _tileMapSol.GetCellSourceId(tileCoord);
 				if (solId == 6)
-					return false; // eau dans la cellule → non-marchable (navmesh ne déborde plus dans l'eau)
+					return false; // water in cell -> non-walkable
 				if (solId == -1)
-					continue;     // vide (bord de map) → ignorer
+					continue;     // empty (map edge) -> ignore
 
-				// Forêt = obstacle (même sans objet arbre placé dessus)
+				// Forest = obstacle (even without an object tile)
 				if (solId == 3 || solId == 5 || solId == 4)
 					return false;
 
-				// Si une tuile objet (arbre=100 ou montagne=101) est présente → obstacle physique
+				// Object tile present (tree=100 or mountain=101) -> physical obstacle
 				int objetId = _tileMapObjets.GetCellSourceId(tileCoord);
 				if (objetId != -1)
-					return false; // au moins une tuile bloquante dans la cellule
+					return false; // at least one blocking tile in the cell
 
 				hasLand = true;
 			}
@@ -541,7 +543,7 @@ public partial class MapGenerator : Node
 		var gameState = GetNodeOrNull<GameState>("/root/GameState");
 		if (gameState == null || !gameState.IsAIMode || gameState.IsOnline) return;
 
-		// Supprimer les anciens AIControllers
+		// Remove previous AIControllers
 		for (int i = GetChildCount() - 1; i >= 0; i--)
 		{
 			if (GetChild(i) is AIController old)
@@ -553,7 +555,7 @@ public partial class MapGenerator : Node
 
 		AIController.BossTeamIds.Clear();
 
-		// Difficulté boss = un cran au-dessus de la sélection du joueur
+		// Boss difficulty = one step above player selection
 		AIController.Difficulty bossLevel = gameState.AILevel switch
 		{
 			AIController.Difficulty.Easy   => AIController.Difficulty.Medium,
@@ -561,11 +563,11 @@ public partial class MapGenerator : Node
 			_                              => AIController.Difficulty.Hard
 		};
 
-		// 1 boss par région non-joueur : le bot le plus éloigné du joueur dans chaque région
+		// One boss per non-player region: farthest bot from player in each region
 		var playerCamp = GameManager.Instance?.GetAllCamps()?.Find(c => c.GetTeamId() == 1);
 		var allCamps   = GameManager.Instance?.GetAllCamps();
 
-		// Regrouper les bots par région
+		// Group bots by region
 		var botsByRegion = new System.Collections.Generic.Dictionary<int, System.Collections.Generic.List<int>>();
 		foreach (int teamId in botTeams)
 		{
@@ -575,7 +577,7 @@ public partial class MapGenerator : Node
 			botsByRegion[region].Add(teamId);
 		}
 
-		// Pour chaque région non-joueur : boss = bot le plus éloigné du joueur
+		// For each non-player region: boss = farthest bot from player
 		foreach (var (region, teams) in botsByRegion)
 		{
 			if (region == playerRegion) continue;
@@ -603,16 +605,16 @@ public partial class MapGenerator : Node
 			ai.Initialize(isBoss ? bossLevel : AIController.Difficulty.Easy, teamId);
 		}
 
-		GD.Print($"[MAP] {botTeams.Count} AIController(s) — {AIController.BossTeamIds.Count} boss ({bossLevel}), reste Easy");
-		GD.Print($"[IA DEBUG] Région joueur (team 1) : {playerRegion}");
+		GD.Print($"[MAP] {botTeams.Count} AIController(s) - {AIController.BossTeamIds.Count} boss ({bossLevel}), others Easy");
+		GD.Print($"[IA DEBUG] Player region (team 1): {playerRegion}");
 		foreach (int teamId in botTeams)
 		{
 			int region = GameManager.Instance?.GetHomeRegion(teamId) ?? -1;
 			bool isBoss = AIController.BossTeamIds.Contains(teamId);
-			GD.Print($"[IA DEBUG]   Team {teamId} → région {region} → {(isBoss ? $"BOSS ({bossLevel})" : "Easy")}");
+			GD.Print($"[IA DEBUG]   Team {teamId} -> region {region} -> {(isBoss ? $"BOSS ({bossLevel})": "Easy")}");
 		}
 
-		// Rafraîchir les labels des camps maintenant que BossTeamIds est rempli
+		// Refresh camp labels now that BossTeamIds is populated
 		foreach (var node in GetTree().GetNodesInGroup("camps"))
 		{
 			if (node is CampSimple camp)

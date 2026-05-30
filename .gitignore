@@ -11,7 +11,7 @@
 # Godot UID files
 *.cs.uid
 *.tscn.uid
-
+*export_presets.cfg
 # IDE
 .idea/
 *.sln.DotSettings.user

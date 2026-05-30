@@ -27,7 +27,7 @@ public partial class CampSimple : Area2D
 
 	private List<Unit> _spawnedUnits = new List<Unit>();
 
-	// Defenseurs du camp (initiaux + bonus capture) — distinct des unites produites
+	// Defenseurs du camp (initiaux + bonus capture) - distinct des unites produites
 	private List<Unit> _defenders = new List<Unit>();
 
 	private Queue<string> _productionQueue = new Queue<string>();
@@ -38,7 +38,7 @@ public partial class CampSimple : Area2D
 	private const int MaxQueueSize = 7;
 	// Plafond global d'unités géré par GameManager.GetMaxUnitsForTeam() (10 par camp contrôlé)
 
-	// Region economique (1, 2 ou 3) — secteur angulaire par rapport au centre
+	// Region economique (1, 2 ou 3) - secteur angulaire par rapport au centre
 	public int RegionId { get; set; } = 0;
 
 	public bool HasPort { get; private set; }
@@ -112,22 +112,14 @@ public partial class CampSimple : Area2D
 		var gameState = GetNodeOrNull<GameState>("/root/GameState");
 		int localTeamId = gameState?.LocalTeamId ?? 1;
 
-		// Relay : les camps neutres ne sont pas simulés localement sur tous les peers
-		// (évite double capture / désync) — la capture arrive via opcode CampCaptured.
-		if (IsRelayModeActive() && (IsNeutralCamp || TeamId == 0))
+		// Online: neutral camps are not simulated on every peer (capture via CampCaptured opcode).
+		if (IsOnlineMultiplayer() && (IsNeutralCamp || TeamId == 0))
 			return false;
-
-		// Camps neutres ENet : le serveur (team 1) a l'autorite
-		if (IsNeutralCamp || TeamId == 0)
-			return localTeamId == 1;
 
 		return TeamId == localTeamId;
 	}
 
-	private bool IsRelayModeActive()
-	{
-		return NetworkSync.Instance?.IsRelayMode() == true;
-	}
+	private static bool IsOnlineMultiplayer() => GameState.IsOnlineMultiplayer;
 
 	// Reseau : mettre a jour l'autorite des defenseurs apres assignation
 	public void UpdateDefendersAuthority()
@@ -170,13 +162,13 @@ public partial class CampSimple : Area2D
 
 		// En mode relay, une capture peut n'être confirmée que par message distant.
 		// On ajoute donc les bonus units ici pour converger avec le peer qui a capturé localement.
-		if (IsRelayModeActive())
+		if (IsOnlineMultiplayer())
 			SpawnBonusUnits();
 
 		GD.Print($"[NET] Camp #{CampId} capture a distance: Team {oldTeamId} -> {newTeamId}");
 		EmitSignal(SignalName.CampCaptured, newTeamId);
 
-		// Appel direct garanti — ne dépend pas de la connexion signal
+		// Appel direct garanti - ne dépend pas de la connexion signal
 		TerritoryManager.Instance?.RefreshTerritory(newTeamId);
 	}
 

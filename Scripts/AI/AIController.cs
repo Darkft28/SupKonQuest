@@ -4,10 +4,10 @@ using System.Collections.Generic;
 using System.Linq;
 
 /// <summary>
-/// Contrôle une équipe bot en mode solo contre IA.
-/// Architecture Utility AI : score 4 modes à chaque tick, choisit le meilleur.
-/// Trois niveaux de difficulté : Easy / Medium / Hard.
-/// L'IA tient compte de ses tiers déverrouillés et adapte sa stratégie en conséquence.
+/// Controls a bot team in solo vs AI mode.
+/// Utility AI architecture: scores 4 modes each tick and picks the best one.
+/// Three difficulty levels: Easy / Medium / Hard.
+/// The AI uses unlocked tiers and adapts its strategy accordingly.
 /// </summary>
 public partial class AIController : Node
 {
@@ -15,38 +15,43 @@ public partial class AIController : Node
 
 	private int _teamId = 2;
 
-	// ── Paramètres par difficulté ─────────────────────────────────────────────
+	// -- Per-difficulty parameters ------------------------------------------------
 
-	// Intervalle entre chaque tick de décision
+	// Interval between decision ticks
 	private static readonly float[] TickInterval    = { 6f,  3.5f, 2f   };
-	// Nombre max d'unités simultanées
+	// Max simultaneous unit count
 	private static readonly int[]   MaxUnits         = { 8,   16,   28   };
-	// Délai avant la toute première attaque (laisse le temps de buildup)
+	// Delay before the first attack (allows buildup time)
 	private static readonly float[] FirstAttackDelay = { 20f, 12f,  5f   };
-	// Délai de réaction avant d'exécuter un ordre (simule la lenteur humaine)
+	// Reaction delay before executing an order (simulates human latency)
 	private static readonly float[] ReactionDelay    = { 5f,  1.5f, 0.3f };
-	// Chance de choisir une cible sous-optimale (imite l'erreur humaine)
+	// Chance to choose a suboptimal target (simulates human mistakes)
 	private static readonly float[] ErrorRate        = { 0.4f,0.15f, 0f  };
-	// Si aucune attaque depuis N secondes → forcer une attaque
+	// If no attack for N seconds, force an attack
 	private static readonly float[] ForcedAttackDelay= { 60f, 40f, 25f };
-	// Seuil d'or pour commencer à économiser vers tier 2 (garde en réserve)
+	// Gold threshold to start saving for tier 2
 	private static readonly int[]   Tier2SaveThreshold = { 0, 900, 700 };
-	// % d'unités gardées en défense (du total disponible)
+	// % of units kept for defense (from total available)
 	private static readonly float[] DefenseRatio     = { 0f,  0.15f, 0.20f };
-	// % de chance de passer un tick entier sans rien faire (simule l'inattention)
+	// % chance to skip a full tick (simulates inattention)
 	private static readonly float[] SkipTickChance   = { 0.35f, 0.10f, 0f  };
-	// Nombre minimum d'unités arrivées au point de ralliement avant d'attaquer
+	// Minimum units at rally point before attacking
 	private static readonly int[]   MinRallyUnits    = { 1,   4,    6   };
-	// Rayon pour considérer une unité comme "arrivée" au point de ralliement
+	// Radius used to consider a unit "arrived"at rally point
 	private static readonly float[] RallyArrivalRadius = { 0f, 600f, 500f };
-	// Offensive navale Hard avant home region complète : chance par tick + cooldown min entre vagues
+	// Amphibious waves: tick chance (Hard, before full home) + min cooldown between unload launches
 	private static readonly float[] NavalEarlyAttackChance = { 0f,  0f,   0.20f };
-	private static readonly float[] NavalAttackCooldown    = { 0f,  0f,   30f  };
+	private static readonly float[] NavalAttackCooldown    = { 0f,  20f,  30f  };
+	private static readonly int[]   MinAmphibiousLoad      = { 0,   4,    6    };
+	private static readonly float[] BoardingRadius         = { 0f,  500f, 600f };
+	private static readonly float[] PostUnloadAttackRadius = { 0f,  700f, 900f };
+	private static readonly float[] PortPatrolRadius       = { 0f,  400f, 0f   };
+	private const int MaxAITransports = 2;
 
-	// ── Composition d'armée cible (ratio par type) ────────────────────────────
-	// Easy : spam Infantry, jamais de soutien
-	// Medium : composition équilibrée
-	// Hard : composition adaptative (voir PickUnitToBuy)
+	// -- Target army composition (ratio per type) --------------------------------
+	// Easy: infantry spam, no support units
+	// Medium: balanced composition
+	// Hard: adaptive composition (see PickUnitToBuy)
 
 	private static readonly Dictionary<string, float>[] TargetComposition =
 	{
@@ -55,13 +60,13 @@ public partial class AIController : Node
 		{
 			{ "Infantry", 1.0f }
 		},
-		// Medium — tier 1 uniquement dans la cible de base (Heal/AntiArmor s'ajoutent à tier 2)
+		// Medium - tier 1 only in the base target (Heal/AntiArmor added at tier 2)
 		new Dictionary<string, float>
 		{
 			{ "Infantry", 0.45f },
 			{ "Range",    0.35f },
 			{ "Support",  0.20f },
-			// Heal et AntiArmor ajoutés dynamiquement si tier 2 déverrouillé (voir PickUnitToBuy)
+			// Heal and AntiArmor are added dynamically when tier 2 is unlocked (see PickUnitToBuy)
 		},
 		// Hard
 		new Dictionary<string, float>
@@ -71,14 +76,14 @@ public partial class AIController : Node
 			{ "Support",  0.20f },
 			{ "Mortar",   0.10f },
 			{ "Heavy",    0.10f }
-			// Heal, AntiArmor, Tank ajoutés dynamiquement selon tier
+			// Heal, AntiArmor, and Tank are added dynamically by tier
 		}
 	};
 
-	// Équipes boss connues (pour affichage visuel dans CampSimple)
+	// Known boss teams (for visual display in CampSimple)
 	public static readonly HashSet<int> BossTeamIds = new HashSet<int>();
 
-	// ── État interne ──────────────────────────────────────────────────────────
+	// -- Internal state ------------------------------------------------------------
 
 	private Difficulty _difficulty;
 	private int _diffIdx;
@@ -93,9 +98,13 @@ public partial class AIController : Node
 	private CampSimple _pendingTarget;
 	private List<Unit> _pendingAttackers;
 
+	private CampSimple _amphibiousTarget;
+	private Vector2? _amphibiousUnloadLandPos;
+	private Ship _amphibiousTransport;
+
 	private readonly Random _rng = new Random();
 
-	// ── Initialisation ────────────────────────────────────────────────────────
+	// Initialisation
 
 	public void Initialize(Difficulty difficulty, int teamId = 2)
 	{
@@ -103,10 +112,10 @@ public partial class AIController : Node
 		_difficulty = difficulty;
 		_diffIdx    = (int)difficulty;
 		_tickTimer  = TickInterval[_diffIdx];
-		GD.Print($"[IA] Démarrée — équipe {teamId}, niveau : {difficulty}");
+		GD.Print($"[IA] Started - team {teamId}, level: {difficulty}");
 	}
 
-	// ── Boucle principale ─────────────────────────────────────────────────────
+	// Boucle principale
 
 	public override void _Process(double delta)
 	{
@@ -115,14 +124,14 @@ public partial class AIController : Node
 		_lastAttackTimer     += dt;
 		_lastNavalAttackTimer += dt;
 
-		// Réaction différée en cours
+		// Deferred reaction currently pending
 		if (_reactionPending)
 		{
 			_reactionTimer -= dt;
 			if (_reactionTimer <= 0f)
 			{
 				_reactionPending = false;
-				// Vérifier que la cible est toujours ennemie (peut avoir été capturée pendant le délai)
+				// Ensure target is still enemy-owned (it may have been captured during the delay)
 				if (_pendingTarget != null && IsInstanceValid(_pendingTarget)
 					&& _pendingTarget.GetTeamId() != _teamId)
 					SendUnitsTo(_pendingTarget, _pendingAttackers);
@@ -141,10 +150,10 @@ public partial class AIController : Node
 
 	private void RunTick()
 	{
-		// Inattention simulée : chance de ne rien faire ce tick
+		// Simulated inattention: chance to do nothing this tick
 		if (SkipTickChance[_diffIdx] > 0f && _rng.NextDouble() < SkipTickChance[_diffIdx])
 		{
-			GD.Print($"[IA] Équipe {_teamId} — tick ignoré (inattention)");
+			GD.Print($"[IA] Team {_teamId} - tick skipped (inattention)");
 			return;
 		}
 
@@ -153,21 +162,25 @@ public partial class AIController : Node
 
 		ManageProduction(tier, gold);
 		ManageCombat(tier, gold);
+
+		// After rally/defense orders so boarding is not overwritten in the same tick
+		if (_diffIdx > 0)
+			ManageAmphibiousWarfare(tier);
 	}
 
-	// ── Gestion économique et production ─────────────────────────────────────
+	// -- Economy and production ----------------------------------------------------
 
 	private void ManageProduction(int tier, int gold)
 	{
 		var aiCamps = GetAICamps();
 		if (aiCamps.Count == 0) return;
 
-		// Medium/Hard : achète le palier 2 dès qu'on peut se le permettre
+		// Medium/Hard: buy tier 2 as soon as affordable
 		if (_diffIdx > 0 && tier < 2 && gold >= GameManager.Tier2Cost)
 		{
 			GameManager.Instance?.UnlockTier2(_teamId);
-			GD.Print($"[IA] Achat palier 2 !");
-			return; // on attend le prochain tick pour produire
+			GD.Print($"[IA] Purchased tier 2!");
+			return; // wait for next tick to produce
 		}
 
 		if (_diffIdx > 0)
@@ -176,14 +189,14 @@ public partial class AIController : Node
 		if (_diffIdx > 0)
 			ManageShipProduction(aiCamps, tier, gold);
 
-		// Easy : dépense tout sans réfléchir
-		// Medium/Hard : économise si on approche du seuil tier 2
+		// Easy: spend all available gold
+		// Medium/Hard: save when approaching the tier-2 threshold
 		if (_diffIdx > 0 && tier < 2)
 		{
 			int reserve = Tier2SaveThreshold[_diffIdx];
 			if (gold < reserve)
 			{
-				GD.Print($"[IA] Économise pour tier 2 ({gold}/{reserve} or)");
+				GD.Print($"[IA] Saving for tier 2 ({gold}/{reserve} gold)");
 				return;
 			}
 		}
@@ -191,13 +204,13 @@ public partial class AIController : Node
 		int totalUnits = GetAIUnits().Count;
 		int maxUnits   = GetMaxUnits();
 
-		// Plafond normal atteint → autoriser quand même si la composition est déséquilibrée
-		// (ex : tier 3 vient de se débloquer mais l'armée est pleine d'Infantry tier 1)
+		// Normal cap reached -> still allow if composition is unbalanced
+		// (e.g., tier 3 just unlocked but army is full of tier-1 Infantry)
 		if (totalUnits >= maxUnits)
 		{
 			if (!NeedsRebalancing(tier))
 				return;
-			// Rééquilibrage autorisé jusqu'à 130% du plafond max
+			// Rebalancing allowed up to 130% of max cap
 			if (totalUnits >= (int)(maxUnits * 1.3f))
 				return;
 		}
@@ -205,7 +218,7 @@ public partial class AIController : Node
 		string unitType = PickUnitToBuy(tier);
 		if (unitType == null) return;
 
-		// Camp avec la file la plus courte et la capacité pour acheter
+		// Camp with shortest queue and enough capacity to buy
 		var camp = aiCamps
 			.Where(c => c.CanBuyUnit(unitType))
 			.OrderBy(c => c.GetQueueCount())
@@ -218,8 +231,8 @@ public partial class AIController : Node
 		}
 	}
 
-	// Achète un port uniquement si l'équipe contrôle entièrement au moins une région.
-	// Choisit le camp le plus proche de l'eau dont la côte est dans le territoire de l'équipe.
+	// Buys a port only if the team fully controls at least one region.
+	// Chooses the camp closest to water whose shoreline is within team territory.
 	private void ManagePortBuying(List<CampSimple> aiCamps, int gold)
 	{
 		if (gold < CampSimple.PortCost) return;
@@ -234,7 +247,7 @@ public partial class AIController : Node
 		{
 			if (camp.TryAIPlacePort())
 			{
-				GD.Print($"[IA team {_teamId}] Port construit au camp #{camp.CampId}");
+				GD.Print($"[IA team {_teamId}] Port built at camp #{camp.CampId}");
 				return;
 			}
 		}
@@ -272,39 +285,45 @@ public partial class AIController : Node
 		if (camp != null)
 		{
 			camp.BuyShip(shipType);
-			GD.Print($"[IA team {_teamId}] Achat bateau {shipType} (tier {tier})");
+			GD.Print($"[IA team {_teamId}] Purchased ship {shipType} (tier {tier})");
 		}
 	}
 
 	private string PickShipToBuy(int tier, int gold)
 	{
+		if (GameManager.GetShipTier("Transport") > tier)
+			return null;
+
+		int transportPrice = ShipStats.GetStats("Transport").Price;
+		if (GetAITotalTransportCount() < MaxAITransports && gold >= transportPrice)
+			return "Transport";
+
 		if (_diffIdx == 1)
 		{
-			if (tier >= 3 && gold >= ShipStats.GetStats("Destroyer").Price
-				&& GameManager.GetShipTier("Destroyer") <= tier)
-				return "Destroyer";
-			if (GameManager.GetShipTier("Fregate") <= tier)
+			if (CountAIShipsOfType("Fregate") == 0
+				&& gold >= ShipStats.GetStats("Fregate").Price
+				&& GameManager.GetShipTier("Fregate") <= tier)
 				return "Fregate";
 			return null;
 		}
 
 		if (_diffIdx >= 2)
 		{
-			if (_rng.NextDouble() < 0.15 && GameManager.GetShipTier("Transport") <= tier)
-				return "Transport";
-
 			if (tier >= 3 && gold >= ShipStats.GetStats("Destroyer").Price
-				&& _rng.NextDouble() < 0.4f)
+				&& GameManager.GetShipTier("Destroyer") <= tier
+				&& _rng.NextDouble() < 0.15f)
 				return "Destroyer";
 
-			if (GameManager.GetShipTier("Fregate") <= tier)
+			if (gold >= ShipStats.GetStats("Fregate").Price
+				&& GameManager.GetShipTier("Fregate") <= tier
+				&& _rng.NextDouble() < 0.25f)
 				return "Fregate";
 		}
 
 		return null;
 	}
 
-	// Vrai si l'équipe contrôle 100% des camps d'au moins une région.
+	// True if the team controls 100% of camps in at least one region.
 	private bool ControlsAnyFullRegion()
 	{
 		var allCamps = GameManager.Instance?.GetAllCamps();
@@ -345,26 +364,26 @@ public partial class AIController : Node
 	}
 
 	/// <summary>
-	/// Choisit le type d'unité à acheter selon la composition cible et le tier déverrouillé.
+	/// Selects the unit type to buy based on target composition and unlocked tier.
 	/// </summary>
 	private string PickUnitToBuy(int tier)
 	{
 		var allUnits = GetAIUnits();
 
-		// Construire la composition cible selon le tier actuel
+		// Build target composition based on current tier
 		var composition = new Dictionary<string, float>(TargetComposition[_diffIdx]);
 
-		// Tier 2 : ajouter Heal + AntiArmor (Medium et Hard)
+		// Tier 2: add Heal + AntiArmor (Medium and Hard)
 		if (_diffIdx >= 1 && tier >= 2)
 		{
 			composition["Heal"]      = 0.12f;
 			composition["AntiArmor"] = 0.08f;
-			// Réduire Infantry/Range pour faire de la place
+			// Reduce Infantry/Range to make room
 			if (composition.ContainsKey("Infantry")) composition["Infantry"] -= 0.08f;
 			if (composition.ContainsKey("Range"))    composition["Range"]    -= 0.07f;
 		}
 
-		// Tier 3 : intégrer Mortar, Heavy (Medium+Hard) et Tank (Hard uniquement, rare)
+		// Tier 3: add Mortar, Heavy (Medium+Hard), and Tank (Hard only, rare)
 		if (tier >= 3)
 		{
 			if (_diffIdx >= 1) // Medium + Hard
@@ -374,24 +393,24 @@ public partial class AIController : Node
 				if (composition.ContainsKey("Infantry")) composition["Infantry"] -= 0.06f;
 				if (composition.ContainsKey("Range"))    composition["Range"]    -= 0.06f;
 			}
-			if (_diffIdx >= 2) // Hard uniquement — Tank rare (coûteux, lent à produire)
+			if (_diffIdx >= 2) // Hard only - Tank is rare (expensive, slow to produce)
 			{
 				composition["Tank"] = 0.04f;
 				if (composition.ContainsKey("Infantry")) composition["Infantry"] -= 0.04f;
 			}
-			// Plancher à 0.05 pour éviter les ratios négatifs
+			// Floor at 0.05 to avoid negative ratios
 			foreach (var key in composition.Keys.ToList())
 				if (composition[key] < 0.05f) composition[key] = 0.05f;
 		}
 
-		// Filtrer les unités autorisées par le tier actuel
+		// Filter units allowed by current tier
 		var allowed = composition.Keys
 			.Where(t => GameManager.GetUnitTier(t) <= tier)
 			.ToList();
 
 		if (allowed.Count == 0) return "Infantry";
 
-		// Hard : contre-composition si l'ennemi spam les Heavy
+		// Hard: counter-composition when enemy spams Heavy
 		if (_diffIdx == 2 && tier >= 2 && allowed.Contains("AntiArmor"))
 		{
 			int enemyHeavyCount = GetTree().GetNodesInGroup("units")
@@ -401,7 +420,7 @@ public partial class AIController : Node
 				return "AntiArmor";
 		}
 
-		// Calculer la composition actuelle
+		// Compute current composition
 		var currentCounts = new Dictionary<string, int>();
 		foreach (var t in allowed) currentCounts[t] = 0;
 		foreach (var unit in allUnits)
@@ -413,7 +432,7 @@ public partial class AIController : Node
 
 		int total = Mathf.Max(1, allUnits.Count);
 
-		// Trouver le type le plus sous-représenté par rapport à la cible
+		// Find the most underrepresented type relative to target
 		string best = null;
 		float biggestGap = float.MinValue;
 
@@ -432,20 +451,17 @@ public partial class AIController : Node
 		return best ?? "Infantry";
 	}
 
-	// ── Gestion du combat ─────────────────────────────────────────────────────
+	// -- Combat management ---------------------------------------------------------
 
 	private void ManageCombat(int tier, int gold)
 	{
 		if (_gameTimer < FirstAttackDelay[_diffIdx]) return;
 
-		if (_diffIdx > 0)
-			ManageNavalCombat(tier);
-
 		bool forceAttack = _lastAttackTimer >= ForcedAttackDelay[_diffIdx];
 
-		// ── Catégoriser les unités idle (Medium/Hard) ─────────────────────────
-		// rallied  = déjà au point de rassemblement → protégées, ne pas toucher
-		// enRoute  = idle mais pas encore au rally  → disponibles pour défense ou envoi au rally
+		// -- Categorize idle units (Medium/Hard) --------------------------------
+		// rallied = already at rally point -> protected, do not retask
+		// enRoute = idle but not yet at rally -> available for defense or rallying
 		List<Unit> rallied = new List<Unit>();
 		List<Unit> enRoute;
 
@@ -462,8 +478,8 @@ public partial class AIController : Node
 			enRoute = GetIdleAIUnits();
 		}
 
-		// ── Défense réactive (Medium/Hard) ────────────────────────────────────
-		// N'utilise QUE les unités en route (enRoute), jamais celles déjà au rally.
+		// -- Reactive defense (Medium/Hard) -------------------------------------
+		// Uses ONLY en-route units, never the ones already at rally.
 		if (_diffIdx > 0 && !forceAttack)
 		{
 			var threatenedCamp = FindThreatenedAICamp();
@@ -474,20 +490,20 @@ public partial class AIController : Node
 				foreach (var unit in defenders)
 					unit.MoveTo(threatenedCamp.GlobalPosition + RandomOffset(180f));
 				enRoute = enRoute.Skip(defCount).ToList();
-				GD.Print($"[IA team {_teamId}] Défense réactive : {defCount} unités vers camp #{threatenedCamp.CampId}");
+				GD.Print($"[IA team {_teamId}] Reactive defense: {defCount} units to camp #{threatenedCamp.CampId}");
 			}
 		}
-		// Easy : pas de défense réactive (DefenseRatio[0] = 0f)
+		// Easy: no reactive defense (DefenseRatio[0] = 0f)
 
-		// ── Regroupement (Medium/Hard) ────────────────────────────────────────
+		// -- Rallying (Medium/Hard) ---------------------------------------------
 		if (_diffIdx > 0 && !forceAttack)
 		{
 			Vector2 rallyPos = GetHomePosition();
-			// Envoyer les unités en route vers le rally
+			// Send en-route units to rally point
 			foreach (var unit in enRoute)
 				unit.MoveTo(rallyPos + RandomOffset(280f));
 
-			// Seuil adaptatif : min(MinRallyUnits, 60% de l'armée totale)
+			// Adaptive threshold: min(MinRallyUnits, 60% of total army)
 			int totalArmy = GetAIUnits().Count;
 			int minRally  = Mathf.Min(MinRallyUnits[_diffIdx], Mathf.Max(2, (int)(totalArmy * 0.6f)));
 
@@ -497,7 +513,7 @@ public partial class AIController : Node
 				return;
 			}
 
-			// Seuil atteint → attaquer avec les unités arrivées
+			// Threshold reached -> attack with arrived units
 			var target2 = ChooseTarget(tier, false);
 			if (target2 == null) return;
 
@@ -515,7 +531,7 @@ public partial class AIController : Node
 			return;
 		}
 
-		// ── Easy / ForceAttack : attaque directe ──────────────────────────────
+		// -- Easy / ForceAttack: direct attack ----------------------------------
 		if (enRoute.Count == 0) return;
 
 		var target = ChooseTarget(tier, forceAttack);
@@ -541,8 +557,8 @@ public partial class AIController : Node
 		{
 			if (!IsInstanceValid(unit)) continue;
 
-			// AttackCamp : toutes les unités naviguent vers le même camp cible,
-			// empruntant le même couloir nav. Deux armées adverses qui s'attaquent
+			// AttackCamp: all units navigate toward the same target camp,
+			// using the same nav corridor. Two opposing armies attacking each other
 			// mutuellement se croisent sur le même chemin et combattent via _opportunisticTarget.
 			// Les Heal suivent en MoveTo (AttackCamp les ignore).
 			if (unit.GetUnitType() == "Heal")
@@ -551,45 +567,315 @@ public partial class AIController : Node
 				unit.AttackCamp(target);
 		}
 		_lastAttackTimer = 0f;
-		GD.Print($"[IA] {units.Count} unités → camp #{target.CampId} (team {target.GetTeamId()})");
+		GD.Print($"[IA] {units.Count} units -> camp #{target.CampId} (team {target.GetTeamId()})");
 	}
 
-	// ── Combat naval (Medium / Hard) ─────────────────────────────────────────
+	// -- Amphibious warfare (Medium / Hard) ---------------------------------------
 
-	private void ManageNavalCombat(int tier)
+	private void ManageAmphibiousWarfare(int tier)
 	{
-		if (!CanRunNavalOffensive()) return;
+		if (_diffIdx <= 0) return;
 
-		var combatShips = GetIdleCombatShips();
-		if (combatShips.Count == 0) return;
+		TryPostAmphibiousAssault();
+		TryLaunchAmphibiousUnload();
+		if (AnyAITransportCanBoard())
+			TryBoardTransport();
+
+		if (_diffIdx >= 2)
+		{
+			var activeTransport = GetAITransports()
+				.FirstOrDefault(t => t.GetLoadedUnitCount() > 0 && t.GetIsMoving());
+			if (activeTransport != null)
+				ManageTransportEscort(activeTransport);
+		}
+		else
+		{
+			ManageWarshipPortPatrol();
+		}
+
+		ManageNavalOffensive();
+	}
+
+	private void TryPostAmphibiousAssault()
+	{
+		if (_amphibiousTarget == null || !_amphibiousUnloadLandPos.HasValue)
+			return;
+
+		if (_amphibiousTransport != null && IsInstanceValid(_amphibiousTransport)
+			&& (_amphibiousTransport.GetIsMoving() || _amphibiousTransport.GetLoadedUnitCount() > 0))
+			return;
+
+		if (_amphibiousTarget.GetTeamId() == _teamId)
+		{
+			ClearAmphibiousState();
+			return;
+		}
+
+		float radius = PostUnloadAttackRadius[_diffIdx];
+		Vector2 landPos = _amphibiousUnloadLandPos.Value;
+		var assaultUnits = GetIdleAIUnits()
+			.Where(u => u.GlobalPosition.DistanceTo(landPos) <= radius
+				|| u.GlobalPosition.DistanceTo(_amphibiousTarget.GlobalPosition) <= radius * 1.2f)
+			.ToList();
+
+		if (assaultUnits.Count > 0)
+		{
+			SendUnitsTo(_amphibiousTarget, assaultUnits);
+			GD.Print($"[IA team {_teamId}] Amphibious assault: {assaultUnits.Count} units -> camp #{_amphibiousTarget.CampId}");
+		}
+
+		ClearAmphibiousState();
+	}
+
+	private void TryLaunchAmphibiousUnload()
+	{
+		if (!CanLaunchAmphibiousWave()) return;
 
 		var targetCamp = ChooseNavalTarget();
 		if (targetCamp == null) return;
 
-		var anchorCamp = GetAICamps().FirstOrDefault(c => c.HasPort) ?? GetAICamps().FirstOrDefault();
-		if (anchorCamp == null) return;
+		var transport = GetAITransports()
+			.Where(t => !t.GetIsMoving() && t.GetLoadedUnitCount() >= MinAmphibiousLoad[_diffIdx])
+			.OrderByDescending(t => t.GetLoadedUnitCount())
+			.FirstOrDefault();
 
-		Vector2 moveTarget = anchorCamp.FindWaterApproachNear(targetCamp.GlobalPosition);
-		if (!anchorCamp.IsWaterAtWorldPos(moveTarget))
-			return;
+		if (transport == null) return;
 
-		foreach (var ship in combatShips)
-			ship.MoveTo(moveTarget + RandomOffset(120f));
+		Vector2? landPos = FindUnloadPositionNearCamp(targetCamp, transport);
+		if (!landPos.HasValue) return;
 
+		transport.MoveToUnload(landPos.Value);
+		_amphibiousTarget = targetCamp;
+		_amphibiousUnloadLandPos = landPos.Value;
+		_amphibiousTransport = transport;
 		_lastNavalAttackTimer = 0f;
-		GD.Print($"[IA team {_teamId}] {combatShips.Count} bateaux → eau près camp #{targetCamp.CampId}");
+		GD.Print($"[IA team {_teamId}] Transport -> unload near camp #{targetCamp.CampId} ({transport.GetLoadedUnitCount()} units)");
 	}
 
-	private bool CanRunNavalOffensive()
+	private bool IsTransportDockedForBoarding(Ship transport)
+	{
+		if (transport.GetLoadedUnitCount() >= transport.GetCapacity())
+			return false;
+
+		var portCamp = GetPortCampForShip(transport);
+		if (portCamp == null)
+			return false;
+
+		Vector2 portWater = portCamp.FindWaterApproachNear(portCamp.GetPortGlobalPosition());
+		float maxDockDist = BoardingRadius[_diffIdx] * 2f;
+		return transport.GlobalPosition.DistanceTo(portWater) <= maxDockDist;
+	}
+
+	private bool AnyAITransportCanBoard()
+	{
+		foreach (var transport in GetIdleTransports())
+		{
+			if (IsTransportDockedForBoarding(transport))
+				return true;
+		}
+		return false;
+	}
+
+	private void TryBoardTransport()
+	{
+		if (!AnyAITransportCanBoard())
+			return;
+
+		foreach (var transport in GetIdleTransports())
+		{
+			int freeSlots = transport.GetCapacity() - transport.GetLoadedUnitCount();
+			if (freeSlots <= 0) continue;
+
+			if (!IsTransportDockedForBoarding(transport))
+				continue;
+
+			// Nearest idle units (anywhere) - rally point is often far from the port
+			var boarders = GetIdleAIUnits()
+				.Where(u => u.CanBoardTransport())
+				.OrderBy(u => u.GlobalPosition.DistanceTo(transport.GlobalPosition))
+				.Take(freeSlots)
+				.ToList();
+
+			foreach (var unit in boarders)
+				unit.MoveToTransport(transport);
+
+			if (boarders.Count > 0)
+				GD.Print($"[IA team {_teamId}] Boarding {boarders.Count} units on transport");
+		}
+	}
+
+	private void ManageTransportEscort(Ship activeTransport)
+	{
+		if (activeTransport == null || !IsInstanceValid(activeTransport)) return;
+
+		var anchorCamp = GetAICamps().FirstOrDefault(c => c.HasPort);
+		if (anchorCamp == null) return;
+
+		Vector2 escortWater = anchorCamp.FindWaterApproachNear(activeTransport.GlobalPosition);
+		if (!anchorCamp.IsWaterAtWorldPos(escortWater))
+			escortWater = activeTransport.GlobalPosition;
+
+		foreach (var ship in GetCombatShipsAvailableForOrders().Take(2))
+			ship.MoveTo(escortWater + RandomOffset(200f), trustRelayTarget: true);
+	}
+
+	private void ManageWarshipPortPatrol()
+	{
+		var portCamp = GetAICamps().FirstOrDefault(c => c.HasPort);
+		if (portCamp == null) return;
+
+		Vector2 patrolWater = portCamp.FindWaterApproachNear(portCamp.GlobalPosition);
+		if (!portCamp.IsWaterAtWorldPos(patrolWater))
+			return;
+
+		float radius = PortPatrolRadius[_diffIdx];
+		foreach (var ship in GetCombatShipsAvailableForOrders())
+			ship.MoveTo(patrolWater + RandomOffset(radius * 0.35f));
+	}
+
+	private void ManageNavalOffensive()
+	{
+		var target = FindEnemyNavalTarget();
+		if (target == null) return;
+
+		var hunters = GetCombatShipsAvailableForOrders();
+		Vector2 targetPos = target.GlobalPosition;
+		foreach (var ship in hunters)
+			ship.MoveTo(targetPos + RandomOffset(180f), trustRelayTarget: true);
+	}
+
+	private Ship FindEnemyNavalTarget()
+	{
+		Ship bestTransport = null;
+		float bestTransportDist = float.MaxValue;
+		Ship bestWarship = null;
+		float bestWarshipDist = float.MaxValue;
+		Vector2 aiCenter = GetAICenter();
+
+		foreach (var node in GetTree().GetNodesInGroup("ships"))
+		{
+			if (node is not Ship ship || !IsInstanceValid(ship)) continue;
+			if (ship.GetTeamId() == _teamId || ship.GetTeamId() <= 0) continue;
+			if (ship.GetCurrentHealth() <= 0) continue;
+
+			float dist = aiCenter.DistanceTo(ship.GlobalPosition);
+			if (ship.GetShipType() == "Transport")
+			{
+				if (dist < bestTransportDist)
+				{
+					bestTransportDist = dist;
+					bestTransport = ship;
+				}
+			}
+			else
+			{
+				if (dist < bestWarshipDist)
+				{
+					bestWarshipDist = dist;
+					bestWarship = ship;
+				}
+			}
+		}
+
+		return bestTransport ?? bestWarship;
+	}
+
+	private bool CanLaunchAmphibiousWave()
 	{
 		if (_diffIdx <= 0) return false;
-		if (ControlsHomeRegionFully()) return true;
-		if (_diffIdx < 2) return false;
-
 		if (_lastNavalAttackTimer < NavalAttackCooldown[_diffIdx])
 			return false;
 
+		if (ControlsHomeRegionFully()) return true;
+		if (_diffIdx < 2) return false;
+
 		return _rng.NextDouble() < NavalEarlyAttackChance[_diffIdx];
+	}
+
+	private void ClearAmphibiousState()
+	{
+		_amphibiousTarget = null;
+		_amphibiousUnloadLandPos = null;
+		_amphibiousTransport = null;
+	}
+
+	private Vector2? FindUnloadPositionNearCamp(CampSimple camp, Ship transport)
+	{
+		if (camp == null || transport == null) return null;
+
+		Vector2 center = camp.GlobalPosition;
+		float[] distances = { 250f, 400f, 550f, 700f };
+		Vector2? best = null;
+		float bestScore = float.MaxValue;
+
+		foreach (float dist in distances)
+		{
+			for (int i = 0; i < 12; i++)
+			{
+				float angle = i * Mathf.Tau / 12f;
+				Vector2 pos = center + new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * dist;
+				if (!transport.IsValidUnloadPosition(pos)) continue;
+
+				float score = GetAICenter().DistanceTo(pos);
+				if (score < bestScore)
+				{
+					bestScore = score;
+					best = pos;
+				}
+			}
+		}
+
+		return best;
+	}
+
+	private CampSimple GetPortCampForShip(Ship transport)
+	{
+		return GetAICamps()
+			.Where(c => c.HasPort)
+			.OrderBy(c => c.GlobalPosition.DistanceTo(transport.GlobalPosition))
+			.FirstOrDefault();
+	}
+
+	private List<Unit> GetUnitsNearPosition(Vector2 pos, float radius)
+		=> GetIdleAIUnits()
+			.Where(u => u.GlobalPosition.DistanceTo(pos) <= radius)
+			.ToList();
+
+	private List<Ship> GetAITransports()
+		=> GetTree().GetNodesInGroup("ships")
+			.OfType<Ship>()
+			.Where(s => IsInstanceValid(s)
+				&& s.GetTeamId() == _teamId
+				&& s.GetCurrentHealth() > 0
+				&& s.GetShipType() == "Transport")
+			.ToList();
+
+	private List<Ship> GetIdleTransports()
+		=> GetAITransports().Where(t => !t.GetIsMoving()).ToList();
+
+	private int CountAIShipsOfType(string shipType)
+		=> GetTree().GetNodesInGroup("ships")
+			.OfType<Ship>()
+			.Count(s => IsInstanceValid(s)
+				&& s.GetTeamId() == _teamId
+				&& s.GetCurrentHealth() > 0
+				&& s.GetShipType() == shipType);
+
+	private int GetAITotalTransportCount()
+	{
+		int alive = CountAIShipsOfType("Transport");
+		int queued = 0;
+		foreach (var camp in GetAICamps().Where(c => c.HasPort))
+		{
+			if (camp.GetCurrentShipProduction() == "Transport")
+				queued++;
+			foreach (string shipType in camp.GetQueuedShips())
+			{
+				if (shipType == "Transport")
+					queued++;
+			}
+		}
+		return alive + queued;
 	}
 
 	private CampSimple ChooseNavalTarget()
@@ -611,30 +897,29 @@ public partial class AIController : Node
 		return coastalEnemies[pick];
 	}
 
-	private List<Ship> GetIdleCombatShips()
+	private List<Ship> GetCombatShipsAvailableForOrders()
 	{
 		return GetTree().GetNodesInGroup("ships")
 			.OfType<Ship>()
 			.Where(s => IsInstanceValid(s)
 				&& s.GetTeamId() == _teamId
 				&& s.GetCurrentHealth() > 0
-				&& s.GetShipType() != "Transport"
-				&& !s.GetIsMoving())
+				&& s.GetShipType() != "Transport"&& !s.IsEngagedInNavalCombat())
 			.ToList();
 	}
 
-	// ── Ciblage (Utility Scoring) ─────────────────────────────────────────────
+	// -- Targeting (Utility scoring) ----------------------------------------------
 
 	/// <summary>
-	/// Choisit le camp à attaquer selon un score d'utilité.
-	/// L'IA priorise les camps de sa région d'origine si elle vise le tier 3.
+	/// Chooses a camp to attack based on a utility score.
+	/// AI prioritizes camps in its home region when aiming for tier 3.
 	/// </summary>
 	private CampSimple ChooseTarget(int tier, bool forceAttack)
 	{
 		var allCamps = GameManager.Instance?.GetAllCamps();
 		if (allCamps == null) return null;
 
-		// Home region de l'IA
+		// AI home region
 		int homeRegion = GameManager.Instance.GetHomeRegion(_teamId);
 
 		var candidates = allCamps
@@ -645,7 +930,7 @@ public partial class AIController : Node
 
 		if (candidates.Count == 0) return null;
 
-		// Taux d'erreur : Easy choisit parfois une cible sous-optimale
+		// Error rate: Easy sometimes chooses a suboptimal target
 		if (!forceAttack && ErrorRate[_diffIdx] > 0f && _rng.NextDouble() < ErrorRate[_diffIdx])
 		{
 			int idx = _rng.Next(Mathf.Min(candidates.Count, 3));
@@ -663,30 +948,30 @@ public partial class AIController : Node
 		if (!IsLandReachable(camp))
 			score -= 10000f;
 
-		// ── Bonus : camp neutre (défenses limitées) ───────────────────────────
+		// -- Bonus: neutral camp (limited defenses) ------------------------------
 		if (camp.IsNeutralCamp)
 			score += 2500f;
 
-		// ── Bonus : camp endommagé (plus facile à prendre) ───────────────────
+		// -- Bonus: damaged camp (easier to capture) -----------------------------
 		float hpRatio = camp.GetCurrentHealth() / camp.MaxHealth;
 		score += (1f - hpRatio) * 1800f;
 
-		// ── Bonus : peu de défenseurs ─────────────────────────────────────────
+		// -- Bonus: few defenders ------------------------------------------------
 		int defenders = camp.GetLiveDefenders().Count;
 		score += Mathf.Max(0, 5 - defenders) * 300f;
 
-		// ── Bonus critique : camp dans la région d'origine → vise tier 3 ──────
-		// Si l'IA n'a pas encore le tier 3, elle priorise les camps de sa région
+		// -- Critical bonus: camp in home region -> aims for tier 3 --------------
+		// If AI does not have tier 3 yet, it prioritizes camps in that region
 		if (currentTier < 3 && homeRegion > 0 && camp.RegionId == homeRegion)
 			score += 3500f;
 
-		// ── Malus : distance (préférer les camps proches) ────────────────────
+		// -- Penalty: distance (prefer nearby camps) -----------------------------
 		float dist = aiCenter.DistanceTo(camp.GlobalPosition);
 		score -= dist * 0.4f;
 
-		// ── Easy : ignore les bonus stratégiques, attaque au plus proche ──────
+		// -- Easy: ignores strategic bonuses, attacks nearest --------------------
 		if (_diffIdx == 0)
-			score = -dist; // simplement le plus proche
+			score = -dist; // simply the nearest
 
 		return score;
 	}
@@ -711,12 +996,12 @@ public partial class AIController : Node
 		return GetReachableLandRegions().Contains(camp.RegionId);
 	}
 
-	// ── Défense ──────────────────────────────────────────────────────────────
+	// -- Defense ------------------------------------------------------------------
 
 	private CampSimple FindThreatenedAICamp()
 	{
-		// Seuils : défendre si le camp est en danger réel mais encore sauvable
-		// HP < 60% OU ennemi à moins de 700px
+		// Thresholds: defend if camp is in real but still recoverable danger
+		// HP < 60% OR enemy within 700px
 		return GetAICamps()
 			.Where(c =>
 			{
@@ -732,14 +1017,14 @@ public partial class AIController : Node
 			.FirstOrDefault();
 	}
 
-	// ── Helpers ──────────────────────────────────────────────────────────────
+	// Helpers
 
 	private int GetCurrentTier()
 		=> GameManager.Instance?.GetUnlockedTier(_teamId) ?? 1;
 
-	// Plafond dynamique : minimum entre le cap de difficulté et le cap global par camp
-	// Les deux doivent être cohérents pour éviter des ticks gaspillés à tenter d'acheter
-	// quand CanBuyUnit() bloquerait de toute façon.
+	// Dynamic cap: minimum between difficulty cap and global per-camp cap
+	// Both must stay aligned to avoid wasted ticks attempting purchases
+	// that CanBuyUnit() would reject anyway.
 	private int GetMaxUnits()
 	{
 		int extraCamps = Mathf.Max(0, GetAICamps().Count - 1);
@@ -748,7 +1033,7 @@ public partial class AIController : Node
 		return Mathf.Min(diffCap, globalCap);
 	}
 
-	// Vrai si un type d'unité du tier actuel est significativement sous-représenté (>15% d'écart)
+	// True when a unit type in the current tier is significantly underrepresented (>15% gap)
 	private bool NeedsRebalancing(int tier)
 	{
 		var allUnits = GetAIUnits();
@@ -770,7 +1055,7 @@ public partial class AIController : Node
 			if (GameManager.GetUnitTier(type) > tier) continue;
 			float currentRatio = counts.TryGetValue(type, out int c) ? c / (float)total : 0f;
 			if (targetRatio - currentRatio > 0.15f)
-				return true; // ce type manque de plus de 15%
+				return true; // this type is short by more than 15%
 		}
 		return false;
 	}
@@ -805,9 +1090,9 @@ public partial class AIController : Node
 		return camps.Count > 0 ? camps[0].GlobalPosition : Vector2.Zero;
 	}
 
-	// Retourne le centroïde de tous les camps possédés.
-	// Contrairement au camp natal fixe, ce point avance quand l'IA capture de nouveaux camps,
-	// évitant de rappeler les unités vers l'arrière après chaque capture.
+	// Returns the centroid of all owned camps.
+	// Unlike a fixed home camp, this point moves as AI captures new camps,
+	// preventing units from being pulled backward after each capture.
 	private Vector2 GetHomePosition()
 	{
 		var camps = GetAICamps();

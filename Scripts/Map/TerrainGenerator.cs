@@ -51,7 +51,7 @@ public static class TerrainGenerator
 		}
 	}
 
-	// Hash déterministe par position+type de tuile → variante 0-3 (FlipH/FlipV).
+	// Hash déterministe par position+type de tuile -> variante 0-3 (FlipH/FlipV).
 	// On évite les motifs réguliers en utilisant un mix binaire plus fort que les bits bas d'un LCG.
 	public static int PickAlt(int x, int y, int sourceId)
 	{
@@ -76,8 +76,7 @@ public static class TerrainGenerator
 		if (container == null) return;
 
 		string texPath = objetId == IdObjetArbre
-			? "res://Assets/Objects/Tree.png"
-			: "res://Assets/Objects/montagne.png";
+			? "res://Assets/Objects/Tree.png": "res://Assets/Objects/montagne.png";
 
 		if (objetId == IdObjetArbre)
 			_texTree ??= GD.Load<Texture2D>(texPath);

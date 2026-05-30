@@ -1,6 +1,6 @@
 namespace SupKonQuest.Map.Presets;
 
-// Carte prédéfinie 256x256 — Torskey
+// Carte prédéfinie 256x256 - Torskey
 // Régions : Tramat (Team 1) | Aggersborg (Neutre) | Jomsbor (Team 2)
 public static class TorskeyMap
 {
@@ -239,7 +239,7 @@ public static class TorskeyMap
         2283, -1, 1, 102, 4885, -1
     };
 
-    public static readonly string[] TerritoireNoms = { "Fyrkat", "Aggersborg", "Jomsborg" };
+    public static readonly string[] TerritoireNoms = { "Fyrkat", "Aggersborg", "Jomsborg"};
 
     public static readonly int[] TerritoiresRle = {
         174, 0, 82, 2, 173, 0, 83, 2, 173, 0, 83, 2, 173, 0, 83, 2,

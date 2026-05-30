@@ -21,6 +21,17 @@ public partial class GameHUD : Control
 
 	private Panel _disconnectPanel;
 	private Label _disconnectLabel;
+	private Panel _defeatPanel;
+	private Label _defeatLabel;
+	private bool _defeatBannerShown;
+	private Panel _victoryPanel;
+	private Label _victoryLabel;
+	private Label _victoryAutoReturnLabel;
+	private Button _victoryMenuButton;
+	private enum GameEndScreen { None, Defeat, Disconnect, Victory }
+	private GameEndScreen _activeEndScreen;
+	private bool _gameExitStarted;
+	private string _disconnectMessageKey;
 	private Panel _leaderboardPanel;
 	private VBoxContainer _leaderboardVBox;
 	private Label _leaderboardTitle;
@@ -31,19 +42,27 @@ public partial class GameHUD : Control
 	private bool _leaderboardExpanded = true;
 	private int  _leaderboardLastLineCount = 0;
 	private float _leaderboardRefreshTimer = 0f;
-	private const float LeaderboardRefreshInterval = 0.5f;
+	private const float LeaderboardRefreshInterval = 2.5f;
 	private const float LeaderboardCollapsedHeight = 50f;
+	private float _goldRefreshTimer = 0f;
+	private const float GoldRefreshInterval = 1.0f;
 
-		private static readonly string[] UnitTypes = new[]
+	private static string L(string key) =>
+		LocalizationManager.Instance?.GetText(key) ?? key;
+
+	private static string LF(string key, params object[] args) =>
+		string.Format(L(key), args);
+
+	private int _lastVictoryTeamId = -1;
+
+	private static readonly string[] UnitTypes = new[]
 	{
 		"Infantry", "Support", "Heal", "Range",
-		"AntiArmor", "Heavy", "Mortar", "Tank"
-	};
+		"AntiArmor", "Heavy", "Mortar", "Tank"};
 
 	private static readonly string[] ShipTypes = new[]
 	{
-		"Destroyer", "Fregate", "Transport"
-	};
+		"Destroyer", "Fregate", "Transport"};
 
 	public override void _Ready()
 	{
@@ -65,13 +84,57 @@ public partial class GameHUD : Control
 		BindSceneHudControls();
 		CreateAbilityButtons();
 
-		var networkManager = GetNodeOrNull<NetworkManager>("/root/NetworkManager");
-		if (networkManager != null)
+		var nakama = GetNodeOrNull<NakamaService>("/root/NakamaService");
+		if (nakama != null)
+			nakama.Disconnected += OnNakamaDisconnected;
+
+		var gameManager = GetNodeOrNull<GameManager>("/root/GameManager");
+		if (gameManager != null)
 		{
-			networkManager.PlayerDisconnected += OnPlayerDisconnected;
-			networkManager.ServerDisconnected += OnServerDisconnectedHUD;
+			gameManager.OnlinePlayerLeft += OnOnlinePlayerLeft;
+			gameManager.LocalPlayerEliminated += OnLocalPlayerEliminated;
+			gameManager.GameWon += OnGameWon;
 		}
 
+		if (LocalizationManager.Instance != null)
+			LocalizationManager.Instance.LanguageChanged += OnLanguageChanged;
+
+		RefreshLocalizedHudTexts();
+	}
+
+	private void OnLanguageChanged()
+	{
+		RefreshLocalizedHudTexts();
+		if (_selectionManager != null)
+		{
+			UpdateUnitButtons();
+			UpdateShipButtons();
+		}
+	}
+
+	private void RefreshLocalizedHudTexts()
+	{
+		if (_quitButton != null)
+			_quitButton.Text = L("hud_quit_menu");
+		if (_portButton != null)
+			_portButton.Text = LF("hud_port", CampSimple.PortCost);
+		if (_victoryMenuButton != null)
+			_victoryMenuButton.Text = L("main_menu");
+		if (_victoryAutoReturnLabel != null)
+			_victoryAutoReturnLabel.Text = L("victory_auto_return");
+		if (_activeEndScreen == GameEndScreen.Victory && _victoryLabel != null && _lastVictoryTeamId >= 0)
+			_victoryLabel.Text = $"{L("victory")}\n{_lastVictoryTeamId}";
+		if (_activeEndScreen == GameEndScreen.Disconnect && _disconnectLabel != null)
+		{
+			_disconnectLabel.Text = _disconnectMessageKey != null
+				? L(_disconnectMessageKey)
+				: _disconnectLabel.Text;
+		}
+		if (_defeatBannerShown && _defeatLabel != null)
+			_defeatLabel.Text = L("defeat");
+		if (_unlockTier2Button != null)
+			_unlockTier2Button.Text = LF("tier_unlock_button", GameManager.Tier2Cost);
+		RefreshLeaderboardTitle();
 	}
 
 	private void BindSceneHudControls()
@@ -85,11 +148,11 @@ public partial class GameHUD : Control
 		_leaderboardTitle = GetNodeOrNull<Label>("LeaderboardPanel/LeaderboardVBox/LeaderboardTitle");
 		_leaderboardRows = GetNodeOrNull<Label>("LeaderboardPanel/LeaderboardVBox/LeaderboardRows");
 
-		_quitButton.Text = "✕ Menu";
+		_quitButton.Text = L("hud_quit_menu");
 		UIStyle.ApplyStone(_quitButton);
 		_quitButton.Pressed += OnQuitButtonPressed;
 
-		_portButton.Text = $"⚓ Port ({CampSimple.PortCost}g)";
+		_portButton.Text = LF("hud_port", CampSimple.PortCost);
 		UIStyle.ApplyStone(_portButton);
 		_portButton.Pressed += OnPortButtonPressed;
 		_portButton.Visible = false;
@@ -98,6 +161,30 @@ public partial class GameHUD : Control
 		style.BgColor = new Color(0f, 0f, 0f, 0.6f);
 		_disconnectPanel.AddThemeStyleboxOverride("panel", style);
 		_disconnectPanel.Visible = false;
+
+		_defeatPanel = GetNodeOrNull<Panel>("DefeatPanel");
+		_defeatLabel = GetNodeOrNull<Label>("DefeatPanel/DefeatLabel");
+		if (_defeatPanel != null)
+		{
+			_defeatPanel.AddThemeStyleboxOverride("panel", style);
+			_defeatPanel.Visible = false;
+			_defeatPanel.MouseFilter = Control.MouseFilterEnum.Ignore;
+		}
+
+		_victoryPanel = GetNodeOrNull<Panel>("VictoryPanel");
+		_victoryLabel = GetNodeOrNull<Label>("VictoryPanel/VBoxContainer/VictoryLabel");
+		_victoryAutoReturnLabel = GetNodeOrNull<Label>("VictoryPanel/VBoxContainer/AutoReturnLabel");
+		_victoryMenuButton = GetNodeOrNull<Button>("VictoryPanel/VBoxContainer/MenuButton");
+		if (_victoryPanel != null)
+		{
+			_victoryPanel.AddThemeStyleboxOverride("panel", style);
+			_victoryPanel.Visible = false;
+		}
+		if (_victoryMenuButton != null)
+		{
+			UIStyle.ApplyStone(_victoryMenuButton);
+			_victoryMenuButton.Pressed += LeaveGameToMainMenu;
+		}
 
 		SetupLeaderboardUi();
 	}
@@ -146,9 +233,7 @@ public partial class GameHUD : Control
 
 		// Bouton-titre rétractable : transparent, hover gold subtil
 		_leaderboardTitle.Visible = false;
-		string titleText = LocalizationManager.Instance?.GetText("ranking_title") ?? "⚔  Classement";
 		_leaderboardToggleBtn = new Button();
-		_leaderboardToggleBtn.Text = "▼  " + titleText;
 		_leaderboardToggleBtn.AddThemeFontSizeOverride("font_size", 15);
 		_leaderboardToggleBtn.AddThemeColorOverride("font_color",         new Color(1f, 0.88f, 0.42f, 1f));
 		_leaderboardToggleBtn.AddThemeColorOverride("font_hover_color",   new Color(1f, 0.97f, 0.75f, 1f));
@@ -185,6 +270,16 @@ public partial class GameHUD : Control
 		_leaderboardRowsContainer = new VBoxContainer();
 		_leaderboardRowsContainer.AddThemeConstantOverride("separation", 3);
 		_leaderboardVBox.AddChild(_leaderboardRowsContainer);
+		RefreshLeaderboardTitle();
+	}
+
+	private void RefreshLeaderboardTitle()
+	{
+		if (_leaderboardToggleBtn == null)
+			return;
+
+		string prefix = _leaderboardExpanded ? "v  ": ">  ";
+		_leaderboardToggleBtn.Text = prefix + L("ranking_title");
 	}
 
 	private void OnLeaderboardTogglePressed()
@@ -193,8 +288,7 @@ public partial class GameHUD : Control
 		_leaderboardRowsContainer.Visible = _leaderboardExpanded;
 		_leaderboardSeparator.Visible     = _leaderboardExpanded;
 
-		string titleText = LocalizationManager.Instance?.GetText("ranking_title") ?? "⚔  Classement";
-		_leaderboardToggleBtn.Text = (_leaderboardExpanded ? "▼  " : "▶  ") + titleText;
+		RefreshLeaderboardTitle();
 
 		if (_leaderboardExpanded)
 			UpdateLeaderboardPanelHeight(_leaderboardLastLineCount);
@@ -237,7 +331,22 @@ public partial class GameHUD : Control
 	private void OnQuitButtonPressed()
 	{
 		TerritoryManager.Instance?.CancelPortPlacement();
+		LeaveGameToMainMenu();
+	}
+
+	private void LeaveGameToMainMenu()
+	{
+		if (_gameExitStarted)
+			return;
+
+		_gameExitStarted = true;
 		GetTree().Paused = false;
+
+		if (_victoryPanel != null)
+			_victoryPanel.Visible = false;
+		if (_disconnectPanel != null)
+			_disconnectPanel.Visible = false;
+
 		var gameState = GetNodeOrNull<GameState>("/root/GameState");
 		if (gameState != null)
 			gameState.ReturnToMainMenu();
@@ -245,39 +354,123 @@ public partial class GameHUD : Control
 			GetTree().ChangeSceneToFile("res://Scenes/MainMenu.tscn");
 	}
 
+	private bool ShouldIgnoreDisconnectSignal()
+	{
+		return _gameExitStarted
+			|| _activeEndScreen == GameEndScreen.Victory
+			|| GameState.Instance?.IsLeavingGame == true;
+	}
+
 	private void OnPortButtonPressed()
 	{
+		if (GameManager.Instance?.IsLocalPlayerEliminated() == true) return;
 		var camp = _selectionManager?.GetSelectedCamp();
 		if (camp == null || !IsInstanceValid(camp)) return;
 		if (camp.BuyPort())
+		{
+			RefreshGoldDisplayNow();
 			TerritoryManager.Instance?.StartPortPlacement(camp);
+		}
 	}
 
-	private void OnPlayerDisconnected(long id)
+	private void OnNakamaDisconnected()
 	{
-		ShowDisconnectMessage("Adversaire déconnecté\nRetour au menu dans 5s...");
+		if (ShouldIgnoreDisconnectSignal())
+			return;
+
+		ShowDisconnectMessage("game_end_server_lost");
 	}
 
-	private void OnServerDisconnectedHUD()
+	private void OnOnlinePlayerLeft(int teamId)
 	{
-		ShowDisconnectMessage("Connexion au serveur perdue\nRetour au menu dans 5s...");
+		if (teamId == GetLocalTeamId() || ShouldIgnoreDisconnectSignal())
+			return;
+
+		ShowDisconnectMessage("game_end_opponent_left");
 	}
 
-	private void ShowDisconnectMessage(string message)
+	private void OnLocalPlayerEliminated() => ShowDefeatBanner();
+
+	private void OnGameWon(int winningTeamId) => ShowVictoryScreen(winningTeamId);
+
+	private void ShowVictoryScreen(int winningTeamId)
 	{
-		if (_disconnectPanel == null || _disconnectLabel == null) return;
-		_disconnectLabel.Text = message;
+		if (_gameExitStarted || _activeEndScreen == GameEndScreen.Victory
+			|| _victoryPanel == null || _victoryLabel == null)
+			return;
+
+		_activeEndScreen = GameEndScreen.Victory;
+		_lastVictoryTeamId = winningTeamId;
+		_goldPanel.Visible = false;
+
+		if (_disconnectPanel != null)
+			_disconnectPanel.Visible = false;
+
+		_victoryLabel.Text = $"{L("victory")}\n{winningTeamId}";
+
+		if (_victoryAutoReturnLabel != null)
+			_victoryAutoReturnLabel.Text = L("victory_auto_return");
+
+		if (_victoryMenuButton != null)
+			_victoryMenuButton.Text = L("main_menu");
+
+		_victoryPanel.Visible = true;
+		GetTree().Paused = true;
+
+		GetTree().CreateTimer(5.0).Timeout += LeaveGameToMainMenu;
+	}
+
+	private void ShowDefeatBanner()
+	{
+		if (_defeatBannerShown || _defeatPanel == null || _defeatLabel == null)
+			return;
+
+		_defeatBannerShown = true;
+		_activeEndScreen = GameEndScreen.Defeat;
+		_goldPanel.Visible = false;
+
+		_defeatLabel.Text = L("defeat");
+		_defeatPanel.Visible = true;
+
+		GetTree().CreateTimer(5.0).Timeout += () =>
+		{
+			if (IsInstanceValid(_defeatPanel))
+				_defeatPanel.Visible = false;
+		};
+	}
+
+	private void ShowDisconnectMessage(string messageKey)
+	{
+		if (_disconnectPanel == null || _disconnectLabel == null)
+			return;
+		if (_gameExitStarted || _activeEndScreen == GameEndScreen.Victory
+			|| _activeEndScreen == GameEndScreen.Disconnect)
+			return;
+
+		_activeEndScreen = GameEndScreen.Disconnect;
+		_disconnectMessageKey = messageKey;
+		_disconnectLabel.Text = L(messageKey);
 		_disconnectPanel.Visible = true;
+
+		GetTree().CreateTimer(5.0).Timeout += LeaveGameToMainMenu;
 	}
 
 	public override void _ExitTree()
 	{
-		var networkManager = GetNodeOrNull<NetworkManager>("/root/NetworkManager");
-		if (networkManager != null)
+		var nakama = GetNodeOrNull<NakamaService>("/root/NakamaService");
+		if (nakama != null)
+			nakama.Disconnected -= OnNakamaDisconnected;
+
+		var gameManager = GetNodeOrNull<GameManager>("/root/GameManager");
+		if (gameManager != null)
 		{
-			networkManager.PlayerDisconnected -= OnPlayerDisconnected;
-			networkManager.ServerDisconnected -= OnServerDisconnectedHUD;
+			gameManager.OnlinePlayerLeft -= OnOnlinePlayerLeft;
+			gameManager.LocalPlayerEliminated -= OnLocalPlayerEliminated;
+			gameManager.GameWon -= OnGameWon;
 		}
+
+		if (LocalizationManager.Instance != null)
+			LocalizationManager.Instance.LanguageChanged -= OnLanguageChanged;
 	}
 
 
@@ -323,7 +516,7 @@ public partial class GameHUD : Control
 
 		// Bouton d'achat palier 2
 		_unlockTier2Button = new Button();
-		_unlockTier2Button.Text = $"Débloquer Palier 2 ({GameManager.Tier2Cost}g)";
+		_unlockTier2Button.Text = LF("tier_unlock_button", GameManager.Tier2Cost);
 		_unlockTier2Button.AddThemeFontSizeOverride("font_size", 13);
 		UIStyle.ApplyStone(_unlockTier2Button);
 		_unlockTier2Button.AnchorLeft   = 0.5f;
@@ -342,8 +535,10 @@ public partial class GameHUD : Control
 
 	private void OnUnlockTier2Pressed()
 	{
+		if (GameManager.Instance?.IsLocalPlayerEliminated() == true) return;
 		int teamId = GetLocalTeamId();
-		GameManager.Instance?.UnlockTier2(teamId);
+		if (GameManager.Instance?.UnlockTier2(teamId) == true)
+			RefreshGoldDisplayNow();
 	}
 
 	private void ConnectUnitButtons()
@@ -392,14 +587,11 @@ public partial class GameHUD : Control
 		return gameState?.LocalTeamId ?? 1;
 	}
 
-	private bool ShouldUseRelayCommands()
-	{
-		var gameState = GetNodeOrNull<GameState>("/root/GameState");
-		return gameState?.IsOnline == true && NakamaService.Instance?.IsSocketConnected == true;
-	}
+	private static bool ShouldUseRelayCommands() => GameState.IsOnlineMultiplayer;
 
 	private void OnUnitButtonPressed(string unitType)
 	{
+		if (GameManager.Instance?.IsLocalPlayerEliminated() == true) return;
 		if (_selectionManager == null) return;
 
 		var selectedCamp = _selectionManager.GetSelectedCamp();
@@ -415,15 +607,19 @@ public partial class GameHUD : Control
 		if (ShouldUseRelayCommands())
 		{
 			NetworkCommandRouter.RequestBuyUnit(selectedCamp, unitType);
+			RefreshGoldDisplayNow();
 			return;
 		}
 
-		if (!selectedCamp.BuyUnit(unitType))
+		if (selectedCamp.BuyUnit(unitType))
+			RefreshGoldDisplayNow();
+		else
 			GD.Print($"[HUD] Achat {unitType} refusé : {selectedCamp.GetBuyUnitDenyReason(unitType)}");
 	}
 
 	private void OnShipButtonPressed(string shipType)
 	{
+		if (GameManager.Instance?.IsLocalPlayerEliminated() == true) return;
 		if (_selectionManager == null) return;
 
 		var selectedPort = _selectionManager.GetSelectedPort();
@@ -434,10 +630,12 @@ public partial class GameHUD : Control
 		if (ShouldUseRelayCommands())
 		{
 			NetworkCommandRouter.RequestBuyShip(selectedPort, shipType);
+			RefreshGoldDisplayNow();
 			return;
 		}
 
-		selectedPort.BuyShip(shipType);
+		if (selectedPort.BuyShip(shipType))
+			RefreshGoldDisplayNow();
 	}
 
 	public override void _Process(double delta)
@@ -447,7 +645,7 @@ public partial class GameHUD : Control
 			FindSelectionManager();
 		}
 
-		UpdateGoldDisplay();
+		UpdateGoldDisplayThrottled(delta);
 		UpdateContainerVisibility();
 		UpdateUnitButtons();
 		UpdateShipButtons();
@@ -472,12 +670,12 @@ public partial class GameHUD : Control
 		AddChild(_abilitiesContainer);
 
 		_healUltimateButton = new Button();
-		_healUltimateButton.Text = "Heal Ult [1]";
+		_healUltimateButton.Text = BuildUltimateReadyLabel("Heal Ult", "ultimate_heal");
 		_healUltimateButton.Pressed += () => StartAbilityTargeting("heal_ultimate");
 		_abilitiesContainer.AddChild(_healUltimateButton);
 
 		_supportUltimateButton = new Button();
-		_supportUltimateButton.Text = "Support Ult [2]";
+		_supportUltimateButton.Text = BuildUltimateReadyLabel("Support Ult", "ultimate_support");
 		_supportUltimateButton.Pressed += () => StartAbilityTargeting("support_ultimate");
 		_abilitiesContainer.AddChild(_supportUltimateButton);
 
@@ -501,6 +699,8 @@ public partial class GameHUD : Control
 	{
 		if (_selectionManager == null || string.IsNullOrWhiteSpace(abilityId))
 			return;
+		if (GameManager.Instance != null && !GameManager.Instance.CanUseTeamUltimate(GetLocalTeamId(), abilityId))
+			return;
 
 		_selectionManager.BeginAbilityTargeting(abilityId);
 	}
@@ -510,45 +710,37 @@ public partial class GameHUD : Control
 		if (_abilitiesContainer == null || _selectionManager == null)
 			return;
 
-		var selectedUnits = _selectionManager.GetSelectedUnits();
-		bool hasUnits = selectedUnits != null && selectedUnits.Count > 0;
-		_abilitiesContainer.Visible = hasUnits;
-		if (!hasUnits)
-			return;
+		_abilitiesContainer.Visible = true;
 
-		bool canHeal = false;
-		bool canSupport = false;
-		float healCooldown = 0f;
-		float supportCooldown = 0f;
+		int localTeamId = GetLocalTeamId();
+		float healCooldown = GameManager.Instance?.GetTeamUltimateCooldownRemaining(localTeamId, "heal_ultimate") ?? 0f;
+		float supportCooldown = GameManager.Instance?.GetTeamUltimateCooldownRemaining(localTeamId, "support_ultimate") ?? 0f;
+		bool canHeal = healCooldown <= 0f;
+		bool canSupport = supportCooldown <= 0f;
 
-		foreach (var unit in selectedUnits)
-		{
-			if (unit == null || !IsInstanceValid(unit))
-				continue;
-
-			if (unit.GetUnitType() == "Heal")
-			{
-				healCooldown = Mathf.Max(healCooldown, unit.GetUltimateCooldownRemaining("heal_ultimate"));
-				canHeal |= unit.CanUseUltimate("heal_ultimate");
-			}
-			else if (unit.GetUnitType() == "Support")
-			{
-				supportCooldown = Mathf.Max(supportCooldown, unit.GetUltimateCooldownRemaining("support_ultimate"));
-				canSupport |= unit.CanUseUltimate("support_ultimate");
-			}
-		}
-
-		_healUltimateButton.Visible = canHeal || healCooldown > 0f;
+		_healUltimateButton.Visible = true;
 		_healUltimateButton.Disabled = !canHeal;
 		_healUltimateButton.Text = healCooldown > 0f
-			? $"Heal Ult [{Mathf.CeilToInt(healCooldown)}s]"
-			: "Heal Ult [1]";
+			? BuildUltimateCooldownLabel("Heal Ult", healCooldown)
+			: BuildUltimateReadyLabel("Heal Ult", "ultimate_heal");
 
-		_supportUltimateButton.Visible = canSupport || supportCooldown > 0f;
+		_supportUltimateButton.Visible = true;
 		_supportUltimateButton.Disabled = !canSupport;
 		_supportUltimateButton.Text = supportCooldown > 0f
-			? $"Support Ult [{Mathf.CeilToInt(supportCooldown)}s]"
-			: "Support Ult [2]";
+			? BuildUltimateCooldownLabel("Support Ult", supportCooldown)
+			: BuildUltimateReadyLabel("Support Ult", "ultimate_support");
+	}
+
+	private static string BuildUltimateCooldownLabel(string label, float cooldown)
+	{
+		return $"{label} [{Mathf.CeilToInt(cooldown)}s]";
+	}
+
+	private static string BuildUltimateReadyLabel(string label, string actionName)
+	{
+		Key key = KeybindingsManager.Instance?.GetBindingForAction(actionName) ?? Key.None;
+		string keyLabel = KeybindingsManager.KeyDisplayName(key);
+		return $"{label} [{keyLabel}]";
 	}
 
 	private void UpdateLeaderboard(double delta)
@@ -654,10 +846,10 @@ public partial class GameHUD : Control
 
 			// Couleur selon le rang
 			Color rowColor = i == 0
-				? new Color(1f,    0.88f, 0.42f, 1f)   // or — 1er
+				? new Color(1f,    0.88f, 0.42f, 1f)   // or - 1er
 				: i == 1
-					? new Color(0.88f, 0.88f, 0.88f, 1f) // argent — 2e
-					: new Color(0.94f, 0.91f, 0.80f, 1f); // crème — reste
+					? new Color(0.88f, 0.88f, 0.88f, 1f) // argent - 2e
+					: new Color(0.94f, 0.91f, 0.80f, 1f); // creme - reste
 
 			var hbox = new HBoxContainer();
 			hbox.AddThemeConstantOverride("separation", 0);
@@ -665,8 +857,7 @@ public partial class GameHUD : Control
 			// Colonne rang (largeur fixe) : médaille + numéro
 			var rankLabel = new Label();
 			rankLabel.CustomMinimumSize = new Vector2(30, 0);
-			string medal = i == 0 ? "♛" : "";
-			rankLabel.Text = $"{medal}{i + 1}.";
+			rankLabel.Text = $"{i + 1}.";
 			rankLabel.HorizontalAlignment = HorizontalAlignment.Right;
 			rankLabel.AddThemeFontSizeOverride("font_size", 13);
 			rankLabel.AddThemeColorOverride("font_color", rowColor);
@@ -680,7 +871,7 @@ public partial class GameHUD : Control
 
 			// Colonne nom + stats (flexible)
 			var infoLabel = new Label();
-			infoLabel.Text = $"{name}   {entry.camps} {campLabel}  ·  {entry.territories} {regAbbr}  ·  {gold} {goldAbbr}";
+			infoLabel.Text = $"{name}   {entry.camps} {campLabel}  |  {entry.territories} {regAbbr}  |  {gold} {goldAbbr}";
 			infoLabel.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
 			infoLabel.AddThemeFontSizeOverride("font_size", 13);
 			infoLabel.AddThemeColorOverride("font_color", rowColor);
@@ -735,6 +926,13 @@ public partial class GameHUD : Control
 	{
 		if (_selectionManager == null) return;
 
+		if (GameManager.Instance?.IsLocalPlayerEliminated() == true)
+		{
+			if (_tierInfoLabel != null) _tierInfoLabel.Visible = false;
+			SetAllUnitButtonsDisabled(null);
+			return;
+		}
+
 		var selectedCamp = _selectionManager.GetSelectedCamp();
 
 		int localTeam = GetLocalTeamId();
@@ -749,7 +947,7 @@ public partial class GameHUD : Control
 		if (selectedCamp.GetTeamId() != localTeam)
 		{
 			if (_tierInfoLabel != null) _tierInfoLabel.Visible = false;
-			SetAllUnitButtonsDisabled("Sélectionnez un de vos camps");
+			SetAllUnitButtonsDisabled(L("hud_select_own_camp"));
 			return;
 		}
 
@@ -762,13 +960,13 @@ public partial class GameHUD : Control
 			_tierInfoLabel.Visible = true;
 			if (unlockedTier >= 3)
 			{
-				_tierInfoLabel.Text = "Palier 3/3 — Toutes les unités débloquées ✓";
+				_tierInfoLabel.Text = L("tier_info_3_unlocked");
 				if (_unlockTier2Button != null) _unlockTier2Button.Visible = false;
 			}
 			else if (unlockedTier == 2)
 			{
 				string regionDesc = GetTier3RegionDescription(GetLocalTeamId());
-				_tierInfoLabel.Text = $"Palier 2/3 — Débloquez le palier 3 : capturez tous les camps de {regionDesc}";
+				_tierInfoLabel.Text = LF("tier_info_2_progress", regionDesc);
 				if (_unlockTier2Button != null) _unlockTier2Button.Visible = false;
 			}
 			else
@@ -776,8 +974,8 @@ public partial class GameHUD : Control
 				int gold = GameManager.Instance?.GetGold(GetLocalTeamId()) ?? 0;
 				bool canAfford = gold >= GameManager.Tier2Cost;
 				_tierInfoLabel.Text = canAfford
-					? $"Palier 1/3 — Vous pouvez débloquer le Palier 2 !"
-					: $"Palier 1/3 — Économisez {GameManager.Tier2Cost}g pour débloquer le Palier 2 ({gold}g)";
+					? L("tier_info_1_can_unlock")
+					: LF("tier_info_1_save_gold", GameManager.Tier2Cost, gold);
 				if (_unlockTier2Button != null)
 				{
 					_unlockTier2Button.Visible = true;
@@ -802,12 +1000,12 @@ public partial class GameHUD : Control
 				: canBuy ? new Color(1f, 1f, 1f, 1f) : new Color(0.5f, 0.5f, 0.5f, 0.8f);
 
 			if (_lockLabels.TryGetValue(unitType, out var lbl))
-				lbl.Text = locked ? $"🔒 P{requiredTier}" : "";
+				lbl.Text = locked ? LF("hud_lock_tier", requiredTier) : "";
 
 			if (locked)
 				btn.TooltipText = requiredTier == 2
-					? $"🔒 Palier 2 : achetez l'amélioration ({GameManager.Tier2Cost}g)"
-					: "🔒 Palier 3 : capturez tous les camps de votre région de départ";
+					? LF("tier2_lock_tooltip", GameManager.Tier2Cost)
+					: L("tier3_lock_tooltip");
 			else if (denyReason != null)
 				btn.TooltipText = denyReason;
 			else
@@ -853,20 +1051,20 @@ public partial class GameHUD : Control
 				: canBuy ? new Color(1f, 1f, 1f, 1f) : new Color(0.5f, 0.5f, 0.5f, 0.8f);
 
 			if (locked)
-				btn.TooltipText = "🔒 Capturez toute votre région de départ + construisez un port";
+				btn.TooltipText = L("ship_port_lock_tooltip");
 			else if (!canBuy)
 			{
 				int activeShips = ShipStats.CountActiveShipsForTeam(GetLocalTeamId(), GetTree());
 				if (activeShips >= ShipStats.MaxActiveShipsPerTeam)
-					btn.TooltipText = $"Limite de flotte atteinte ({activeShips}/{ShipStats.MaxActiveShipsPerTeam})";
+					btn.TooltipText = LF("ship_fleet_limit", activeShips, ShipStats.MaxActiveShipsPerTeam);
 				else
 				{
 					int queueCount = selectedPort.GetShipQueueCount();
 					int maxQueue = selectedPort.GetMaxShipQueueSize();
 					if (queueCount >= maxQueue)
-						btn.TooltipText = "File navale pleine !";
+						btn.TooltipText = L("ship_queue_full");
 					else
-						btn.TooltipText = $"Or insuffisant ({ShipStats.GetStats(shipType).Price}g requis)";
+						btn.TooltipText = LF("ship_insufficient_gold", ShipStats.GetStats(shipType).Price);
 				}
 			}
 			else
@@ -876,10 +1074,10 @@ public partial class GameHUD : Control
 
 	private string GetTier3RegionDescription(int teamId)
 	{
-		if (GameManager.Instance == null) return "contrôlez tous les camps de votre région de départ";
+		if (GameManager.Instance == null) return L("tier_region_control_all");
 
 		int homeRegion = GameManager.Instance.GetHomeRegion(teamId);
-		if (homeRegion < 0) return "contrôlez tous les camps de votre région de départ";
+		if (homeRegion < 0) return L("tier_region_control_all");
 
 		var allCamps = GameManager.Instance.GetAllCamps();
 		var homeCamps = allCamps.FindAll(c => c.RegionId == homeRegion);
@@ -887,9 +1085,9 @@ public partial class GameHUD : Control
 		int owned = homeCamps.FindAll(c => c.GetTeamId() == teamId).Count;
 
 		if (owned == total && total >= 2)
-			return $"région de départ complète ✓ ({owned}/{total})";
+			return LF("tier_region_complete", owned, total);
 
-		return $"contrôlez les {total} camps de votre région de départ ({owned}/{total})";
+		return LF("tier_region_progress", total, owned);
 	}
 
 	private void FindSelectionManager()
@@ -904,6 +1102,17 @@ public partial class GameHUD : Control
 	private void UpdateContainerVisibility()
 	{
 		if (_selectionManager == null) return;
+
+		if (GameManager.Instance?.IsLocalPlayerEliminated() == true)
+		{
+			_unitsContainer.Visible = false;
+			_shipsContainer.Visible = false;
+			if (_portButton != null)
+				_portButton.Visible = false;
+			if (_tierInfoLabel != null)
+				_tierInfoLabel.Visible = false;
+			return;
+		}
 
 		var selectedCamp = _selectionManager.GetSelectedCamp();
 		var selectedPort = _selectionManager.GetSelectedPort();
@@ -936,14 +1145,38 @@ public partial class GameHUD : Control
 		}
 	}
 
+	private void UpdateGoldDisplayThrottled(double delta)
+	{
+		_goldRefreshTimer -= (float)delta;
+		if (_goldRefreshTimer > 0f)
+			return;
+
+		_goldRefreshTimer = GoldRefreshInterval;
+		UpdateGoldDisplay();
+	}
+
+	private void RefreshGoldDisplayNow()
+	{
+		_goldRefreshTimer = 0f;
+		UpdateGoldDisplay();
+	}
+
 	private void UpdateGoldDisplay()
 	{
 		if (GameManager.Instance == null)
 		{
+			_goldPanel.Visible = false;
 			_goldLabel.Text = "0";
 			return;
 		}
 
+		if (GameManager.Instance.IsLocalPlayerEliminated())
+		{
+			_goldPanel.Visible = false;
+			return;
+		}
+
+		_goldPanel.Visible = true;
 		int gold = GameManager.Instance.GetGold(GetLocalTeamId());
 		_goldLabel.Text = $"{gold}";
 	}

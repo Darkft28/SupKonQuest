@@ -2,15 +2,15 @@ using Godot;
 using System.Collections.Generic;
 
 /// <summary>
-/// Construit et interroge le graphe de connectivité des territoires.
-/// Deux territoires sont "voisins" si des tuiles terrestres adjacentes appartiennent à des zones différentes.
+/// Builds and queries the territory connectivity graph.
+/// Two territories are "neighbors"if adjacent land tiles belong to different zones.
 /// </summary>
 public static class TerritoryConnectivity
 {
     /// <summary>
-    /// Construit le graphe de voisinage des territoires.
-    /// Pour chaque paire de tuiles adjacentes (4-voisinage) ayant des IDs territoire différents (>0)
-    /// et toutes deux terrestres (sol != eau, sol != vide), on enregistre la connexion dans les deux sens.
+    /// Builds the territory adjacency graph.
+    /// For each adjacent tile pair (4-neighborhood) with different territory IDs (>0)
+    /// and both on land (ground != water, ground != empty), record a bidirectional edge.
     /// </summary>
     public static Dictionary<int, HashSet<int>> Build(
         int[,] territoryGrid,
@@ -25,7 +25,7 @@ public static class TerritoryConnectivity
         int gridW = territoryGrid.GetLength(0);
         int gridH = territoryGrid.GetLength(1);
 
-        // 4-voisinage : droite et bas seulement (évite de traiter chaque paire deux fois)
+        // 4-neighborhood: right and down only (avoids processing each pair twice)
         int[] dx = { 1, 0 };
         int[] dy = { 0, 1 };
 
@@ -36,7 +36,7 @@ public static class TerritoryConnectivity
                 int idA = territoryGrid[x, y];
                 if (idA <= 0) continue;
 
-                // Vérifier que la tuile A est terrestre
+                // Check that tile A is land
                 if (!IsTerrestrialTile(solLayer, x - halfWidth, y - halfHeight))
                     continue;
 
@@ -50,11 +50,11 @@ public static class TerritoryConnectivity
                     int idB = territoryGrid[nx, ny];
                     if (idB <= 0 || idB == idA) continue;
 
-                    // Vérifier que la tuile B est terrestre
+                    // Check that tile B is land
                     if (!IsTerrestrialTile(solLayer, nx - halfWidth, ny - halfHeight))
                         continue;
 
-                    // Enregistrer la connexion dans les deux sens
+                    // Record the connection in both directions
                     if (!graph.TryGetValue(idA, out var neighborsA))
                         graph[idA] = neighborsA = new HashSet<int>();
                     neighborsA.Add(idB);
@@ -66,12 +66,12 @@ public static class TerritoryConnectivity
             }
         }
 
-        GD.Print($"[TERRITOIRE] Graphe de connectivité : {graph.Count} territoire(s) avec voisins.");
+        GD.Print($"[TERRITOIRE] Connectivity graph: {graph.Count} territory node(s) with neighbors.");
         return graph;
     }
 
     /// <summary>
-    /// Vérifie si toRegion est atteignable depuis fromRegion par le graphe (BFS transitif).
+    /// Checks whether toRegion is reachable from fromRegion in the graph (transitive BFS).
     /// </summary>
     public static bool AreConnected(Dictionary<int, HashSet<int>> graph, int fromRegion, int toRegion)
     {
@@ -101,7 +101,7 @@ public static class TerritoryConnectivity
     }
 
     /// <summary>
-    /// Retourne toutes les régions terrestres atteignables depuis les régions possédées (BFS transitif).
+    /// Returns all land regions reachable from owned regions (transitive BFS).
     /// </summary>
     public static HashSet<int> GetReachableRegions(Dictionary<int, HashSet<int>> graph, IEnumerable<int> ownedRegions)
     {
@@ -135,7 +135,7 @@ public static class TerritoryConnectivity
     }
 
     /// <summary>
-    /// Vérifie si targetRegion est dans le composant connexe des régions possédées.
+    /// Checks whether targetRegion is in the connected component of owned regions.
     /// </summary>
     public static bool IsReachable(Dictionary<int, HashSet<int>> graph, IEnumerable<int> ownedRegions, int targetRegion)
     {
@@ -145,13 +145,13 @@ public static class TerritoryConnectivity
         return GetReachableRegions(graph, ownedRegions).Contains(targetRegion);
     }
 
-    // Retourne true si la tuile (en coordonnées monde-tilemap, pas grille) est terrestre
-    // (non eau, non vide)
+    // Returns true if tile (world-tilemap coordinates, not grid) is land
+    // (non-water, non-empty)
     private static bool IsTerrestrialTile(TileMapLayer solLayer, int tileX, int tileY)
     {
-        if (solLayer == null) return true; // fallback : on suppose terrestre si pas de couche
+        if (solLayer == null) return true; // fallback: assume land when no layer is available
         int solId = solLayer.GetCellSourceId(new Vector2I(tileX, tileY));
-        // 6 = eau, -1 = vide
+        // 6 = water, -1 = empty
         return solId != 6 && solId != -1;
     }
 }

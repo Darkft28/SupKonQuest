@@ -7,11 +7,11 @@ public partial class Ship
 		var currentScene = GetTree().CurrentScene;
 		if (currentScene == null) return;
 
-		var mapGenerator = currentScene.FindChild("MapGenerator", true, false);
-		if (mapGenerator != null)
-		{
-			_tileMapSol = mapGenerator.GetNodeOrNull<TileMapLayer>("Sol");
-		}
+		_tileMapSol = currentScene.GetNodeOrNull<TileMapLayer>("Sol");
+		if (_tileMapSol != null) return;
+
+		var mapRoot = currentScene.FindChild("MapGenerator", true, false) ?? currentScene;
+		_tileMapSol = mapRoot.GetNodeOrNull<TileMapLayer>("Sol");
 	}
 
 	private void CreateCollision()
@@ -24,15 +24,18 @@ public partial class Ship
 			AddChild(collision);
 		}
 
-		var shape = collision.Shape as CircleShape2D ?? new CircleShape2D();
-		shape.Radius = 60f;
+		var shape = collision.Shape as CapsuleShape2D ?? new CapsuleShape2D();
+		shape.Radius = 42f;
+		shape.Height = 100f;
 		collision.Shape = shape;
 
 		// Bateaux sur leur propre layer pour eviter collisions avec unites terrestres
 		SetCollisionLayerValue(1, false);
 		SetCollisionLayerValue(2, true);
+		SetCollisionLayerValue(3, false);
 		SetCollisionMaskValue(1, false);
 		SetCollisionMaskValue(2, true);
+		SetCollisionMaskValue(3, false);
 	}
 
 	private void CreateSprite()
@@ -67,16 +70,14 @@ public partial class Ship
 			SpriteDirection.Back => "Back",
 			SpriteDirection.Left => "Left",
 			SpriteDirection.Right => "Right",
-			_ => "Front"
-		};
+			_ => "Front"};
 
 		return ShipType switch
 		{
-			"Destroyer" => $"res://Assets/Units/Ships/Destroyer/Destroyers_{dirSuffix}.png",
-			"Fregate" => $"res://Assets/Units/Ships/Frégate/frégate_{dirSuffix}.png",
-			"Transport" => $"res://Assets/Units/Ships/Transport/Transport_{dirSuffix}.png",
-			_ => $"res://Assets/Units/Ships/Transport/Transport_{dirSuffix}.png"
-		};
+			"Destroyer"=> $"res://Assets/Units/Ships/Destroyer/Destroyers_{dirSuffix}.png",
+			"Fregate"=> $"res://Assets/Units/Ships/Frégate/frégate_{dirSuffix}.png",
+			"Transport"=> $"res://Assets/Units/Ships/Transport/Transport_{dirSuffix}.png",
+			_ => $"res://Assets/Units/Ships/Transport/Transport_{dirSuffix}.png"};
 	}
 
 	private static Texture2D LoadShipTexture(string path)
@@ -85,7 +86,7 @@ public partial class Ship
 		if (texture != null)
 			return texture;
 
-		// Secours si le chemin accentué échoue (export / FS) — noms ASCII alternatifs.
+		// Secours si le chemin accentué échoue (export / FS) - noms ASCII alternatifs.
 		if (path.Contains("Frégate"))
 		{
 			string ascii = path
@@ -154,7 +155,7 @@ public partial class Ship
 
 	public override void _Draw()
 	{
-		if (ShipType == "Transport" && _loadedUnits.Count > 0)
+		if (ShipType == "Transport"&& _loadedUnits.Count > 0)
 		{
 			var font = ThemeDB.FallbackFont;
 			DrawString(font, new Vector2(-10, -215), $"{_loadedUnits.Count}/{_stats.Capacity}",

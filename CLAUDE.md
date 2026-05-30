@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-SupKonQuest is a strategy and conquest game built with Godot 4.5 and C# (.NET 8.0). It features predefined map presets (Irridium, Alabasta), ENet P2P multiplayer with Nakama relay fallback, a gold-based economy with unit/ship production queues, and a Utility AI system.
+SupKonQuest is a strategy and conquest game built with Godot 4.5 and C# (.NET 8.0). It features predefined map presets (Irridium, Alabasta), online multiplayer via Nakama relay, a gold-based economy with unit/ship production queues, and a Utility AI system.
 
 ## Game Flow
 
@@ -21,7 +21,7 @@ SupKonQuest is a strategy and conquest game built with Godot 4.5 and C# (.NET 8.
 - `Scenes/Ship.tscn` - Prefab navire
 - `Scenes/camp_simple.tscn` - Prefab camp (Area2D, scale 4.5×)
 - `Scenes/GameHUD.tscn` - HUD en surimpression (instancié dans CanvasLayer de Game.tscn)
-- Point d'entrée : `Scenes/MainMenu.tscn` → `Scenes/GameModeMenu.tscn` → `Scenes/Lobby.tscn` → Game
+- Point d'entrée : `Scenes/MainMenu.tscn` → `Scenes/GameModeMenu.tscn` → `Scenes/Auth.tscn` (multi) → `Scenes/Lobby.tscn` → Game
 
 ## Build Commands
 
@@ -46,7 +46,7 @@ godot --path . --run
 - `Scripts/Selection/` - SelectionManager
 - `Scripts/Camera/` - CameraController
 - `Scripts/Economy/` - GameManager, VictoryManager
-- `Scripts/Network/` - NetworkManager, GameState, NetworkSync, NetworkEntityRegistry, NakamaService, NetworkCommandRouter
+- `Scripts/Network/` - GameState, NetworkSync, NetworkEntityRegistry, NakamaService, AuthSessionStore, NetworkCommandRouter
 - `Scripts/AI/` - AIController (Utility AI, Easy/Medium/Hard, one instance per bot team)
 - `Scripts/UI/` - GameHUD, LobbyUI, Minimap, MainMenu, GameModeMenu, LocalizationManager, AudioSettings, UIStyle
 - `AI-implementation.md` - Notes de conception IA (naval et boss, stagger implémenté ; idées futures : personnalités)
@@ -55,15 +55,14 @@ godot --path . --run
 
 ### Singleton Managers (AutoLoads in project.godot)
 - **GameManager** - Gold economy, tiers, victory hooks (`GameManager.Instance`)
-- **NetworkManager** - ENet multiplayer (hosting, joining, peer comm port 7777; LAN discovery UDP port 7778)
-- **GameState** - Game flow (seed, `ActivePlayerCount`, `IsAIMode`, `IsOnline`, `IsFreeForAll`)
-- **NakamaService** - Auth guest, matchmaking 2–8, lobby in-match, opcodes lobby relay (`4001`/`4002`), gameplay relay
+- **GameState** - Game flow (seed, `ActivePlayerCount`, `IsAIMode`, `IsOnline`, `IsFreeForAll`, `IsOnlineMultiplayer`)
+- **NakamaService** - Email register/login, guest auth, encrypted session restore (`AuthSessionStore`), matchmaking 2–8, lobby in-match, opcodes lobby relay (`4001`/`4002`), gameplay relay
 - **LocalizationManager** - i18n (FR/EN/ES), signal `LanguageChanged`
 - **AudioSettings** - Volume music/SFX with persistence
 
 ### Core Systems
 
-**GameManager** - Gold economy per team. `PassiveGoldPerSecond = 500` given each second per team regardless of camp count. `CaptureBonus = 50` gold on capture. `StartingGold = 100`. `RegionBonusGold = 30` or/s if team controls all camps in a region. `RegionSpeedBonusPerRegion = 0.20f` (cumulative speed multiplier per full region). `MaxUnitsPerCamp = 10` (global cap = owned camps × 10). 3-tier unlock: Tier 1 default, Tier 2 manual purchase `Tier2Cost = 1500`, Tier 3 auto-unlock when controlling 100% of home region camps.
+**GameManager** - Gold economy per team. `PassiveGoldPerSecond = 500` given each second per team regardless of camp count. `MaxGold = 9999` (all credits capped). Solo defeat (0 camps): spectator mode — no gold accrual/display, `LocalPlayerEliminated` + 5s defeat banner; game continues until victory. `CaptureBonus = 50` gold on capture. `StartingGold = 100`. `RegionBonusGold = 30` or/s if team controls all camps in a region. `RegionSpeedBonusPerRegion = 0.20f` (cumulative speed multiplier per full region). `MaxUnitsPerCamp = 10` (global cap = owned camps × 10). 3-tier unlock: Tier 1 default, Tier 2 manual purchase `Tier2Cost = 1500`, Tier 3 auto-unlock when controlling 100% of home region camps.
 
 **Unit System** - CharacterBody2D with state machine (Idle, MovingToPoint, MovingToTarget, Attacking, AttackingCamp, Healing, MovingToTransport). Navigation layer 1 (ground only). Detection zone = `stats.Range + 400px`. Enemy search throttled to 0.5s. Stuck detection: 120 frames (≈2s) of insufficient movement.
 
@@ -98,7 +97,7 @@ Ship tiers: Transport = Tier 1, Fregate + Destroyer = Tier 3.
 | Fregate | 180 | 20 | 15 | 100 | — | 200g | 5s |
 | Destroyer | 250 | 35 | 20 | 80 | — | 300g | 7s |
 
-Transport is pacifist (never engages enemies). Destroyer textures: `Assets/Units/Ships/Destroyer/Destroyers_*.png`. Fregate: `Assets/Units/Ships/Frégate/frégate_*.png` (accented folder). Unload radius max 2000px, requires coastal tile with adjacent water in 3×3 grid.
+Transport is pacifist (never engages enemies) but can be sunk by enemy Fregate/Destroyer. **Mortar** cannot board transports (`Unit.CanBoardTransport()`). Destroyer textures: `Assets/Units/Ships/Destroyer/Destroyers_*.png`. Fregate: `Assets/Units/Ships/Frégate/frégate_*.png` (accented folder). Unload radius max 2000px, requires coastal tile with adjacent water in 3×3 grid.
 
 **SelectionManager** - Click/box selection. Priority: port (<100px) → camp (<200px) → ship (<80px) → unit (<64px). Right-click: detects Transport within 150px (auto-board), enemy camp within 400px (AttackCamp), otherwise MoveTo. In Nakama relay mode, routes commands through `NetworkCommandRouter` instead of calling directly.
 
@@ -114,19 +113,16 @@ Transport is pacifist (never engages enemies). Destroyer textures: `Assets/Units
 
 ### Networking Architecture
 
-**ENet P2P (local/LAN):**
-- Server = Team 1, Client = Team 2 (set via `GameState.LocalTeamId`)
-- LAN discovery: client broadcasts `"SUPKONQUEST_DISCOVER:{CODE}"` UDP:7778, server replies `"SUPKONQUEST_FOUND:{CODE}:{PORT}"`
-- `NetworkEntityRegistry`: global `string networkId → Node`, IDs = `"{peerId}_{counter}"`
+**Nakama relay (online multiplayer):**
+- `NakamaService` autoload : `RegisterWithEmailAsync` / `LoginWithEmailAsync` / `AuthenticateGuestAsync` / `TryRestoreSessionAsync` / `LogoutAsync`
+- `AuthSessionStore` : tokens chiffrés dans `user://nakama_auth_session.dat` (`OpenEncryptedWithPass`, clé = `OS.GetUniqueId()` SHA-256 ou GUID persistant `user://device_key.txt`) ; `auth_type` = `email` | `guest` ; **jamais** le mot de passe
+- Invité : device ID séparé `user://nakama_device_id.txt` (ou `_1`/`_2` avec `--nakama-slot`)
+- Refresh : `TryRestoreSessionAsync` appelle `SessionRefreshAsync` ; échec `ApiResponseException` → `Clear()` + clé i18n `auth_session_expired`
+- Matchmaking, socket
+- `GameState.IsOnlineMultiplayer` = `IsOnline && NakamaService.IsSocketConnected`
+- `NetworkSync.IsMultiplayer()` aliases the same check; provides local combat/transport helpers for online play
+- `NetworkEntityRegistry`: global `string networkId → Node`
 - Deterministic defender IDs: `"camp_{campId}_unit_{index}"`, dynamic units: `"camp_{campId}_dyn_{sequence}"`
-- Authority: server controls neutral camps and Team 1 entities; each peer controls their own team
-- Reliable RPCs: spawn, death, damage, camp capture, transport board/unload, camp assignments
-- Unreliable RPCs: 20Hz batched position/health/state sync (`SyncInterval = 0.05s`)
-- Gold sync: `RpcSyncGold` every 10s (server→clients), tolerance 5 gold before applying correction
-
-**Nakama relay (online matchmaking):**
-- `NakamaService` autoload handles auth (persistent device ID at `user://nakama_device_id.txt`), matchmaking, socket
-- `IsRelayMode()` = `GameState.IsOnline && NakamaService.IsSocketConnected`
 - `NetworkCommandRouter` serializes commands as JSON with opcodes: BuyUnit=1001, MoveUnits=2001, AttackCamp=2002, CampCaptured=2003, GoldSnapshot=3001
 - In relay mode, SelectionManager/GameHUD call `NetworkCommandRouter.Request*()` instead of direct camp calls
 - Gold snapshot sent every 1s in relay mode for reconciliation
@@ -151,9 +147,9 @@ Boss designation: MapGenerator finds the bot team most geographically distant fr
 
 Composition targets: Easy=100% Infantry. Medium/Hard use mixed compositions (Infantry/Range/Support/Heal/AntiArmor). Hard counter-comp: if enemy has ≥3 Heavy → prioritize AntiArmor. Medium/Hard use rally-point strategy before attacking. Reactive defense: sends DefenseRatio% of idle units if a camp is at <60% HP or enemy within 700px.
 
-Camp scoring: +2500 neutral, +(1-hpRatio)×1800 if damaged, +(5-defenders)×300, +3500 home region, −distance×0.4. Medium/Hard: port/ship production when a full region is controlled, naval offensives (Fregate/Destroyer). Land targets filtered via `TerritoryConnectivity.IsReachable`. Easy: infantry spam, nearest camp, no naval.
+Camp scoring: +2500 neutral, +(1-hpRatio)×1800 if damaged, +(5-defenders)×300, +3500 home region, −distance×0.4. Medium/Hard: port/ship production when a full region is controlled; amphibious assaults via Transport (board at port, unload on enemy coast, `AttackCamp`). IA naval buys: max **2 transports** (alive + queued per port); Fregate/Destroyer not capped. Medium: Fregate patrol near port (auto-defense). Hard: escort loaded transports at sea. Land targets filtered via `TerritoryConnectivity.IsReachable`. Easy: infantry spam, nearest camp, no naval.
 
-**Multijoueur en ligne (Nakama)** - Flux : `GameModeMenu` → `LobbyUI` → matchmaking → `JoinMatch` → lobby in-match (`MatchLobbyEntered`) → **`MatchStart` relay uniquement** → `StartOnlineGameFromMatch`. Pas d'IA (`IsAIMode`/`IsFreeForAll` remis à false via `ResetOnlineMatchFlags`). 1 camp/joueur, reste neutre (`GameManager.AssignCampsToPlayers`, `ActivePlayerCount`). Signaux : `MatchLobbyEntered`, `MatchLobbyTick`, `MatchStarting`. Module relay externe : countdown ~20s (+5s/join, start à 8) puis opcode `4002`.
+**Multijoueur en ligne (Nakama)** - Flux : `GameModeMenu` → **`Auth.tscn`** (`AuthUI` : login / register / invité, restauration session) → `LobbyUI` → matchmaking → `JoinMatch` → lobby in-match (`MatchLobbyEntered`) → **`MatchStart` relay uniquement** → `StartOnlineGameFromMatch`. Carte multijoueur : tirage serveur (`mapType` 0–2 dans opcode `4002`) → Irridium / Alabasta / Torskey. `LobbyUI` ne fait plus d'auth invité auto : si `!IsAuthenticated` → `AuthSessionStore.Clear()` + retour Auth. Pseudo modifiable au lobby **uniquement pour invités** (`UpdateUniqueUsernameAsync`). Logout lobby → Auth. Pas d'IA (`IsAIMode`/`IsFreeForAll` remis à false via `ResetOnlineMatchFlags`). 1 camp/joueur, reste neutre (`GameManager.AssignCampsToPlayers`, `ActivePlayerCount`). Signaux : `MatchLobbyEntered`, `MatchLobbyTick`, `MatchStarting`. Module relay (`supkonquest-server/`) : hooks `beforeAuthenticateEmail` / `afterAuthenticateEmail` + countdown ~20s (+5s/join, start à 8) puis opcode `4002`.
 Gestion déconnexion autoritaire serveur : `5002` (cleanup team) sur leave en partie. Le client applique l'événement serveur.
 Test local : `--nakama-slot=1` / `2`.
 

@@ -30,12 +30,13 @@ public partial class Ship
 		}
 	}
 
+	private bool IsEnemyShipTarget(Ship ship) =>
+		ship != null && ship.GetTeamId() != TeamId && ship.GetCurrentHealth() > 0;
+
 	private void AttackTarget(Ship target)
 	{
-		if (target == null || !IsInstanceValid(target) || !target.IsInsideTree()) return;
-		if (target.GetCurrentHealth() <= 0) return;
-		if (target.GetTeamId() == TeamId) return;
-		if (target.GetShipType() == "Transport") return;
+		if (!IsEnemyShipTarget(target)) return;
+		if (!IsInstanceValid(target) || !target.IsInsideTree()) return;
 
 		SpawnProjectile(target);
 	}
@@ -76,10 +77,8 @@ public partial class Ship
 		if (_loadedUnits.Count > 0)
 			_loadedUnits.Clear();
 
-		if (IsLocalAuthority && !string.IsNullOrEmpty(NetworkId))
-		{
+		if (NetworkSync.Instance?.IsMultiplayer() == true && !string.IsNullOrEmpty(NetworkId))
 			NetworkSync.Instance?.SendEntityDied(NetworkId);
-		}
 
 		QueueFree();
 	}
@@ -91,9 +90,7 @@ public partial class Ship
 
 		if (body is Ship otherShip)
 		{
-			if (otherShip.GetTeamId() == TeamId) return;
-			if (otherShip.GetShipType() == "Transport") return;
-			if (otherShip.GetCurrentHealth() <= 0) return;
+			if (!IsEnemyShipTarget(otherShip)) return;
 
 			if (_currentTarget == null && _currentState == ShipState.Idle)
 				SetNewTarget(otherShip);
@@ -102,8 +99,7 @@ public partial class Ship
 
 	private void SetNewTarget(Ship target)
 	{
-		if (target.GetTeamId() == TeamId) return;
-		if (target.GetShipType() == "Transport") return;
+		if (!IsEnemyShipTarget(target)) return;
 
 		_currentTarget = target;
 		float distanceToTarget = GlobalPosition.DistanceTo(target.GlobalPosition);
@@ -123,10 +119,7 @@ public partial class Ship
 		if (_currentTarget == null) return false;
 		if (!IsInstanceValid(_currentTarget)) return false;
 		if (!_currentTarget.IsInsideTree()) return false;
-		if (_currentTarget.GetCurrentHealth() <= 0) return false;
-		if (_currentTarget.GetTeamId() == TeamId) return false;
-		if (_currentTarget.GetShipType() == "Transport") return false;
-		return true;
+		return IsEnemyShipTarget(_currentTarget);
 	}
 
 	private Ship FindEnemyShipInRange()
@@ -140,9 +133,7 @@ public partial class Ship
 		{
 			if (node is Ship otherShip)
 			{
-				if (otherShip.GetTeamId() == TeamId) continue;
-				if (otherShip.GetShipType() == "Transport") continue;
-				if (otherShip.GetCurrentHealth() <= 0) continue;
+				if (!IsEnemyShipTarget(otherShip)) continue;
 
 				float distance = GlobalPosition.DistanceTo(otherShip.GlobalPosition);
 				if (distance <= DetectionRange && distance < closestDistance)

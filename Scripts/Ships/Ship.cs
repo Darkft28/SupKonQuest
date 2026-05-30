@@ -71,6 +71,12 @@ public partial class Ship : CharacterBody2D
 	public float GetRange() => _stats.Range;
 	public float GetAttack() => _stats.Attack;
 	public bool GetIsMoving() => _targetPosition.HasValue;
+
+	public bool IsEngagedInNavalCombat() =>
+		ShipType != "Transport"&& (_currentState == ShipState.Attacking
+			|| (_currentState == ShipState.MovingToTarget
+				&& _currentTarget != null
+				&& IsInstanceValid(_currentTarget)));
 	public int GetLoadedUnitCount() => _loadedUnits.Count;
 	public int GetCapacity() => _stats.Capacity;
 
@@ -113,9 +119,10 @@ public partial class Ship : CharacterBody2D
 
 		_navAgent.PathDesiredDistance = 15f;
 		_navAgent.TargetDesiredDistance = ArrivalDistance;
-		_navAgent.AvoidanceEnabled = false;
+		_navAgent.AvoidanceEnabled = ShipType != "Transport";
 		_navAgent.NavigationLayers = 2u;
-		_navAgent.Radius = 60f; // marge autour des côtes
+		_navAgent.MaxSpeed = _stats.Speed;
+		_navAgent.VelocityComputed += OnNavVelocityComputed;
 
 		_currentState = ShipState.Idle;
 
@@ -176,18 +183,6 @@ public partial class Ship : CharacterBody2D
 
 	public override void _PhysicsProcess(double delta)
 	{
-		// Puppet : interpoler vers la position reseau, pas d'IA (multi seulement)
-		bool isMulti = NetworkSync.Instance?.IsMultiplayer() == true;
-		bool isRelay = NetworkSync.Instance?.IsRelayMode() == true;
-		if (isMulti && !isRelay && !IsLocalAuthority)
-		{
-			if (_networkTargetPosition.HasValue)
-			{
-				GlobalPosition = GlobalPosition.Lerp(_networkTargetPosition.Value, 10f * (float)delta);
-			}
-			return;
-		}
-
 		switch (_currentState)
 		{
 			case ShipState.Idle:

@@ -3,6 +3,7 @@ using Nakama;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Net.Http;
 using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
@@ -17,17 +18,18 @@ public partial class NakamaService : Node
 	[Signal] public delegate void MatchmakingFailedEventHandler(string reason);
 	[Signal] public delegate void MatchLobbyEnteredEventHandler(string matchId, int pendingSeed);
 	[Signal] public delegate void MatchLobbyTickEventHandler(int secondsRemaining, int playerCount);
-	[Signal] public delegate void MatchStartingEventHandler(string matchId, int localTeamId, int seed, int playerCount);
+	[Signal] public delegate void MatchStartingEventHandler(string matchId, int localTeamId, int seed, int playerCount, int mapType);
 	[Signal] public delegate void MatchStateReceivedEventHandler(long opcode, string payload);
 	[Signal] public delegate void DisconnectedEventHandler();
+	[Signal] public delegate void LoggedOutEventHandler();
 
 	public const int MaxMatchPlayers = 8;
+	public const int MinPasswordLength = 8;
+	public const int MinUsernameLength = 3;
+	public const int MaxUsernameLength = 16;
 	private const long OpcodeLobbyTick = 4001;
 	private const long OpcodeMatchStart = 4002;
 
-	private const string DeviceIdFilePath = "user://nakama_device_id.txt";
-	private const string ConfigDeviceSlotPath = "nakama/device_slot";
-	private const string EnvDeviceSlotName = "SUPKONQUEST_NAKAMA_SLOT";
 	private const string ConfigSchemePath = "nakama/scheme";
 	private const string ConfigHostPath = "nakama/host";
 	private const string ConfigPortPath = "nakama/port";
@@ -57,8 +59,11 @@ public partial class NakamaService : Node
 	private bool _hasReceivedLobbyTick;
 	private readonly Dictionary<string, string> _matchPlayers = new();
 	private readonly Dictionary<string, int> _userTeamMap = new();
+	private AuthType _currentAuthType = AuthType.Guest;
 
 	public bool IsAuthenticated => _session != null && !_session.IsExpired;
+	public AuthType CurrentAuthType => _currentAuthType;
+	public bool IsGuestAccount => _currentAuthType == AuthType.Guest;
 	public bool IsSocketConnected => _socket != null;
 	public string UserId => _userId;
 	public string DisplayName => _displayName;
@@ -99,6 +104,134 @@ public partial class NakamaService : Node
 		_serverKey = string.IsNullOrWhiteSpace(serverKey) ? DefaultServerKey : serverKey.Trim();
 	}
 
+	public async Task<bool> TryRestoreSessionAsync()
+	{
+		if (!AuthSessionStore.HasStoredSession)
+			return false;
+
+		if (!AuthSessionStore.TryLoad(out ISession restored, out AuthType authType))
+		{
+			AuthSessionStore.Clear();
+			EmitSignal(SignalName.AuthenticationFailed, "auth_session_expired");
+			return false;
+		}
+
+		try
+		{
+			EnsureClient();
+			_session = restored;
+			_currentAuthType = authType;
+
+			var utcNow = DateTime.UtcNow;
+			if (_session.HasExpired(utcNow) || _session.HasExpired(utcNow.AddDays(1)))
+				_session = await _client.SessionRefreshAsync(_session);
+
+			await ApplySessionAsync(_session, authType);
+			return true;
+		}
+		catch (ApiResponseException ex)
+		{
+			GD.PrintErr($"[NAKAMA] Session restore failed: {ex.Message}");
+			InvalidateLocalSession(clearStoredSession: true);
+			EmitSignal(SignalName.AuthenticationFailed, MapAuthErrorKey(ex));
+			return false;
+		}
+		catch (Exception ex)
+		{
+			GD.PrintErr($"[NAKAMA] Session restore failed: {ex.Message}");
+			InvalidateLocalSession(clearStoredSession: true);
+			EmitSignal(SignalName.AuthenticationFailed, MapExceptionToAuthKey(ex));
+			return false;
+		}
+	}
+
+	public async Task<bool> RegisterWithEmailAsync(string email, string username, string password)
+	{
+		if (!ValidateEmail(email, out string emailError))
+		{
+			EmitSignal(SignalName.AuthenticationFailed, emailError);
+			return false;
+		}
+
+		if (!ValidateUsername(username, out string usernameError))
+		{
+			EmitSignal(SignalName.AuthenticationFailed, usernameError);
+			return false;
+		}
+
+		if (!ValidatePassword(password, out string passwordError))
+		{
+			EmitSignal(SignalName.AuthenticationFailed, passwordError);
+			return false;
+		}
+
+		try
+		{
+			EnsureClient();
+			_session = await _client.AuthenticateEmailAsync(email.Trim(), password, username, true);
+			ValidateSessionOrThrow("RegisterWithEmailAsync");
+			await ApplySessionAsync(_session, AuthType.Email);
+			return true;
+		}
+		catch (ApiResponseException ex)
+		{
+			EmitSignal(SignalName.AuthenticationFailed, MapAuthErrorKey(ex));
+			GD.PrintErr($"[NAKAMA] Register failed: {ex.Message}");
+			return false;
+		}
+		catch (Exception ex)
+		{
+			EmitSignal(SignalName.AuthenticationFailed, MapExceptionToAuthKey(ex));
+			GD.PrintErr($"[NAKAMA] Register failed: {ex.Message}");
+			return false;
+		}
+	}
+
+	public async Task<bool> LoginWithEmailAsync(string email, string password)
+	{
+		if (!ValidateEmail(email, out string emailError))
+		{
+			EmitSignal(SignalName.AuthenticationFailed, emailError);
+			return false;
+		}
+
+		if (!ValidatePassword(password, out string passwordError))
+		{
+			EmitSignal(SignalName.AuthenticationFailed, passwordError);
+			return false;
+		}
+
+		try
+		{
+			EnsureClient();
+			_session = await _client.AuthenticateEmailAsync(email.Trim(), password, null, false);
+			ValidateSessionOrThrow("LoginWithEmailAsync");
+			await ApplySessionAsync(_session, AuthType.Email);
+			return true;
+		}
+		catch (ApiResponseException ex)
+		{
+			EmitSignal(SignalName.AuthenticationFailed, MapAuthErrorKey(ex));
+			GD.PrintErr($"[NAKAMA] Login failed: {ex.Message}");
+			return false;
+		}
+		catch (Exception ex)
+		{
+			EmitSignal(SignalName.AuthenticationFailed, MapExceptionToAuthKey(ex));
+			GD.PrintErr($"[NAKAMA] Login failed: {ex.Message}");
+			return false;
+		}
+	}
+
+	/// <summary>
+	/// v2: link guest device account to email via LinkEmailAsync(session, email, password).
+	/// </summary>
+	public Task<bool> LinkGuestToEmailAsync(string email, string password)
+	{
+		GD.PrintErr("[NAKAMA] LinkGuestToEmailAsync is not implemented yet.");
+		return Task.FromResult(false);
+	}
+
 	public async Task AuthenticateGuestAsync()
 	{
 		try
@@ -107,28 +240,43 @@ public partial class NakamaService : Node
 			_deviceId = LoadOrCreateDeviceId();
 			_session = await _client.AuthenticateDeviceAsync(_deviceId);
 			ValidateSessionOrThrow("AuthenticateDeviceAsync");
-			_userId = _session!.UserId;
-			_displayName = string.IsNullOrWhiteSpace(_session.Username)
-				? $"Guest-{_userId[..Math.Min(8, _userId.Length)]}"
-				: _session.Username;
-			GD.Print($"[NAKAMA] Authenticated userId={_userId} deviceId={_deviceId[..Math.Min(8, _deviceId.Length)]}...");
-
-			await EnsureSocketConnectedAsync();
-			EmitSignal(SignalName.Authenticated, _userId, _displayName);
+			await ApplySessionAsync(_session, AuthType.Guest);
+		}
+		catch (ApiResponseException ex)
+		{
+			EmitSignal(SignalName.AuthenticationFailed, MapAuthErrorKey(ex));
+			GD.PrintErr($"[NAKAMA] Guest auth failed: {ex.Message}");
 		}
 		catch (Exception ex)
 		{
-			EmitSignal(SignalName.AuthenticationFailed, ex.Message);
+			EmitSignal(SignalName.AuthenticationFailed, MapExceptionToAuthKey(ex));
 			GD.PrintErr($"[NAKAMA] Guest auth failed: {ex.Message}");
 		}
 	}
 
+	public async Task LogoutAsync()
+	{
+		AuthSessionStore.Clear();
+		InvalidateLocalSession(clearStoredSession: false);
+		await CloseSocketAsync();
+		_userId = "";
+		_displayName = "";
+		_currentAuthType = AuthType.Guest;
+		EmitSignal(SignalName.LoggedOut);
+	}
+
 	public async Task<bool> UpdateUniqueUsernameAsync(string desiredName)
 	{
-		string normalized = NormalizeUsername(desiredName);
-		if (string.IsNullOrWhiteSpace(normalized))
+		if (!IsGuestAccount)
 		{
-			EmitSignal(SignalName.AuthenticationFailed, "Pseudo vide ou invalide");
+			EmitSignal(SignalName.AuthenticationFailed, "auth_error_guest_only");
+			return false;
+		}
+
+		string normalized = NormalizeUsername(desiredName);
+		if (!ValidateUsername(normalized, out string usernameError))
+		{
+			EmitSignal(SignalName.AuthenticationFailed, usernameError);
 			return false;
 		}
 
@@ -145,7 +293,7 @@ public partial class NakamaService : Node
 		}
 		catch (Exception ex)
 		{
-			EmitSignal(SignalName.AuthenticationFailed, ex.Message);
+			EmitSignal(SignalName.AuthenticationFailed, MapExceptionToAuthKey(ex));
 			GD.PrintErr($"[NAKAMA] Username update failed: {ex.Message}");
 			return false;
 		}
@@ -161,9 +309,9 @@ public partial class NakamaService : Node
 
 			var stringProperties = new Dictionary<string, string>
 			{
-				{ "game", "supkonquest" },
-				{ "mode", "relay" },
-				{ "region", "eu" }
+				{ "game", "supkonquest"},
+				{ "mode", "relay"},
+				{ "region", "eu"}
 			};
 
 			string query = "+properties.game:supkonquest +properties.mode:relay";
@@ -219,24 +367,8 @@ public partial class NakamaService : Node
 
 	public void Disconnect()
 	{
-		try
-		{
-			if (_socket != null)
-			{
-				_socket.ReceivedMatchmakerMatched -= OnReceivedMatchmakerMatched;
-				_socket.ReceivedMatchPresence -= OnReceivedMatchPresence;
-				_socket.ReceivedMatchState -= OnReceivedMatchState;
-				_socket.CloseAsync();
-			}
-		}
-		catch (Exception ex)
-		{
-			GD.PrintErr($"[NAKAMA] Socket disconnect warning: {ex.Message}");
-		}
-
-		_socket = null;
+		_ = CloseSocketAsync();
 		_session = null;
-		_client = null;
 		_matchId = "";
 		_matchmakerTicket = "";
 		_localSessionId = "";
@@ -252,12 +384,152 @@ public partial class NakamaService : Node
 	private async Task EnsureAuthenticatedAndSocketAsync()
 	{
 		if (!IsAuthenticated)
-			await AuthenticateGuestAsync();
-
-		if (!IsAuthenticated)
-			throw new InvalidOperationException("Authentification Nakama requise avant le matchmaking.");
+			throw new InvalidOperationException("auth_not_authenticated");
 
 		await EnsureSocketConnectedAsync();
+	}
+
+	private async Task ApplySessionAsync(ISession session, AuthType authType)
+	{
+		_session = session;
+		_currentAuthType = authType;
+		_userId = _session.UserId;
+		_displayName = ResolveDisplayName(_session);
+		AuthSessionStore.Save(_session, authType);
+
+		if (authType == AuthType.Guest)
+		{
+			_deviceId = LoadOrCreateDeviceId();
+			GD.Print($"[NAKAMA] Guest auth userId={_userId} deviceId={_deviceId[..Math.Min(8, _deviceId.Length)]}...");
+		}
+		else
+		{
+			GD.Print($"[NAKAMA] Email auth userId={_userId} username={_displayName}");
+		}
+
+		EmitSignal(SignalName.Authenticated, _userId, _displayName);
+	}
+
+	private static string ResolveDisplayName(ISession session)
+	{
+		if (!string.IsNullOrWhiteSpace(session.Username))
+			return session.Username;
+
+		string userId = session.UserId ?? "";
+		return userId.Length > 8 ? $"Player-{userId[..8]}": $"Player-{userId}";
+	}
+
+	private void InvalidateLocalSession(bool clearStoredSession)
+	{
+		if (clearStoredSession)
+			AuthSessionStore.Clear();
+
+		_session = null;
+		_userId = "";
+		_displayName = "";
+	}
+
+	private async Task CloseSocketAsync()
+	{
+		try
+		{
+			if (_socket != null)
+			{
+				_socket.ReceivedMatchmakerMatched -= OnReceivedMatchmakerMatched;
+				_socket.ReceivedMatchPresence -= OnReceivedMatchPresence;
+				_socket.ReceivedMatchState -= OnReceivedMatchState;
+				await _socket.CloseAsync();
+			}
+		}
+		catch (Exception ex)
+		{
+			GD.PrintErr($"[NAKAMA] Socket disconnect warning: {ex.Message}");
+		}
+
+		_socket = null;
+	}
+
+	public static string MapAuthErrorKey(ApiResponseException ex)
+	{
+		if (ex == null)
+			return "connection_failed";
+
+		string message = ex.Message?.ToLowerInvariant() ?? "";
+		if (ex.StatusCode == 401 || message.Contains("invalid") || message.Contains("credentials"))
+			return "auth_error_invalid_credentials";
+
+		if (message.Contains("username") && (message.Contains("exists") || message.Contains("in use")))
+			return "auth_error_username_taken";
+
+		if (message.Contains("password") || message.Contains("too short"))
+			return "auth_error_password";
+
+		if (message.Contains("email"))
+			return "auth_error_email";
+
+		return "connection_failed";
+	}
+
+	public static string MapExceptionToAuthKey(Exception ex)
+	{
+		if (ex is ApiResponseException apiEx)
+			return MapAuthErrorKey(apiEx);
+
+		string message = ex.Message?.ToLowerInvariant() ?? "";
+		if (ex is HttpRequestException or System.Net.Sockets.SocketException or TaskCanceledException
+		    || message.Contains("sending the request")
+		    || message.Contains("connection refused")
+		    || message.Contains("no connection")
+		    || message.Contains("actively refused")
+		    || message.Contains("timed out")
+		    || message.Contains("could not be established"))
+			return "auth_error_network";
+
+		return "connection_failed";
+	}
+
+	public static bool ValidateEmail(string email, out string errorKey)
+	{
+		errorKey = "";
+		if (string.IsNullOrWhiteSpace(email))
+		{
+			errorKey = "auth_error_email";
+			return false;
+		}
+
+		string trimmed = email.Trim();
+		if (trimmed.Length < 10 || trimmed.Length > 255 || !trimmed.Contains('@'))
+		{
+			errorKey = "auth_error_email";
+			return false;
+		}
+
+		return true;
+	}
+
+	public static bool ValidateUsername(string username, out string errorKey)
+	{
+		errorKey = "";
+		string normalized = NormalizeUsername(username);
+		if (normalized.Length < MinUsernameLength)
+		{
+			errorKey = "auth_error_username";
+			return false;
+		}
+
+		return true;
+	}
+
+	public static bool ValidatePassword(string password, out string errorKey)
+	{
+		errorKey = "";
+		if (string.IsNullOrEmpty(password) || password.Length < MinPasswordLength)
+		{
+			errorKey = "auth_error_password";
+			return false;
+		}
+
+		return true;
 	}
 
 	private async Task EnsureSocketConnectedAsync()
@@ -339,9 +611,9 @@ public partial class NakamaService : Node
 		EmitSignal(SignalName.MatchLobbyEntered, matchId, pendingSeed);
 	}
 
-	private void DeferredEmitMatchStarting(string matchId, int localTeamId, int seed, int playerCount)
+	private void DeferredEmitMatchStarting(string matchId, int localTeamId, int seed, int playerCount, int mapType)
 	{
-		EmitSignal(SignalName.MatchStarting, matchId, localTeamId, seed, playerCount);
+		EmitSignal(SignalName.MatchStarting, matchId, localTeamId, seed, playerCount, mapType);
 	}
 
 	private void DeferredEmitMatchmakingFailed(string reason)
@@ -493,10 +765,18 @@ public partial class NakamaService : Node
 			return;
 		}
 
-		FinalizeMatchStartFromRelay(start.Seed, start.OrderedUserIds);
+		FinalizeMatchStartFromRelay(start.Seed, start.OrderedUserIds, start.MapType);
 	}
 
-	private void FinalizeMatchStartFromRelay(int seed, string[] orderedUserIds, string source = "relay")
+	private static int NormalizeRelayMapType(int mapType)
+	{
+		if (mapType < 0 || mapType > 2)
+			return 0;
+
+		return mapType;
+	}
+
+	private void FinalizeMatchStartFromRelay(int seed, string[] orderedUserIds, int mapType = 0, string source = "relay")
 	{
 		if (_hasEmittedMatchStarting || string.IsNullOrWhiteSpace(_matchId))
 			return;
@@ -524,12 +804,13 @@ public partial class NakamaService : Node
 		_pendingMatchSeed = effectiveSeed;
 		int localTeamId = localIndex + 1;
 		int playerCount = ordered.Count;
+		int effectiveMapType = NormalizeRelayMapType(mapType);
 		_userTeamMap.Clear();
 		for (int i = 0; i < ordered.Count; i++)
 			_userTeamMap[ordered[i]] = i + 1;
 
-		GD.Print($"[NAKAMA] Match starting ({source}): {_matchId} team={localTeamId} seed={effectiveSeed} players={playerCount}");
-		CallDeferred(nameof(DeferredEmitMatchStarting), _matchId, localTeamId, effectiveSeed, playerCount);
+		GD.Print($"[NAKAMA] Match starting ({source}): {_matchId} team={localTeamId} seed={effectiveSeed} mapType={effectiveMapType} players={playerCount}");
+		CallDeferred(nameof(DeferredEmitMatchStarting), _matchId, localTeamId, effectiveSeed, playerCount, effectiveMapType);
 	}
 
 	private List<string> GetOrderedParticipantUserIds()
@@ -621,90 +902,8 @@ public partial class NakamaService : Node
 		return userIds.OrderBy(id => id, StringComparer.Ordinal).ToList();
 	}
 
-	private static string ResolveDeviceIdFilePath()
-	{
-		string slot = ResolveDeviceSlot();
-		return string.IsNullOrWhiteSpace(slot)
-			? DeviceIdFilePath
-			: $"user://nakama_device_id_{slot}.txt";
-	}
-
-	private static string ResolveDeviceSlot()
-	{
-		string fromCommandLine = ReadDeviceSlotFromCommandLine();
-		if (!string.IsNullOrWhiteSpace(fromCommandLine))
-			return fromCommandLine;
-
-		string envSlot = OS.GetEnvironment(EnvDeviceSlotName);
-		if (!string.IsNullOrWhiteSpace(envSlot))
-			return SanitizeDeviceSlot(envSlot);
-
-		string configuredSlot = GetProjectSetting(ConfigDeviceSlotPath, "");
-		return SanitizeDeviceSlot(configuredSlot);
-	}
-
-	private static string ReadDeviceSlotFromCommandLine()
-	{
-		foreach (string arg in OS.GetCmdlineUserArgs())
-		{
-			string slot = TryParseDeviceSlotArgument(arg);
-			if (!string.IsNullOrWhiteSpace(slot))
-				return slot;
-		}
-
-		string[] args = OS.GetCmdlineArgs();
-		for (int i = 0; i < args.Length; i++)
-		{
-			string slot = TryParseDeviceSlotArgument(args[i]);
-			if (!string.IsNullOrWhiteSpace(slot))
-				return slot;
-
-			if (IsDeviceSlotFlag(args[i]) && i + 1 < args.Length)
-			{
-				slot = SanitizeDeviceSlot(args[i + 1]);
-				if (!string.IsNullOrWhiteSpace(slot))
-					return slot;
-			}
-		}
-
-		return "";
-	}
-
-	private static bool IsDeviceSlotFlag(string arg)
-	{
-		return string.Equals(arg, "--nakama-slot", StringComparison.OrdinalIgnoreCase);
-	}
-
-	private static string TryParseDeviceSlotArgument(string arg)
-	{
-		if (string.IsNullOrWhiteSpace(arg))
-			return "";
-
-		const string prefix = "--nakama-slot=";
-		if (arg.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
-			return SanitizeDeviceSlot(arg[prefix.Length..]);
-
-		return "";
-	}
-
-	private static string SanitizeDeviceSlot(string value)
-	{
-		if (string.IsNullOrWhiteSpace(value))
-			return "";
-
-		var builder = new StringBuilder(value.Trim().ToLowerInvariant());
-		for (int i = builder.Length - 1; i >= 0; i--)
-		{
-			char c = builder[i];
-			if (char.IsLetterOrDigit(c) || c == '_' || c == '-')
-				continue;
-
-			builder.Remove(i, 1);
-		}
-
-		string sanitized = builder.ToString();
-		return sanitized.Length > 24 ? sanitized[..24] : sanitized;
-	}
+	private static string ResolveDeviceIdFilePath() =>
+		NakamaDeviceSlot.SlottedUserFile("nakama_device_id", ".txt");
 
 	private void LogMatchPresences(IMatch match)
 	{
@@ -751,7 +950,7 @@ public partial class NakamaService : Node
 
 	private async Task AbortMatchForDuplicateIdentityAsync(string source)
 	{
-		string reason = $"[NAKAMA] Duplicate local userId detected from {source} for userId={_userId}. " +
+		string reason = $"[NAKAMA] Duplicate local userId detected from {source} for userId={_userId}. "+
 			"Stop join to avoid same-camp spawn and relay self-filtering. Use distinct slots: --nakama-slot=1 and --nakama-slot=2.";
 		GD.PrintErr(reason);
 
@@ -793,6 +992,7 @@ public partial class NakamaService : Node
 	{
 		public int Seed { get; set; }
 		public string[] OrderedUserIds { get; set; } = Array.Empty<string>();
+		public int MapType { get; set; }
 	}
 
 	private static int GenerateSeedFromMatchId(string matchId)

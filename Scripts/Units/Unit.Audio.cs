@@ -15,8 +15,7 @@ public partial class Unit
 		"res://Assets/Units/SonUnits/Infantry/sword-on-flesh.mp3",
 		"res://Assets/Units/SonUnits/Infantry/sword-on-flech-extreme.mp3",
 		"res://Assets/Units/SonUnits/Infantry/sword-on-shield.mp3",
-		"res://Assets/Units/SonUnits/Infantry/sword-on-sword.mp3"
-	};
+		"res://Assets/Units/SonUnits/Infantry/sword-on-sword.mp3"};
 
 	private const string ArcherSfxPath = "res://Assets/Units/SonUnits/Archer/Arrow-wood-impact.mp3";
 	private const string HealerSfxPath = "res://Assets/Units/SonUnits/Healer/Healing-Magic.mp3";

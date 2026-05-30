@@ -17,16 +17,21 @@ config/icon="res://icon.svg"
 
 [autoload]
 
-NetworkManager="*res://Scripts/Network/NetworkManager.cs"
 GameState="*res://Scripts/Network/GameState.cs"
 NakamaService="*res://Scripts/Network/NakamaService.cs"
 LocalizationManager="*res://Scripts/UI/LocalizationManager.cs"
 GameManager="*res://Scripts/Economy/GameManager.cs"
 AudioSettings="*res://Scripts/UI/AudioSettings.cs"
 KeybindingsManager="*res://Scripts/UI/KeybindingsManager.cs"
+DebugMenu="*res://addons/debug_menu/debug_menu.tscn"
+
+[debug]
+
+settings/stdout/print_fps=true
 
 [display]
 
+window/size/always_on_top=true
 window/stretch/mode="canvas_items"
 
 [dotnet]
@@ -35,7 +40,7 @@ project/assembly_name="SupKonQuest"
 
 [editor_plugins]
 
-enabled=PackedStringArray("res://addons/godot_mcp/plugin.cfg")
+enabled=PackedStringArray("res://addons/debug_menu/plugin.cfg", "res://addons/godot_mcp/plugin.cfg")
 
 [input]
 
@@ -87,9 +92,20 @@ ultimate_cancel={
 ]
 }
 
+[layer_names]
+
+2d_physics/layer_1="Units"
+2d_physics/layer_2="Ships"
+2d_physics/layer_3="Terrain"
+2d_physics/layer_4="Camps"
+
 [nakama]
 
 scheme="http"
 host="4.166.40.82"
 port=7350
 server_key="defaultkey"
+
+[rendering]
+
+textures/vram_compression/import_etc2_astc=true

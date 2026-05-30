@@ -166,7 +166,7 @@ public partial class TerritoryManager : Node2D
 	public void StartPortPlacement(CampSimple camp)
 	{
 		_pendingPortCamp = camp;
-		GD.Print("[PORT] Cliquez sur la carte pour placer le port.");
+		GD.Print("[PORT] Click on the map to place the port.");
 	}
 
 	public void CancelPortPlacement()
@@ -174,7 +174,7 @@ public partial class TerritoryManager : Node2D
 		if (_pendingPortCamp != null)
 		{
 			GameManager.Instance?.AddGold(_pendingPortCamp.GetTeamId(), CampSimple.PortCost);
-			GD.Print("[PORT] Placement annulé, or remboursé.");
+			GD.Print("[PORT] Placement cancelled, gold refunded.");
 		}
 		_pendingPortCamp = null;
 	}
@@ -210,7 +210,7 @@ public partial class TerritoryManager : Node2D
 					var gameState = GetNodeOrNull<GameState>("/root/GameState");
 					int localTeamId = gameState?.LocalTeamId ?? 1;
 
-					// Même conversion que CampSimple.PlacePortAt pour éviter les décalages terre/eau.
+					// Same conversion as CampSimple.PlacePortAt to avoid land/water offsets.
 					Vector2I clickedTile = _solLayer != null
 						? _solLayer.LocalToMap(_solLayer.ToLocal(worldPos))
 						: new Vector2I(Mathf.RoundToInt(worldPos.X / TileSize), Mathf.RoundToInt(worldPos.Y / TileSize));
@@ -222,11 +222,11 @@ public partial class TerritoryManager : Node2D
 						&& _territoryMap[tx, ty] == localTeamId;
 
 					if (isWaterTile)
-						GD.Print("[PORT] Cliquez sur une tuile de territoire (terre) adjacente à l'eau.");
+						GD.Print("[PORT] Click a territory tile (land) adjacent to water.");
 					else if (!tileOwned)
-						GD.Print("[PORT] Cette tuile ne vous appartient pas.");
+						GD.Print("[PORT] This tile is not owned by your team.");
 					else if (!_pendingPortCamp.PlacePortAt(worldPos))
-						GD.Print("[PORT] Aucune eau ici — choisissez un emplacement près de l'eau.");
+						GD.Print("[PORT] No water here - choose a spot near water.");
 					else
 						_pendingPortCamp = null;
 					GetViewport().SetInputAsHandled();
@@ -243,8 +243,8 @@ public partial class TerritoryManager : Node2D
 
 	private void ConnectCampSignals()
 	{
-		// Les signaux sont gardés pour d'éventuels autres listeners,
-		// mais le territoire est rafraîchi via appel direct depuis CaptureCamp().
+		// Signals are kept for potential listeners,
+		// but territory is refreshed via direct calls from CaptureCamp().
 		int connected = 0;
 		foreach (Node node in GetTree().GetNodesInGroup("camps"))
 		{
@@ -253,7 +253,7 @@ public partial class TerritoryManager : Node2D
 				connected++;
 			}
 		}
-		GD.Print($"[TERRITOIRE] ConnectCampSignals : {connected} camp(s) dans le groupe 'camps'.");
+		GD.Print($"[TERRITOIRE] ConnectCampSignals: {connected} camp(s) in group 'camps'.");
 	}
 
 	private Color GetTeamColor(int teamId)
@@ -356,7 +356,7 @@ public partial class TerritoryManager : Node2D
 		}
 
 		// Pour chaque région, vérifier si une seule équipe possède tous les camps
-		var conqueredRegions = new Dictionary<int, int>(); // regionId → teamId
+		var conqueredRegions = new Dictionary<int, int>(); // regionId -> teamId
 		foreach (var (regionId, camps) in campsByRegion)
 		{
 			if (camps.Count == 0) continue;
@@ -476,7 +476,7 @@ public partial class TerritoryManager : Node2D
 	// Appelé directement depuis CampSimple.CaptureCamp() et ApplyRemoteCapture()
 	public void RefreshTerritory(int captorTeamId = -1)
 	{
-		GD.Print($"[TERRITOIRE] RefreshTerritory() — capteur : team {captorTeamId}");
+		GD.Print($"[TERRITOIRE] RefreshTerritory() - captor: team {captorTeamId}");
 		ComputeTerritory();
 		UpdateTintImage();
 		QueueRedraw();

@@ -1,4 +1,3 @@
-using Godot;
 using System.Collections.Generic;
 
 public class VictoryManager
@@ -36,7 +35,7 @@ public class VictoryManager
 
 		foreach (var camp in allCamps)
 		{
-			if (camp == null || !GodotObject.IsInstanceValid(camp))
+			if (camp == null || !Godot.GodotObject.IsInstanceValid(camp))
 				continue;
 
 			int teamId = camp.GetTeamId();
@@ -64,52 +63,6 @@ public class VictoryManager
 	private void DeclareVictory(int winningTeamId)
 	{
 		_victoryDeclared = true;
-		DisplayVictoryMessage(winningTeamId);
-	}
-
-	private void DisplayVictoryMessage(int winningTeamId)
-	{
-		var canvasLayer = new CanvasLayer();
-		canvasLayer.Layer = 100;
-
-		var vbox = new VBoxContainer();
-		vbox.SetAnchorsPreset(Control.LayoutPreset.Center);
-		vbox.GrowHorizontal = Control.GrowDirection.Both;
-		vbox.GrowVertical = Control.GrowDirection.Both;
-		vbox.AddThemeConstantOverride("separation", 20);
-
-		var victoryLabel = new Label();
-		string victoryText = LocalizationManager.Instance != null
-			? LocalizationManager.Instance.GetText("victory")
-			: "VICTOIRE!";
-		victoryLabel.Text = $"{victoryText}\n{winningTeamId}";
-		victoryLabel.HorizontalAlignment = HorizontalAlignment.Center;
-		victoryLabel.AddThemeFontSizeOverride("font_size", 48);
-		victoryLabel.AddThemeColorOverride("font_color", new Color(1, 0.84f, 0, 1));
-		victoryLabel.AddThemeColorOverride("font_outline_color", new Color(0, 0, 0, 1));
-		victoryLabel.AddThemeConstantOverride("outline_size", 5);
-
-		var menuButton = new Button();
-		menuButton.Text = LocalizationManager.Instance != null
-			? LocalizationManager.Instance.GetText("main_menu")
-			: "Menu principal";
-		menuButton.AddThemeFontSizeOverride("font_size", 28);
-		menuButton.ProcessMode = Node.ProcessModeEnum.Always;
-		menuButton.Pressed += () =>
-		{
-			canvasLayer.QueueFree();
-			_gameManager.GetTree().Paused = false;
-			var gameState = _gameManager.GetNodeOrNull<GameState>("/root/GameState");
-			if (gameState != null)
-				gameState.ReturnToMainMenu();
-			else
-				_gameManager.GetTree().ChangeSceneToFile("res://Scenes/MainMenu.tscn");
-		};
-
-		vbox.AddChild(victoryLabel);
-		vbox.AddChild(menuButton);
-		canvasLayer.AddChild(vbox);
-		_gameManager.GetTree().Root.AddChild(canvasLayer);
-		_gameManager.GetTree().Paused = true;
+		_gameManager.NotifyGameWon(winningTeamId);
 	}
 }

@@ -14,7 +14,7 @@ Le principe : chaque camp genere de l'or passivement, cet or permet d'acheter de
 
 **C# (.NET 8.0)** : typage statique, structures de donnees .NET (`Dictionary`, `Queue`, `List`). Aucune dependance NuGet externe.
 
-**ENet** : protocole reseau UDP fiable integre dans Godot pour l'ancien mode local/legacy (retransmission des paquets perdus, ordonnancement). Port 7777 pour le jeu, 7778 pour la decouverte LAN via UDP broadcast.
+**Nakama** : backend multijoueur (compte email ou invité, session chiffree locale, matchmaking, relay de commandes gameplay via WebSocket).
 
 ## Prerequis
 
@@ -34,7 +34,7 @@ Ensuite ouvrir le projet dans Godot 4.5 et lancer avec F5.
 ## Serveur Nakama local (pour le mode en ligne)
 
 Si vous n'avez pas encore de serveur, le mode solo fonctionne sans Nakama.
-Pour tester le mode en ligne (auth guest + matchmaking 2-8 + lobby in-match), lancez un Nakama local **et** le module relay (projet serveur separe) qui pilote le countdown et le demarrage de partie.
+Pour tester le mode en ligne (auth email / invité + matchmaking 2-8 + lobby in-match), lancez un Nakama local **et** le module relay (`supkonquest-server/`, `npm run build` → `build/index.js`) qui pilote le countdown et le demarrage de partie.
 
 Prerequis minimaux:
 
@@ -76,6 +76,7 @@ SupKonQuest/
 ├── Scenes/
 │   ├── MainMenu.tscn
 │   ├── GameModeMenu.tscn       # Choix mode (Solo / Multi / IA)
+│   ├── Auth.tscn               # Connexion / inscription / invité (Nakama)
 │   ├── Lobby.tscn              # Lobby multijoueur (Nakama matchmaking)
 │   ├── Game.tscn               # Scene principale du jeu
 │   ├── GameHUD.tscn            # Interface HUD (or, boutons d'achat)
@@ -90,9 +91,9 @@ SupKonQuest/
 │   ├── Selection/              # SelectionManager
 │   ├── Camera/                 # CameraController
 │   ├── Economy/                # GameManager, VictoryManager
-│   ├── Network/                # NetworkManager, GameState, NetworkSync, NetworkEntityRegistry
+│   ├── Network/                # GameState, NetworkSync, NetworkEntityRegistry, NakamaService, AuthSessionStore
 │   ├── AI/                     # AIController (Easy/Medium/Hard)
-│   └── UI/                     # GameHUD, LobbyUI, Minimap, MainMenu, GameModeMenu, LocalizationManager
+│   └── UI/                     # GameHUD, LobbyUI, AuthUI, Minimap, MainMenu, GameModeMenu, LocalizationManager
 └── project.godot               # Config Godot (autoloads, inputs)
 ```
 
@@ -104,8 +105,7 @@ SupKonQuest/
 Root
 ├── Singletons (AutoLoads)
 │   ├── GameManager             # Economie or + bonus region + victoire
-│   ├── NetworkManager          # ENet legacy P2P (hosting, connexion, decouverte LAN)
-│   ├── GameState               # Flux de jeu (seed, identifiant joueur local, IsAIMode)
+│   ├── GameState               # Flux de jeu (seed, identifiant joueur local, IsAIMode, IsOnline)
 │   ├── NakamaService           # Auth + matchmaking + relay (mode en ligne)
 │   ├── LocalizationManager     # i18n FR/EN/ES
 │   └── AudioSettings           # Volume audio
@@ -115,7 +115,7 @@ Root
     │   ├── Objets (TileMapLayer)
     │   ├── Camera2D (CameraController)
     │   ├── SelectionManager
-    │   ├── NetworkSync          # Hub RPCs (ajoute au runtime en multi)
+    │   ├── NetworkSync          # Helpers sync online (Nakama relay)
     │   └── Units               # Conteneur des camps, unites, navires
     ├── GameHUD
     └── Minimap (SubViewport)
@@ -124,9 +124,9 @@ Root
 ### Singletons (AutoLoad)
 
 - **GameManager** : economie or par joueur/slot, bonus region, conditions de victoire via VictoryManager. Accessible via `GameManager.Instance`.
-- **NetworkManager** : connexion ENet P2P, decouverte UDP (port 7778), code salon 6 caracteres.
-- **GameState** : seed de carte, identifiant local de joueur (slot d'ownership), IsAIMode, AILevel, IsOnline.
-- **NakamaService** : mode en ligne (guest, matchmaking, envoi de commandes relay).
+- **GameState** : seed de carte, identifiant local de joueur (slot d'ownership), IsAIMode, AILevel, IsOnline, `IsOnlineMultiplayer`.
+- **NakamaService** : mode en ligne (email, invité, restauration de session, matchmaking, relay).
+- **AuthSessionStore** : persistance chiffree des tokens Nakama (`user://nakama_auth_session.dat`).
 - **LocalizationManager** : 166 cles traduites en FR/EN/ES, signal `LanguageChanged`.
 - **AudioSettings** : preferences de volume.
 
@@ -140,7 +140,7 @@ Godot utilise des signaux pour la communication entre noeuds. Exemple :
 EmitSignal(SignalName.PlayerConnected, id);
 ```
 
-`NetworkManager` emet `PlayerConnected`, `LobbyUI` s'abonne pour mettre a jour la liste sans dependance directe.
+`NakamaService` emet les signaux de lobby/match ; `LobbyUI` s'abonne pour mettre a jour la liste des joueurs.
 
 ## Generation de la carte
 
@@ -370,12 +370,17 @@ Un clic droit deplace les unites selectionnees. Clic droit sur un Transport alli
 
 ### Mode en ligne (Nakama + relay)
 
+**Parcours multijoueur** : Menu principal → Mode de jeu → **Authentification** (`Auth.tscn`) → Lobby → partie.
+
+- **Compte email** : inscription (email, pseudo, mot de passe ≥ 8) ou connexion ; pseudo = `username` Nakama (fixe en v1) ; session restauree au prochain lancement.
+- **Invité** : bouton dédié ; device ID persistant ; pseudo modifiable dans le lobby.
+- **Déconnexion** : bouton dans le lobby ; efface la session chiffree et renvoie vers Auth.
 - **PvP uniquement** : pas d'IA en multijoueur (`IsAIMode = false` force a l'entree du lobby/match).
 - **Matchmaking** : 2 a 8 joueurs (`AddMatchmakerAsync` min 2 / max 8).
 - **Camps** : 1 camp de depart par joueur humain ; les autres camps preset restent **neutres** (defenseurs 1,5x HP).
 - **Equipes** : `LocalTeamId` = index dans la liste triee des `userId` Nakama + 1 ; `ActivePlayerCount` fige au demarrage.
 - **Lobby in-match** : apres `JoinMatch` (>= 2 joueurs), le client affiche la liste des joueurs et attend le **serveur relay** — pas de demarrage automatique cote client.
-- **Test multi-instance** : un `deviceId` / `userId` Nakama distinct par instance via `--nakama-slot` (fichiers `user://nakama_device_id_1.txt` et `_2.txt`). Syntaxe recommandee Godot 4 :
+- **Test multi-instance** : un `deviceId` / `userId` Nakama distinct par instance via `--nakama-slot` (fichiers `user://nakama_device_id_1.txt`, `user://nakama_auth_session_1.dat`, etc.). Syntaxe recommandee Godot 4 :
 
 ```powershell
 godot --path . -- --nakama-slot=1
@@ -391,7 +396,7 @@ Le module relay Nakama vit dans un **autre depot**. Il doit broadcaster :
 | Opcode | Nom | Payload JSON (camelCase) |
 | ------ | --- | ------------------------ |
 | `4001` | LobbyTick | `{ "secondsRemaining": int, "playerCount": int }` — environ chaque seconde pendant l'attente |
-| `4002` | MatchStart | `{ "seed": int, "orderedUserIds": ["userId1", ...] }` — liste triee par `userId` (meme regle que le client) |
+| `4002` | MatchStart | `{ "seed": int, "orderedUserIds": ["userId1", ...], "mapType": 0|1|2 }` — `mapType` : 0=Irridium, 1=Alabasta, 2=Torskey (tire au sort serveur) ; liste triee par `userId` |
 
 Regles serveur attendues :
 
@@ -402,14 +407,9 @@ Regles serveur attendues :
 
 Constantes client : `NetworkCommandRouter.OpcodeLobbyTick` / `OpcodeMatchStart`.
 
-### Architecture legacy ENet (non utilise par l'UI actuelle)
-
-- Code conserve dans `NetworkManager` (port 7777, decouverte LAN 7778, max 8 peers).
-- L'UI lobby actuelle passe par `NakamaService` + `LobbyUI` uniquement.
-
 ### Gameplay relay (opcodes 1001-6001)
 
-- `NetworkCommandRouter` : achats, deplacements, attaques, captures, or, ultimates et cleanup de deconnexion.
+- `NetworkCommandRouter` : achats, spawns (`1003`/`1005`), deplacements (`2001`/`2004`), transport (`2006`-`2008`), degats camp (`2005`), captures, combat (`7001`-`7003`), ultimates et cleanup de deconnexion.
 - `NetworkEntityRegistry` : dictionnaire statique `NetworkId → Node`
   - IDs dynamiques : `"{peerId}_{counter}"`
   - IDs deterministes des defenseurs initiaux : `"camp_{campId}_unit_{index}"`
@@ -422,26 +422,10 @@ Constantes client : `NetworkCommandRouter.OpcodeLobbyTick` / `OpcodeMatchStart`.
   - serveur broadcast **une seule fois** `5002 PlayerLeaveCleanup`,
   - client applique cleanup gameplay (suppression unites/navires, camps neutralises, respawn defenseurs neutres).
 
-### RPCs Godot (ENet legacy)
-
-
-| RPC                                   | Mode      | Fiabilite  | Usage                                                  |
-| ------------------------------------- | --------- | ---------- | ------------------------------------------------------ |
-| RpcReceiveSeedAndStart                | Authority | Reliable   | Serveur → Clients : seed + debut                       |
-| RpcSyncCampAssignments                | Authority | Reliable   | Attribution camps/joueurs                              |
-| RpcSpawnUnit / RpcSpawnShip           | AnyPeer   | Reliable   | Creation entite distante                               |
-| RpcEntityDied                         | AnyPeer   | Reliable   | Destruction puppet                                     |
-| RpcApplyUnitDamage / Camp / Ship      | AnyPeer   | Reliable   | Degats (appliques uniquement par le peer proprietaire) |
-| RpcCampCaptured                       | AnyPeer   | Reliable   | Synchronisation capture                                |
-| RpcUnitBoarded / RpcTransportUnloaded | AnyPeer   | Reliable   | Transport naval                                        |
-| RpcSyncEntityStates                   | AnyPeer   | Unreliable | 20Hz : positions/sante/etats                           |
-
-
 ### Determinisme
 
 - Meme seed → meme terrain, memes positions de camps, meme distribution initiale
-- L'economie de chaque joueur est calculee localement (pas de sync or)
-- Limitation Godot : `bool[]` non supportee en RPC Variant → convertie en `int[]`
+- L'economie de chaque joueur est calculee localement (snapshots or via opcode relay)
 
 ## Localisation
 

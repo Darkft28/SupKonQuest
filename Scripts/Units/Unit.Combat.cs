@@ -40,7 +40,7 @@ public partial class Unit
 			return;
 		}
 
-		// Camp capturé par notre équipe → succès
+		// Camp capturé par notre équipe -> succès
 		if (_campTarget.GetTeamId() == TeamId)
 		{
 			_campTarget = null;
@@ -76,7 +76,7 @@ public partial class Unit
 
 		float effectiveRange = _stats.Range + 80f;
 
-		// Phase 1 : des défenseurs sont encore en vie → les combattre en priorité
+		// Phase 1 : des défenseurs sont encore en vie -> les combattre en priorité
 		if (!_campDefeatCached)
 		{
 			Unit defender = FindNearestDefenderOfCamp(_campTarget);
@@ -115,7 +115,7 @@ public partial class Unit
 			return;
 		}
 
-		// Phase 2 : plus de défenseurs → attaquer le bâtiment, mais engager les ennemis de passage
+		// Phase 2 : plus de défenseurs -> attaquer le bâtiment, mais engager les ennemis de passage
 		if (_opportunisticTarget != null)
 		{
 			float distToOpp = GlobalPosition.DistanceTo(_opportunisticTarget.GlobalPosition);
@@ -161,7 +161,7 @@ public partial class Unit
 		PlayAttackSfx();
 
 		// Range et Mortar : projectile au lieu de dégâts directs
-		if (UnitType == "Range" || UnitType == "Mortar")
+		if (UnitType == "Range"|| UnitType == "Mortar")
 		{
 			SpawnProjectile(target);
 			return;
@@ -169,12 +169,11 @@ public partial class Unit
 
 		// AntiArmor : dégâts x2 contre les unités Heavy
 		float attackDamage = _stats.Attack;
-		if (UnitType == "AntiArmor" && target.GetUnitType() == "Heavy")
+		if (UnitType == "AntiArmor"&& target.GetUnitType() == "Heavy")
 			attackDamage *= 2f;
 
-		// Réseau : si la cible est un puppet, envoyer via RPC
 		bool isMulti = NetworkSync.Instance?.IsMultiplayer() == true;
-		if (isMulti && !target.IsLocalAuthority && !string.IsNullOrEmpty(target.NetworkId))
+		if (isMulti && !string.IsNullOrEmpty(target.NetworkId))
 		{
 			NetworkSync.Instance?.SendUnitDamage(target.NetworkId, attackDamage, TeamId);
 			return;
@@ -188,8 +187,8 @@ public partial class Unit
 		var projectile = ProjectileScene?.Instantiate<Projectile>() ?? new Projectile();
 		GetTree().CurrentScene.AddChild(projectile);
 
-		var type = UnitType == "Mortar" ? Projectile.ProjectileType.Cannonball : Projectile.ProjectileType.Arrow;
-		float speed = UnitType == "Mortar" ? 300f : 500f;
+		var type = UnitType == "Mortar"? Projectile.ProjectileType.Cannonball : Projectile.ProjectileType.Arrow;
+		float speed = UnitType == "Mortar"? 300f : 500f;
 
 		projectile.Initialize(GlobalPosition, target, _stats.Attack, TeamId, type, speed);
 	}
@@ -222,7 +221,7 @@ public partial class Unit
 			OwnerCamp.OnDefenderDied(_lastAttackerTeamId, mutualKill);
 		}
 
-		if (IsLocalAuthority && !string.IsNullOrEmpty(NetworkId))
+		if (NetworkSync.Instance?.IsMultiplayer() == true && !string.IsNullOrEmpty(NetworkId))
 			NetworkSync.Instance?.SendEntityDied(NetworkId);
 
 		QueueFree();

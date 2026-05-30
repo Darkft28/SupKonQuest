@@ -4,24 +4,46 @@ public partial class Ship
 {
 	private const float MaxUnloadDistance = 2000f;
 	private const int MaxCoastTileDistance = 3;
+	private int _transportUnloadBatch;
+
+	private static bool IsOnlineMultiplayer() => GameState.IsOnlineMultiplayer;
 
 	public bool BoardUnit(Unit unit)
 	{
 		if (ShipType != "Transport") return false;
 		if (_loadedUnits.Count >= _stats.Capacity) return false;
 		if (unit == null || !IsInstanceValid(unit)) return false;
+		if (!unit.CanBoardTransport()) return false;
 
 		string unitNetId = unit.NetworkId;
-		_loadedUnits.Add((unit.GetUnitType(), unit.GetTeamId(), unit.GetCurrentHealth()));
+		string unitType = unit.GetUnitType();
+		int teamId = unit.GetTeamId();
+		float health = unit.GetCurrentHealth();
 
-		if (!string.IsNullOrEmpty(unitNetId) && !string.IsNullOrEmpty(NetworkId))
+		_loadedUnits.Add((unitType, teamId, health));
+
+		if (IsOnlineMultiplayer() && !string.IsNullOrEmpty(unitNetId) && !string.IsNullOrEmpty(NetworkId))
 		{
-			NetworkSync.Instance?.SendUnitBoarded(unitNetId, NetworkId);
+			NetworkCommandRouter.SendBoardTransport(NetworkId, unitNetId, unitType, teamId, health);
 		}
 
 		unit.QueueFree();
 		QueueRedraw();
 		return true;
+	}
+
+	public void ApplyRelayBoardTransport(string unitNetworkId, string unitType, int teamId, float health)
+	{
+		if (ShipType != "Transport") return;
+		if (_loadedUnits.Count >= _stats.Capacity) return;
+
+		_loadedUnits.Add((unitType, teamId, health));
+
+		var unit = NetworkEntityRegistry.Get<Unit>(unitNetworkId);
+		if (unit != null && GodotObject.IsInstanceValid(unit))
+			unit.QueueFree();
+
+		QueueRedraw();
 	}
 
 	public bool IsValidUnloadPosition(Vector2 landPosition)
@@ -50,7 +72,7 @@ public partial class Ship
 
 	public void MoveToUnload(Vector2 landPosition)
 	{
-		if (ShipType != "Transport" || _loadedUnits.Count == 0) return;
+		if (ShipType != "Transport"|| _loadedUnits.Count == 0) return;
 
 		Vector2 waterPos = FindNearestWaterTile(landPosition);
 
@@ -90,51 +112,86 @@ public partial class Ship
 
 	public void UnloadUnits(Vector2 landPosition)
 	{
-		if (ShipType != "Transport" || _loadedUnits.Count == 0) return;
+		if (ShipType != "Transport"|| _loadedUnits.Count == 0) return;
 
 		var unitScene = GD.Load<PackedScene>("res://Scenes/Unit.tscn");
 		if (unitScene == null) return;
 
-		var netIds = new System.Collections.Generic.List<string>();
-		var types = new System.Collections.Generic.List<string>();
-		var posXs = new System.Collections.Generic.List<float>();
-		var posYs = new System.Collections.Generic.List<float>();
-		var hps = new System.Collections.Generic.List<float>();
+		int unloadBatch = ++_transportUnloadBatch;
+		int count = _loadedUnits.Count;
+		var netIds = new string[count];
+		var types = new string[count];
+		var posXs = new float[count];
+		var posYs = new float[count];
+		var hps = new float[count];
 		int unloadTeamId = 0;
 
-		for (int i = 0; i < _loadedUnits.Count; i++)
+		for (int i = 0; i < count; i++)
 		{
 			var (type, teamId, health) = _loadedUnits[i];
 			var unit = unitScene.Instantiate<Unit>();
 
-			float angle = (i * Mathf.Tau) / _loadedUnits.Count;
+			float angle = (i * Mathf.Tau) / count;
 			Vector2 offset = new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * 100f;
+			Vector2 spawnPos = landPosition + offset;
 
-			unit.GlobalPosition = landPosition + offset;
+			unit.GlobalPosition = spawnPos;
 			unit.UnitType = type;
 			unit.TeamId = teamId;
 			unit.IsNeutralCampUnit = false;
 
-			string networkId = NetworkEntityRegistry.GenerateId();
+			string networkId = $"{NetworkId}_unload_{unloadBatch}_{i}";
 			unit.NetworkId = networkId;
-			unit.IsLocalAuthority = true;
+			unit.IsLocalAuthority = !IsOnlineMultiplayer();
 
 			GetTree().CurrentScene.AddChild(unit);
 			unit.SetCurrentHealth(health);
 
 			unloadTeamId = teamId;
-			netIds.Add(networkId);
-			types.Add(type);
-			posXs.Add(unit.GlobalPosition.X);
-			posYs.Add(unit.GlobalPosition.Y);
-			hps.Add(health);
+			netIds[i] = networkId;
+			types[i] = type;
+			posXs[i] = spawnPos.X;
+			posYs[i] = spawnPos.Y;
+			hps[i] = health;
 		}
 
-		if (netIds.Count > 0 && !string.IsNullOrEmpty(NetworkId))
+		if (IsOnlineMultiplayer() && !string.IsNullOrEmpty(NetworkId))
 		{
-			NetworkSync.Instance?.SendTransportUnloaded(NetworkId,
-				netIds.ToArray(), types.ToArray(), unloadTeamId,
-				posXs.ToArray(), posYs.ToArray(), hps.ToArray());
+			NetworkCommandRouter.SendTransportUnloaded(NetworkId, netIds, types, unloadTeamId, posXs, posYs, hps);
+		}
+
+		_loadedUnits.Clear();
+		QueueRedraw();
+	}
+
+	public void ApplyRelayTransportUnloaded(string[] unitNetworkIds, string[] unitTypes, int teamId, float[] posXs, float[] posYs, float[] healths)
+	{
+		if (ShipType != "Transport") return;
+		if (unitNetworkIds == null || unitTypes == null || posXs == null || posYs == null || healths == null)
+			return;
+
+		int count = unitNetworkIds.Length;
+		if (count == 0 || unitTypes.Length != count || posXs.Length != count || posYs.Length != count || healths.Length != count)
+			return;
+
+		var unitScene = GD.Load<PackedScene>("res://Scenes/Unit.tscn");
+		if (unitScene == null) return;
+
+		for (int i = 0; i < count; i++)
+		{
+			if (NetworkEntityRegistry.Get(unitNetworkIds[i]) != null)
+				continue;
+
+			var unit = unitScene.Instantiate<Unit>();
+			unit.UnitType = unitTypes[i];
+			unit.TeamId = teamId;
+			unit.IsNeutralCampUnit = false;
+			unit.GlobalPosition = new Vector2(posXs[i], posYs[i]);
+			unit.NetworkId = unitNetworkIds[i];
+			unit.IsLocalAuthority = !IsOnlineMultiplayer();
+
+			GetTree().CurrentScene.AddChild(unit);
+			unit.SetCurrentHealth(healths[i]);
 		}
 
 		_loadedUnits.Clear();

@@ -64,11 +64,11 @@ public partial class Unit : CharacterBody2D
 	private const float NavUpdateDistance = 64f; // recalcule le chemin si la cible bouge > 64px
 	private Vector2 _intendedDirection = Vector2.Zero; // direction voulue avant MoveAndSlide
 
-	// Throttle recherche ennemis/camps — évite O(n²) chaque frame
+	// Throttle recherche ennemis/camps - évite O(n²) chaque frame
 	private float _aiSearchTimer = 0f;
 	private const float EnemySearchInterval = 0.5f;
 
-	// Throttle vérification défenseurs camp — évite LINQ chaque frame
+	// Throttle vérification défenseurs camp - évite LINQ chaque frame
 	private float _campDefeatCheckTimer = 0f;
 	private bool _campDefeatCached = false;
 	private const float CampDefeatCheckInterval = 0.3f;
@@ -214,7 +214,8 @@ public partial class Unit : CharacterBody2D
 		_navAgent.TargetDesiredDistance = ArrivalDistance;
 		_navAgent.AvoidanceEnabled = true;
 		_navAgent.NavigationLayers = 1u;
-		_navAgent.Radius = 40f; // rayon collision unité
+		_navAgent.MaxSpeed = _stats.Speed;
+		_navAgent.VelocityComputed += OnNavVelocityComputed;
 
 		_currentState = UnitState.Idle;
 	}
@@ -293,21 +294,6 @@ public partial class Unit : CharacterBody2D
 
 	public override void _PhysicsProcess(double delta)
 	{
-		// Puppet réseau : interpoler vers la position distante, pas d'IA locale
-		bool isMulti = NetworkSync.Instance?.IsMultiplayer() == true;
-		bool isRelay = NetworkSync.Instance?.IsRelayMode() == true;
-		if (isMulti && !isRelay && !IsLocalAuthority)
-		{
-			if (_networkTargetPosition.HasValue)
-			{
-				Vector2 moveDir = _networkTargetPosition.Value - GlobalPosition;
-				if (moveDir.Length() > 2f)
-					UpdateSpriteDirection(moveDir);
-				GlobalPosition = GlobalPosition.Lerp(_networkTargetPosition.Value, 10f * (float)delta);
-			}
-			return;
-		}
-
 		switch (_currentState)
 		{
 			case UnitState.Idle:

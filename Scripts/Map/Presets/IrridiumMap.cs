@@ -1,6 +1,6 @@
 namespace SupKonQuest.Map.Presets;
 
-// Carte prédéfinie 256x256 — données RLE en paires {count, tileId}
+// Carte prédéfinie 256x256 - données RLE en paires {count, tileId}
 public static class IrridiumMap
 {
     public static readonly int[] SolRle = {
@@ -391,7 +391,7 @@ public static class IrridiumMap
         108, -1, 1, 101, 1521, -1, 1, 101, 35, -1, 1, 101, 1235, -1
     };
 
-    public static readonly string[] TerritoireNoms = { "Hrafnsvik", "Jarnheim", "Stormgard" };
+    public static readonly string[] TerritoireNoms = { "Hrafnsvik", "Jarnheim", "Stormgard"};
 
     public static readonly int[] TerritoiresRle = {
         126, 1, 15, 0, 115, 2, 127, 1, 14, 0, 115, 2, 128, 1, 13, 0,

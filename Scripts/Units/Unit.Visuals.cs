@@ -45,12 +45,10 @@ public partial class Unit
 	{
 		string path = UnitType switch
 		{
-			"Heal"      => $"res://Assets/Units/Characters/Healer/healer_{direction}.png",
-			"AntiArmor" => direction == "Left"
-				? null
+			"Heal"=> $"res://Assets/Units/Characters/Healer/healer_{direction}.png",
+			"AntiArmor"=> direction == "Left"? null
 				: $"res://Assets/Units/Characters/Anti-armor/Anti-armor_{direction.ToLower()}.png",
-			_ => $"res://Assets/Units/Characters/{UnitType}/{UnitType}_{direction}.png"
-		};
+			_ => $"res://Assets/Units/Characters/{UnitType}/{UnitType}_{direction}.png"};
 
 		if (path == null) return null;
 		return GD.Load<Texture2D>(path);
@@ -101,12 +99,17 @@ public partial class Unit
 			AddChild(collision);
 		}
 
-		var shape = collision.Shape as CircleShape2D ?? new CircleShape2D();
-		shape.Radius = 40f;
+		var shape = collision.Shape as CapsuleShape2D ?? new CapsuleShape2D();
+		shape.Radius = 34f;
+		shape.Height = 50f;
 		collision.Shape = shape;
 
-		CollisionLayer = 1u;
-		CollisionMask = 1u;
+		SetCollisionLayerValue(1, true);
+		SetCollisionLayerValue(2, false);
+		SetCollisionLayerValue(3, false);
+		SetCollisionMaskValue(1, true);
+		SetCollisionMaskValue(2, false);
+		SetCollisionMaskValue(3, true);
 	}
 
 	private void CreateDetectionZone()
@@ -146,7 +149,7 @@ public partial class Unit
 			DrawArc(Vector2.Zero, SupportAuraRadius, 0, Mathf.Tau, 64, AuraBorderColor, 2f);
 		}
 
-		if (UnitType == "Heal" && _currentState == UnitState.Healing
+		if (UnitType == "Heal"&& _currentState == UnitState.Healing
 			&& _healTarget != null && IsInstanceValid(_healTarget) && _healTarget.IsInsideTree())
 		{
 			Vector2 targetLocal = _healTarget.GlobalPosition - GlobalPosition;

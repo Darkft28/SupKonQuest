@@ -24,8 +24,18 @@ public partial class SelectionManager : Node2D
 		AddChild(_selectionRect);
 	}
 
+	private bool IsLocalPlayerSpectating()
+		=> GameManager.Instance?.IsLocalPlayerEliminated() ?? false;
+
 	public override void _UnhandledInput(InputEvent @event)
 	{
+		if (IsLocalPlayerSpectating())
+		{
+			if (@event is InputEventKey key && key.Pressed && !string.IsNullOrWhiteSpace(_pendingAbilityId))
+				CancelAbilityTargeting();
+			return;
+		}
+
 		if (@event is InputEventMouseButton mb)
 		{
 			if (mb.ButtonIndex == MouseButton.Left)
@@ -62,6 +72,13 @@ public partial class SelectionManager : Node2D
 
 		if (@event is InputEventKey)
 		{
+			if (@event.IsActionPressed(KeybindingsManager.AllOwnedUnitsAction))
+			{
+				SelectAllOwnedUnits();
+				GetViewport().SetInputAsHandled();
+				return;
+			}
+
 			foreach (string unitType in KeybindingsManager.UnitTypes)
 			{
 				if (@event.IsActionPressed($"unit_macro_{unitType}"))
@@ -290,12 +307,15 @@ public partial class SelectionManager : Node2D
 			{
 				if (node is Ship ship && ship.GetShipType() == "Transport")
 				{
-					if (ship.GlobalPosition.DistanceTo(target) < 150)
+					if (ship.GlobalPosition.DistanceTo(target) < 250)
 					{
 						int unitTeam = _selectedUnits[0].GetTeamId();
 						if (ship.GetTeamId() == unitTeam)
 						{
-							SendUnitsToTransport(ship);
+							if (relayMode)
+								NetworkCommandRouter.RequestUnitsMoveToTransport(ship, _selectedUnits);
+							else
+								SendUnitsToTransport(ship);
 							return;
 						}
 					}
@@ -350,7 +370,7 @@ public partial class SelectionManager : Node2D
 			bool hasTransportWithUnits = false;
 			foreach (var ship in _selectedShips)
 			{
-				if (IsInstanceValid(ship) && ship.GetShipType() == "Transport" && ship.GetLoadedUnitCount() > 0)
+				if (IsInstanceValid(ship) && ship.GetShipType() == "Transport"&& ship.GetLoadedUnitCount() > 0)
 				{
 					hasTransportWithUnits = true;
 					break;
@@ -371,14 +391,29 @@ public partial class SelectionManager : Node2D
 
 				if (!isWater)
 				{
+					if (relayMode)
+					{
+						var transportsToUnload = new List<Ship>();
+						foreach (var ship in _selectedShips)
+						{
+							if (IsInstanceValid(ship) && ship.GetShipType() == "Transport"&& ship.GetLoadedUnitCount() > 0
+								&& ship.IsValidUnloadPosition(target))
+							{
+								transportsToUnload.Add(ship);
+							}
+						}
+
+						if (transportsToUnload.Count > 0)
+							NetworkCommandRouter.RequestMoveShipsUnload(transportsToUnload, target);
+						return;
+					}
+
 					foreach (var ship in _selectedShips)
 					{
-						if (IsInstanceValid(ship) && ship.GetShipType() == "Transport" && ship.GetLoadedUnitCount() > 0)
+						if (IsInstanceValid(ship) && ship.GetShipType() == "Transport"&& ship.GetLoadedUnitCount() > 0)
 						{
 							if (ship.IsValidUnloadPosition(target))
-							{
 								ship.MoveToUnload(target);
-							}
 						}
 					}
 					return;
@@ -416,20 +451,20 @@ public partial class SelectionManager : Node2D
 		string abilityId = _pendingAbilityId;
 		_pendingAbilityId = "";
 
-		if (string.IsNullOrWhiteSpace(abilityId) || _selectedUnits.Count == 0)
+		if (string.IsNullOrWhiteSpace(abilityId))
+			return;
+
+		int localTeamId = GetLocalTeamId();
+		if (localTeamId <= 0)
 			return;
 
 		if (ShouldUseRelayCommands())
 		{
-			NetworkCommandRouter.RequestCastUltimate(_selectedUnits, abilityId, target);
+			NetworkCommandRouter.RequestCastUltimate(localTeamId, abilityId, target);
 			return;
 		}
 
-		foreach (var unit in _selectedUnits)
-		{
-			if (IsInstanceValid(unit))
-				unit.TryCastUltimate(abilityId, target);
-		}
+		GameManager.Instance?.TryCastTeamUltimate(localTeamId, abilityId, target);
 	}
 
 	private void SendUnitsToTransport(Ship transport)
@@ -439,7 +474,7 @@ public partial class SelectionManager : Node2D
 
 		foreach (var unit in _selectedUnits)
 		{
-			if (IsInstanceValid(unit) && sent < capacity)
+			if (IsInstanceValid(unit) && sent < capacity && unit.CanBoardTransport())
 			{
 				unit.MoveToTransport(transport);
 				sent++;
@@ -477,11 +512,7 @@ public partial class SelectionManager : Node2D
 		}
 	}
 
-	private bool ShouldUseRelayCommands()
-	{
-		var gameState = GetNodeOrNull<GameState>("/root/GameState");
-		return gameState?.IsOnline == true && NakamaService.Instance?.IsSocketConnected == true;
-	}
+	private static bool ShouldUseRelayCommands() => GameState.IsOnlineMultiplayer;
 
 	public void OnUnitClicked(Unit unit)
 	{
@@ -516,6 +547,17 @@ public partial class SelectionManager : Node2D
 		foreach (var node in GetTree().GetNodesInGroup("units"))
 		{
 			if (node is Unit unit && unit.GetTeamId() == localTeamId && unit.GetUnitType() == unitType)
+				SelectUnit(unit);
+		}
+	}
+
+	private void SelectAllOwnedUnits()
+	{
+		ClearSelection();
+		int localTeamId = GetLocalTeamId();
+		foreach (var node in GetTree().GetNodesInGroup("units"))
+		{
+			if (node is Unit unit && unit.GetTeamId() == localTeamId)
 				SelectUnit(unit);
 		}
 	}

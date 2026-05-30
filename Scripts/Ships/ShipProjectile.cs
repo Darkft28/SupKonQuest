@@ -63,8 +63,7 @@ public partial class ShipProjectile : Node2D
 		{
 			bool goingRight = _targetPos.X >= _startPos.X;
 			texturePath = goingRight
-				? "res://Assets/Units/Characters/Range/Ammo_Range_Right.png"
-				: "res://Assets/Units/Characters/Range/Ammo_Range_Left.png";
+				? "res://Assets/Units/Characters/Range/Ammo_Range_Right.png": "res://Assets/Units/Characters/Range/Ammo_Range_Left.png";
 			_sprite.Scale = new Vector2(0.15f, 0.15f);
 		}
 
@@ -126,7 +125,6 @@ public partial class ShipProjectile : Node2D
 			if (ship == _targetShip) continue;
 			if (ship.GetTeamId() == _attackerTeamId) continue;
 			if (ship.GetCurrentHealth() <= 0) continue;
-			if (ship.GetShipType() == "Transport") continue;
 
 			float dist = _targetPos.DistanceTo(ship.GlobalPosition);
 			if (dist > SplashRadius) continue;
@@ -138,7 +136,7 @@ public partial class ShipProjectile : Node2D
 	private void ApplyShipDamage(Ship ship, float damage)
 	{
 		bool isMulti = NetworkSync.Instance?.IsMultiplayer() == true;
-		if (isMulti && !ship.IsLocalAuthority && !string.IsNullOrEmpty(ship.NetworkId))
+		if (isMulti && !string.IsNullOrEmpty(ship.NetworkId))
 			NetworkSync.Instance?.SendShipDamage(ship.NetworkId, damage, _attackerTeamId);
 		else
 			ship.TakeDamageFrom(damage, _attackerTeamId);
