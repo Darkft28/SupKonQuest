@@ -72,7 +72,7 @@ public partial class Ship
 
 	public void MoveToUnload(Vector2 landPosition)
 	{
-		if (ShipType != "Transport" || _loadedUnits.Count == 0) return;
+		if (ShipType != "Transport"|| _loadedUnits.Count == 0) return;
 
 		Vector2 waterPos = FindNearestWaterTile(landPosition);
 
@@ -112,7 +112,7 @@ public partial class Ship
 
 	public void UnloadUnits(Vector2 landPosition)
 	{
-		if (ShipType != "Transport" || _loadedUnits.Count == 0) return;
+		if (ShipType != "Transport"|| _loadedUnits.Count == 0) return;
 
 		var unitScene = GD.Load<PackedScene>("res://Scenes/Unit.tscn");
 		if (unitScene == null) return;

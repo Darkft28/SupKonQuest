@@ -73,8 +73,7 @@ public partial class Ship : CharacterBody2D
 	public bool GetIsMoving() => _targetPosition.HasValue;
 
 	public bool IsEngagedInNavalCombat() =>
-		ShipType != "Transport"
-		&& (_currentState == ShipState.Attacking
+		ShipType != "Transport"&& (_currentState == ShipState.Attacking
 			|| (_currentState == ShipState.MovingToTarget
 				&& _currentTarget != null
 				&& IsInstanceValid(_currentTarget)));

@@ -27,7 +27,7 @@ public partial class CampSimple : Area2D
 
 	private List<Unit> _spawnedUnits = new List<Unit>();
 
-	// Defenseurs du camp (initiaux + bonus capture) — distinct des unites produites
+	// Defenseurs du camp (initiaux + bonus capture) - distinct des unites produites
 	private List<Unit> _defenders = new List<Unit>();
 
 	private Queue<string> _productionQueue = new Queue<string>();
@@ -38,7 +38,7 @@ public partial class CampSimple : Area2D
 	private const int MaxQueueSize = 7;
 	// Plafond global d'unités géré par GameManager.GetMaxUnitsForTeam() (10 par camp contrôlé)
 
-	// Region economique (1, 2 ou 3) — secteur angulaire par rapport au centre
+	// Region economique (1, 2 ou 3) - secteur angulaire par rapport au centre
 	public int RegionId { get; set; } = 0;
 
 	public bool HasPort { get; private set; }
@@ -168,7 +168,7 @@ public partial class CampSimple : Area2D
 		GD.Print($"[NET] Camp #{CampId} capture a distance: Team {oldTeamId} -> {newTeamId}");
 		EmitSignal(SignalName.CampCaptured, newTeamId);
 
-		// Appel direct garanti — ne dépend pas de la connexion signal
+		// Appel direct garanti - ne dépend pas de la connexion signal
 		TerritoryManager.Instance?.RefreshTerritory(newTeamId);
 	}
 

@@ -570,7 +570,7 @@ public static class NetworkCommandRouter
 		{
 			SenderUserId = NakamaService.Instance?.UserId ?? "",
 			Sequence = ++_sequence,
-			UnitIds = new[] { $"team_{teamId}" },
+			UnitIds = new[] { $"team_{teamId}"},
 			TeamId = teamId,
 			AbilityId = abilityId,
 			TargetX = target.X,

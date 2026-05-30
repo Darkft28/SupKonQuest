@@ -356,7 +356,7 @@ public partial class TerritoryManager : Node2D
 		}
 
 		// Pour chaque région, vérifier si une seule équipe possède tous les camps
-		var conqueredRegions = new Dictionary<int, int>(); // regionId → teamId
+		var conqueredRegions = new Dictionary<int, int>(); // regionId -> teamId
 		foreach (var (regionId, camps) in campsByRegion)
 		{
 			if (camps.Count == 0) continue;

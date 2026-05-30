@@ -9,6 +9,8 @@ public partial class GameState : Node
 	public enum MapSizePreset { Small, Medium, Large }
 	public enum MapType { Irridium, Alabasta, Torskey }
 
+	public bool IsLeavingGame { get; private set; }
+
 	public PlayMode CurrentPlayMode { get; private set; } = PlayMode.Offline;
 
 	// Map seed for identical generation across all peers (network determinism)
@@ -71,6 +73,7 @@ public partial class GameState : Node
 
 	public void ConfigureOfflineGame(MapType mapType, bool fastMode)
 	{
+		IsLeavingGame = false;
 		ClearOnlineSessionFields();
 		SelectedMapType = mapType;
 		FastMode = fastMode;
@@ -97,7 +100,6 @@ public partial class GameState : Node
 		LocalTeamId = 1;
 		ActivePlayerCount = 2;
 		ResetOnlineMatchFlags();
-		SelectedMapType = MapType.Irridium;
 		FastMode = false;
 		MatchId = "";
 		MatchmakerTicket = "";
@@ -105,14 +107,30 @@ public partial class GameState : Node
 		PlayerDisplayName = displayName;
 	}
 
-	public void ConfigureOnlineMatch(string matchId, int localTeamId, int seed, int activePlayerCount, string nakamaUserId, string displayName)
+	public static MapType MapTypeFromIndex(int index) => index switch
 	{
+		1 => MapType.Alabasta,
+		2 => MapType.Torskey,
+		_ => MapType.Irridium,
+	};
+
+	public static string GetMapTypeDisplayName(MapType mapType) => mapType switch
+	{
+		MapType.Alabasta => "Alabasta",
+		MapType.Torskey => "Torskey",
+		_ => "Irridium",
+	};
+
+	public void ConfigureOnlineMatch(string matchId, int localTeamId, int seed, int activePlayerCount, string nakamaUserId, string displayName, int mapTypeIndex)
+	{
+		IsLeavingGame = false;
 		CurrentPlayMode = PlayMode.Online;
 		LocalTeamId = localTeamId;
 		ActivePlayerCount = Math.Max(2, Math.Min(8, activePlayerCount));
 		ResetOnlineMatchFlags();
 		MatchId = matchId;
 		MapSeed = NormalizeMapSeed(seed, matchId);
+		SelectedMapType = MapTypeFromIndex(mapTypeIndex);
 		NakamaUserId = nakamaUserId;
 		PlayerDisplayName = displayName;
 	}
@@ -203,15 +221,16 @@ public partial class GameState : Node
 		LoadGameScene();
 	}
 
-	public void StartOnlineGameFromMatch(string matchId, int localTeamId, int seed, int activePlayerCount, string nakamaUserId, string displayName)
+	public void StartOnlineGameFromMatch(string matchId, int localTeamId, int seed, int activePlayerCount, string nakamaUserId, string displayName, int mapTypeIndex)
 	{
-		ConfigureOnlineMatch(matchId, localTeamId, seed, activePlayerCount, nakamaUserId, displayName);
+		ConfigureOnlineMatch(matchId, localTeamId, seed, activePlayerCount, nakamaUserId, displayName, mapTypeIndex);
 		EmitSignal(SignalName.GameStarting, seed);
 		CallDeferred(nameof(LoadGameScene));
 	}
 
 	private void LoadGameScene()
 	{
+		IsLeavingGame = false;
 		AudioSettings.Instance?.StopMenuMusic();
 		GetTree()?.ChangeSceneToFile("res://Scenes/Game.tscn");
 	}
@@ -223,6 +242,19 @@ public partial class GameState : Node
 
 	public void ReturnToMainMenu()
 	{
+		IsLeavingGame = true;
+
+		var tree = GetTree();
+		if (tree != null)
+		{
+			tree.Paused = false;
+			foreach (var node in tree.GetNodesInGroup("victory_overlay"))
+			{
+				if (node is Node n && GodotObject.IsInstanceValid(n))
+					n.QueueFree();
+			}
+		}
+
 		_nakamaService?.Disconnect();
 		ClearOnlineSession();
 		MapSeed = 0;

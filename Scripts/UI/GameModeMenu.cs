@@ -12,6 +12,16 @@ public partial class GameModeMenu : Control
 	private GameState.MapType _selectedMapType = GameState.MapType.Irridium;
 	private CheckBox _fastModeCheckBox;
 	private AIController.Difficulty _selectedDifficulty = AIController.Difficulty.Medium;
+	private Label _soloPopupTitle;
+	private Label _mapLabel;
+	private Label _diffLabel;
+	private Button[] _mapButtons;
+	private Button[] _diffButtons;
+	private Button _soloCancelBtn;
+	private Button _soloLaunchBtn;
+
+	private static string L(string key) =>
+		LocalizationManager.Instance?.GetText(key) ?? key;
 
 	public override void _Ready()
 	{
@@ -34,7 +44,7 @@ public partial class GameModeMenu : Control
 		UpdateTexts();
 	}
 
-	// ── Popup ────────────────────────────────────────────────────────────────
+	// Popup
 
 	private void CreateSettingsPopup()
 	{
@@ -45,7 +55,7 @@ public partial class GameModeMenu : Control
 		_overlay.Visible = false;
 		AddChild(_overlay);
 
-		// Panneau central — PanelContainer s'adapte à la hauteur du contenu
+		// Panneau central - PanelContainer s'adapte à la hauteur du contenu
 		var panel = new PanelContainer();
 		panel.SetAnchorsPreset(Control.LayoutPreset.Center);
 		panel.GrowHorizontal = Control.GrowDirection.Both;
@@ -65,30 +75,28 @@ public partial class GameModeMenu : Control
 		margin.AddChild(vbox);
 
 		// Titre
-		var popupTitle = new Label();
-		popupTitle.Text = "Paramètres — Solo";
-		popupTitle.HorizontalAlignment = HorizontalAlignment.Center;
-		popupTitle.AddThemeFontSizeOverride("font_size", 22);
-		vbox.AddChild(popupTitle);
+		_soloPopupTitle = new Label();
+		_soloPopupTitle.HorizontalAlignment = HorizontalAlignment.Center;
+		_soloPopupTitle.AddThemeFontSizeOverride("font_size", 22);
+		vbox.AddChild(_soloPopupTitle);
 
 		vbox.AddChild(new HSeparator());
 
 		// Sélection de la carte
-		var mapLabel = new Label();
-		mapLabel.Text = "Carte";
-		vbox.AddChild(mapLabel);
+		_mapLabel = new Label();
+		vbox.AddChild(_mapLabel);
 
 		var mapHBox = new HBoxContainer();
 		mapHBox.AddThemeConstantOverride("separation", 8);
 		vbox.AddChild(mapHBox);
 
 		var mapGroup = new ButtonGroup();
-		var mapNames = new[] { "Irridium", "Alabasta", "Torskey" };
+		var mapKeys = new[] { "map_irridium", "map_alabasta", "map_torskey" };
 		var mapValues = new[] { GameState.MapType.Irridium, GameState.MapType.Alabasta, GameState.MapType.Torskey };
+		_mapButtons = new Button[3];
 		for (int i = 0; i < 3; i++)
 		{
 			var btn = new Button();
-			btn.Text = mapNames[i];
 			btn.ToggleMode = true;
 			btn.ButtonGroup = mapGroup;
 			btn.ButtonPressed = (mapValues[i] == _selectedMapType);
@@ -97,26 +105,26 @@ public partial class GameModeMenu : Control
 			var captured = mapValues[i];
 			btn.Pressed += () => { _selectedMapType = captured; };
 			mapHBox.AddChild(btn);
+			_mapButtons[i] = btn;
 		}
 
 		vbox.AddChild(new HSeparator());
 
 		// Difficulté IA
-		var diffLabel = new Label();
-		diffLabel.Text = "Difficulté IA";
-		vbox.AddChild(diffLabel);
+		_diffLabel = new Label();
+		vbox.AddChild(_diffLabel);
 
 		var diffHBox = new HBoxContainer();
 		diffHBox.AddThemeConstantOverride("separation", 8);
 		vbox.AddChild(diffHBox);
 
 		var diffGroup = new ButtonGroup();
-		var diffNames  = new[] { "Facile", "Moyen", "Difficile" };
+		var diffKeys = new[] { "ai_easy", "ai_medium", "ai_hard" };
 		var diffValues = new[] { AIController.Difficulty.Easy, AIController.Difficulty.Medium, AIController.Difficulty.Hard };
+		_diffButtons = new Button[3];
 		for (int i = 0; i < 3; i++)
 		{
 			var btn = new Button();
-			btn.Text = diffNames[i];
 			btn.ToggleMode = true;
 			btn.ButtonGroup = diffGroup;
 			btn.ButtonPressed = (diffValues[i] == _selectedDifficulty);
@@ -125,13 +133,13 @@ public partial class GameModeMenu : Control
 			var captured = diffValues[i];
 			btn.Pressed += () => { _selectedDifficulty = captured; };
 			diffHBox.AddChild(btn);
+			_diffButtons[i] = btn;
 		}
 
 		vbox.AddChild(new HSeparator());
 
 		// Mode test : vitesse x3
 		_fastModeCheckBox = new CheckBox();
-		_fastModeCheckBox.Text = "⚡ Vitesse x3 (test)";
 		vbox.AddChild(_fastModeCheckBox);
 
 		vbox.AddChild(new HSeparator());
@@ -141,19 +149,17 @@ public partial class GameModeMenu : Control
 		actionsHBox.AddThemeConstantOverride("separation", 12);
 		vbox.AddChild(actionsHBox);
 
-		var cancelBtn = new Button();
-		cancelBtn.Text = "Annuler";
-		cancelBtn.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-		UIStyle.ApplyStone(cancelBtn);
-		cancelBtn.Pressed += () => _overlay.Visible = false;
-		actionsHBox.AddChild(cancelBtn);
+		_soloCancelBtn = new Button();
+		_soloCancelBtn.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+		UIStyle.ApplyStone(_soloCancelBtn);
+		_soloCancelBtn.Pressed += () => _overlay.Visible = false;
+		actionsHBox.AddChild(_soloCancelBtn);
 
-		var launchBtn = new Button();
-		launchBtn.Text = "Lancer";
-		launchBtn.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-		UIStyle.ApplyStone(launchBtn);
-		launchBtn.Pressed += OnLaunchPressed;
-		actionsHBox.AddChild(launchBtn);
+		_soloLaunchBtn = new Button();
+		_soloLaunchBtn.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+		UIStyle.ApplyStone(_soloLaunchBtn);
+		_soloLaunchBtn.Pressed += OnLaunchPressed;
+		actionsHBox.AddChild(_soloLaunchBtn);
 	}
 
 	private void ShowSettingsPopup()
@@ -169,7 +175,7 @@ public partial class GameModeMenu : Control
 		gameState?.StartSoloGame(_selectedMapType, _fastModeCheckBox.ButtonPressed, _selectedDifficulty);
 	}
 
-	// ── Navigation ───────────────────────────────────────────────────────────
+	// Navigation
 
 	private void OnMultiPressed()
 	{
@@ -201,6 +207,31 @@ public partial class GameModeMenu : Control
 		_multiButton.Text = LocalizationManager.Instance.GetText("multi");
 		_backButton.Text = LocalizationManager.Instance.GetText("back");
 		_langButton.Text = LocalizationManager.Instance.GetLanguageCode();
+
+		if (_soloPopupTitle != null)
+			_soloPopupTitle.Text = L("solo_settings_title");
+		if (_mapLabel != null)
+			_mapLabel.Text = L("solo_map_label");
+		if (_diffLabel != null)
+			_diffLabel.Text = L("solo_ai_difficulty");
+		if (_mapButtons != null)
+		{
+			string[] mapKeys = { "map_irridium", "map_alabasta", "map_torskey" };
+			for (int i = 0; i < _mapButtons.Length && i < mapKeys.Length; i++)
+				_mapButtons[i].Text = L(mapKeys[i]);
+		}
+		if (_diffButtons != null)
+		{
+			string[] diffKeys = { "ai_easy", "ai_medium", "ai_hard" };
+			for (int i = 0; i < _diffButtons.Length && i < diffKeys.Length; i++)
+				_diffButtons[i].Text = L(diffKeys[i]);
+		}
+		if (_fastModeCheckBox != null)
+			_fastModeCheckBox.Text = L("solo_fast_mode");
+		if (_soloCancelBtn != null)
+			_soloCancelBtn.Text = L("cancel");
+		if (_soloLaunchBtn != null)
+			_soloLaunchBtn.Text = L("launch");
 	}
 
 	public override void _ExitTree()

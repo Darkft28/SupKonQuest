@@ -265,12 +265,26 @@ public partial class AuthUI : Control
 
 	private void GoToLobby()
 	{
+		if (!IsInsideTree())
+			return;
+
 		SetBusy(false, "");
+		CallDeferred(MethodName.DeferredGoToLobby);
+	}
+
+	private void DeferredGoToLobby()
+	{
+		if (!IsInsideTree())
+			return;
+
 		GetTree().ChangeSceneToFile("res://Scenes/Lobby.tscn");
 	}
 
 	private void SetBusy(bool busy, string statusMessage)
 	{
+		if (!IsInsideTree())
+			return;
+
 		_isBusy = busy;
 		_loginButton.Disabled = busy;
 		_registerButton.Disabled = busy;
@@ -287,6 +301,9 @@ public partial class AuthUI : Control
 
 	private void SetStatus(string message)
 	{
+		if (_statusLabel == null || !IsInsideTree())
+			return;
+
 		_statusLabel.Text = message ?? "";
 		_statusLabel.Visible = !string.IsNullOrWhiteSpace(_statusLabel.Text);
 	}
@@ -296,7 +313,7 @@ public partial class AuthUI : Control
 		if (string.IsNullOrWhiteSpace(reason))
 			return GetText("connection_failed");
 
-		if (reason.StartsWith("auth_") || reason == "connection_failed" || reason == "auth_not_authenticated")
+		if (reason.StartsWith("auth_") || reason == "connection_failed"|| reason == "auth_not_authenticated")
 			return GetText(reason);
 
 		return reason;

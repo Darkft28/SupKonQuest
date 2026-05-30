@@ -26,7 +26,7 @@ public partial class Unit
 			return;
 		}
 
-		// Camp cible encore valide → reprendre l'attaque directement (vérif cheap)
+		// Camp cible encore valide -> reprendre l'attaque directement (vérif cheap)
 		if (_campTarget != null && IsInstanceValid(_campTarget) && _campTarget.IsInsideTree()
 			&& _campTarget.GetTeamId() != TeamId)
 		{
@@ -175,7 +175,7 @@ public partial class Unit
 		}
 
 		// Vérifie la progression vers la cible (pas juste le mouvement total)
-		// Une unité poussée par d'autres bouge mais ne progresse pas → doit quand même s'arrêter
+		// Une unité poussée par d'autres bouge mais ne progresse pas -> doit quand même s'arrêter
 		Vector2 goal = _currentTarget?.GlobalPosition
 			?? _campTarget?.GlobalPosition
 			?? _targetPosition
@@ -184,13 +184,13 @@ public partial class Unit
 		float distNow = GlobalPosition.DistanceTo(goal);
 		float distPrev = _lastPosition.DistanceTo(goal);
 
-		// Si on ne se rapproche pas du goal depuis 2 secondes → abandon
+		// Si on ne se rapproche pas du goal depuis 2 secondes -> abandon
 		if (distNow >= distPrev - 0.5f)
 		{
 			_stuckFrames++;
 			if (_stuckFrames > MaxStuckFrames)
 			{
-				// Bloqué près de la cible → tenter d'attaquer si applicable
+				// Bloqué près de la cible -> tenter d'attaquer si applicable
 				if (_currentTarget != null && IsTargetValid() && distNow <= _stats.Range + 80f)
 				{
 					ChangeState(UnitState.Attacking);

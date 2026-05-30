@@ -51,7 +51,7 @@ public partial class Unit
 
 		foreach (var node in allUnits)
 		{
-			if (node is Unit ally && ally.UnitType == "Support" && ally.GetTeamId() == TeamId
+			if (node is Unit ally && ally.UnitType == "Support"&& ally.GetTeamId() == TeamId
 				&& ally.GetCurrentHealth() > 0)
 			{
 				float distance = GlobalPosition.DistanceTo(ally.GlobalPosition);

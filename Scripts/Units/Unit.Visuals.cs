@@ -45,12 +45,10 @@ public partial class Unit
 	{
 		string path = UnitType switch
 		{
-			"Heal"      => $"res://Assets/Units/Characters/Healer/healer_{direction}.png",
-			"AntiArmor" => direction == "Left"
-				? null
+			"Heal"=> $"res://Assets/Units/Characters/Healer/healer_{direction}.png",
+			"AntiArmor"=> direction == "Left"? null
 				: $"res://Assets/Units/Characters/Anti-armor/Anti-armor_{direction.ToLower()}.png",
-			_ => $"res://Assets/Units/Characters/{UnitType}/{UnitType}_{direction}.png"
-		};
+			_ => $"res://Assets/Units/Characters/{UnitType}/{UnitType}_{direction}.png"};
 
 		if (path == null) return null;
 		return GD.Load<Texture2D>(path);
@@ -151,7 +149,7 @@ public partial class Unit
 			DrawArc(Vector2.Zero, SupportAuraRadius, 0, Mathf.Tau, 64, AuraBorderColor, 2f);
 		}
 
-		if (UnitType == "Heal" && _currentState == UnitState.Healing
+		if (UnitType == "Heal"&& _currentState == UnitState.Healing
 			&& _healTarget != null && IsInstanceValid(_healTarget) && _healTarget.IsInsideTree())
 		{
 			Vector2 targetLocal = _healTarget.GlobalPosition - GlobalPosition;

@@ -380,7 +380,7 @@ Un clic droit deplace les unites selectionnees. Clic droit sur un Transport alli
 - **Camps** : 1 camp de depart par joueur humain ; les autres camps preset restent **neutres** (defenseurs 1,5x HP).
 - **Equipes** : `LocalTeamId` = index dans la liste triee des `userId` Nakama + 1 ; `ActivePlayerCount` fige au demarrage.
 - **Lobby in-match** : apres `JoinMatch` (>= 2 joueurs), le client affiche la liste des joueurs et attend le **serveur relay** — pas de demarrage automatique cote client.
-- **Test multi-instance** : un `deviceId` / `userId` Nakama distinct par instance via `--nakama-slot` (fichiers `user://nakama_device_id_1.txt` et `_2.txt`). Syntaxe recommandee Godot 4 :
+- **Test multi-instance** : un `deviceId` / `userId` Nakama distinct par instance via `--nakama-slot` (fichiers `user://nakama_device_id_1.txt`, `user://nakama_auth_session_1.dat`, etc.). Syntaxe recommandee Godot 4 :
 
 ```powershell
 godot --path . -- --nakama-slot=1
@@ -396,7 +396,7 @@ Le module relay Nakama vit dans un **autre depot**. Il doit broadcaster :
 | Opcode | Nom | Payload JSON (camelCase) |
 | ------ | --- | ------------------------ |
 | `4001` | LobbyTick | `{ "secondsRemaining": int, "playerCount": int }` — environ chaque seconde pendant l'attente |
-| `4002` | MatchStart | `{ "seed": int, "orderedUserIds": ["userId1", ...] }` — liste triee par `userId` (meme regle que le client) |
+| `4002` | MatchStart | `{ "seed": int, "orderedUserIds": ["userId1", ...], "mapType": 0|1|2 }` — `mapType` : 0=Irridium, 1=Alabasta, 2=Torskey (tire au sort serveur) ; liste triee par `userId` |
 
 Regles serveur attendues :
 

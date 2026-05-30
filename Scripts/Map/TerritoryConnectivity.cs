@@ -3,7 +3,7 @@ using System.Collections.Generic;
 
 /// <summary>
 /// Builds and queries the territory connectivity graph.
-/// Two territories are "neighbors" if adjacent land tiles belong to different zones.
+/// Two territories are "neighbors"if adjacent land tiles belong to different zones.
 /// </summary>
 public static class TerritoryConnectivity
 {

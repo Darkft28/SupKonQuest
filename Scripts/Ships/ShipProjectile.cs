@@ -63,8 +63,7 @@ public partial class ShipProjectile : Node2D
 		{
 			bool goingRight = _targetPos.X >= _startPos.X;
 			texturePath = goingRight
-				? "res://Assets/Units/Characters/Range/Ammo_Range_Right.png"
-				: "res://Assets/Units/Characters/Range/Ammo_Range_Left.png";
+				? "res://Assets/Units/Characters/Range/Ammo_Range_Right.png": "res://Assets/Units/Characters/Range/Ammo_Range_Left.png";
 			_sprite.Scale = new Vector2(0.15f, 0.15f);
 		}
 

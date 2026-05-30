@@ -105,3 +105,7 @@ scheme="http"
 host="4.166.40.82"
 port=7350
 server_key="defaultkey"
+
+[rendering]
+
+textures/vram_compression/import_etc2_astc=true

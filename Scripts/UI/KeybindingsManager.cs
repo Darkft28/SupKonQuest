@@ -6,11 +6,11 @@ public partial class KeybindingsManager : Node
 	public static KeybindingsManager Instance { get; private set; }
 
 	public static readonly string[] UnitTypes =
-		{ "Infantry", "Support", "Range", "Heal", "AntiArmor", "Mortar", "Heavy", "Tank" };
+		{ "Infantry", "Support", "Range", "Heal", "AntiArmor", "Mortar", "Heavy", "Tank"};
 	public static readonly string[] ShipTypes =
-		{ "Transport", "Fregate", "Destroyer" };
+		{ "Transport", "Fregate", "Destroyer"};
 	public static readonly string[] UltimateActions =
-		{ "ultimate_heal", "ultimate_support", "ultimate_cancel" };
+		{ "ultimate_heal", "ultimate_support", "ultimate_cancel"};
 	public const string AllOwnedUnitsAction = "unit_macro_AllOwned";
 
 	private static readonly Key[] DefaultUnitKeys =

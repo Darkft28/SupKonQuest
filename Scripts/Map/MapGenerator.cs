@@ -611,7 +611,7 @@ public partial class MapGenerator : Node
 		{
 			int region = GameManager.Instance?.GetHomeRegion(teamId) ?? -1;
 			bool isBoss = AIController.BossTeamIds.Contains(teamId);
-			GD.Print($"[IA DEBUG]   Team {teamId} -> region {region} -> {(isBoss ? $"BOSS ({bossLevel})" : "Easy")}");
+			GD.Print($"[IA DEBUG]   Team {teamId} -> region {region} -> {(isBoss ? $"BOSS ({bossLevel})": "Easy")}");
 		}
 
 		// Refresh camp labels now that BossTeamIds is populated

@@ -153,7 +153,7 @@ public partial class CampSimple
 	private string GetCampLabel()
 	{
 		bool isBoss = AIController.BossTeamIds.Contains(TeamId);
-		return isBoss ? $"#{CampId} boss" : $"#{CampId}";
+		return isBoss ? $"#{CampId} boss": $"#{CampId}";
 	}
 
 	private Color GetTeamColor()

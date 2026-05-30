@@ -18,7 +18,7 @@ public partial class NakamaService : Node
 	[Signal] public delegate void MatchmakingFailedEventHandler(string reason);
 	[Signal] public delegate void MatchLobbyEnteredEventHandler(string matchId, int pendingSeed);
 	[Signal] public delegate void MatchLobbyTickEventHandler(int secondsRemaining, int playerCount);
-	[Signal] public delegate void MatchStartingEventHandler(string matchId, int localTeamId, int seed, int playerCount);
+	[Signal] public delegate void MatchStartingEventHandler(string matchId, int localTeamId, int seed, int playerCount, int mapType);
 	[Signal] public delegate void MatchStateReceivedEventHandler(long opcode, string payload);
 	[Signal] public delegate void DisconnectedEventHandler();
 	[Signal] public delegate void LoggedOutEventHandler();
@@ -30,9 +30,6 @@ public partial class NakamaService : Node
 	private const long OpcodeLobbyTick = 4001;
 	private const long OpcodeMatchStart = 4002;
 
-	private const string DeviceIdFilePath = "user://nakama_device_id.txt";
-	private const string ConfigDeviceSlotPath = "nakama/device_slot";
-	private const string EnvDeviceSlotName = "SUPKONQUEST_NAKAMA_SLOT";
 	private const string ConfigSchemePath = "nakama/scheme";
 	private const string ConfigHostPath = "nakama/host";
 	private const string ConfigPortPath = "nakama/port";
@@ -312,9 +309,9 @@ public partial class NakamaService : Node
 
 			var stringProperties = new Dictionary<string, string>
 			{
-				{ "game", "supkonquest" },
-				{ "mode", "relay" },
-				{ "region", "eu" }
+				{ "game", "supkonquest"},
+				{ "mode", "relay"},
+				{ "region", "eu"}
 			};
 
 			string query = "+properties.game:supkonquest +properties.mode:relay";
@@ -419,7 +416,7 @@ public partial class NakamaService : Node
 			return session.Username;
 
 		string userId = session.UserId ?? "";
-		return userId.Length > 8 ? $"Player-{userId[..8]}" : $"Player-{userId}";
+		return userId.Length > 8 ? $"Player-{userId[..8]}": $"Player-{userId}";
 	}
 
 	private void InvalidateLocalSession(bool clearStoredSession)
@@ -614,9 +611,9 @@ public partial class NakamaService : Node
 		EmitSignal(SignalName.MatchLobbyEntered, matchId, pendingSeed);
 	}
 
-	private void DeferredEmitMatchStarting(string matchId, int localTeamId, int seed, int playerCount)
+	private void DeferredEmitMatchStarting(string matchId, int localTeamId, int seed, int playerCount, int mapType)
 	{
-		EmitSignal(SignalName.MatchStarting, matchId, localTeamId, seed, playerCount);
+		EmitSignal(SignalName.MatchStarting, matchId, localTeamId, seed, playerCount, mapType);
 	}
 
 	private void DeferredEmitMatchmakingFailed(string reason)
@@ -768,10 +765,18 @@ public partial class NakamaService : Node
 			return;
 		}
 
-		FinalizeMatchStartFromRelay(start.Seed, start.OrderedUserIds);
+		FinalizeMatchStartFromRelay(start.Seed, start.OrderedUserIds, start.MapType);
 	}
 
-	private void FinalizeMatchStartFromRelay(int seed, string[] orderedUserIds, string source = "relay")
+	private static int NormalizeRelayMapType(int mapType)
+	{
+		if (mapType < 0 || mapType > 2)
+			return 0;
+
+		return mapType;
+	}
+
+	private void FinalizeMatchStartFromRelay(int seed, string[] orderedUserIds, int mapType = 0, string source = "relay")
 	{
 		if (_hasEmittedMatchStarting || string.IsNullOrWhiteSpace(_matchId))
 			return;
@@ -799,12 +804,13 @@ public partial class NakamaService : Node
 		_pendingMatchSeed = effectiveSeed;
 		int localTeamId = localIndex + 1;
 		int playerCount = ordered.Count;
+		int effectiveMapType = NormalizeRelayMapType(mapType);
 		_userTeamMap.Clear();
 		for (int i = 0; i < ordered.Count; i++)
 			_userTeamMap[ordered[i]] = i + 1;
 
-		GD.Print($"[NAKAMA] Match starting ({source}): {_matchId} team={localTeamId} seed={effectiveSeed} players={playerCount}");
-		CallDeferred(nameof(DeferredEmitMatchStarting), _matchId, localTeamId, effectiveSeed, playerCount);
+		GD.Print($"[NAKAMA] Match starting ({source}): {_matchId} team={localTeamId} seed={effectiveSeed} mapType={effectiveMapType} players={playerCount}");
+		CallDeferred(nameof(DeferredEmitMatchStarting), _matchId, localTeamId, effectiveSeed, playerCount, effectiveMapType);
 	}
 
 	private List<string> GetOrderedParticipantUserIds()
@@ -896,90 +902,8 @@ public partial class NakamaService : Node
 		return userIds.OrderBy(id => id, StringComparer.Ordinal).ToList();
 	}
 
-	private static string ResolveDeviceIdFilePath()
-	{
-		string slot = ResolveDeviceSlot();
-		return string.IsNullOrWhiteSpace(slot)
-			? DeviceIdFilePath
-			: $"user://nakama_device_id_{slot}.txt";
-	}
-
-	private static string ResolveDeviceSlot()
-	{
-		string fromCommandLine = ReadDeviceSlotFromCommandLine();
-		if (!string.IsNullOrWhiteSpace(fromCommandLine))
-			return fromCommandLine;
-
-		string envSlot = OS.GetEnvironment(EnvDeviceSlotName);
-		if (!string.IsNullOrWhiteSpace(envSlot))
-			return SanitizeDeviceSlot(envSlot);
-
-		string configuredSlot = GetProjectSetting(ConfigDeviceSlotPath, "");
-		return SanitizeDeviceSlot(configuredSlot);
-	}
-
-	private static string ReadDeviceSlotFromCommandLine()
-	{
-		foreach (string arg in OS.GetCmdlineUserArgs())
-		{
-			string slot = TryParseDeviceSlotArgument(arg);
-			if (!string.IsNullOrWhiteSpace(slot))
-				return slot;
-		}
-
-		string[] args = OS.GetCmdlineArgs();
-		for (int i = 0; i < args.Length; i++)
-		{
-			string slot = TryParseDeviceSlotArgument(args[i]);
-			if (!string.IsNullOrWhiteSpace(slot))
-				return slot;
-
-			if (IsDeviceSlotFlag(args[i]) && i + 1 < args.Length)
-			{
-				slot = SanitizeDeviceSlot(args[i + 1]);
-				if (!string.IsNullOrWhiteSpace(slot))
-					return slot;
-			}
-		}
-
-		return "";
-	}
-
-	private static bool IsDeviceSlotFlag(string arg)
-	{
-		return string.Equals(arg, "--nakama-slot", StringComparison.OrdinalIgnoreCase);
-	}
-
-	private static string TryParseDeviceSlotArgument(string arg)
-	{
-		if (string.IsNullOrWhiteSpace(arg))
-			return "";
-
-		const string prefix = "--nakama-slot=";
-		if (arg.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
-			return SanitizeDeviceSlot(arg[prefix.Length..]);
-
-		return "";
-	}
-
-	private static string SanitizeDeviceSlot(string value)
-	{
-		if (string.IsNullOrWhiteSpace(value))
-			return "";
-
-		var builder = new StringBuilder(value.Trim().ToLowerInvariant());
-		for (int i = builder.Length - 1; i >= 0; i--)
-		{
-			char c = builder[i];
-			if (char.IsLetterOrDigit(c) || c == '_' || c == '-')
-				continue;
-
-			builder.Remove(i, 1);
-		}
-
-		string sanitized = builder.ToString();
-		return sanitized.Length > 24 ? sanitized[..24] : sanitized;
-	}
+	private static string ResolveDeviceIdFilePath() =>
+		NakamaDeviceSlot.SlottedUserFile("nakama_device_id", ".txt");
 
 	private void LogMatchPresences(IMatch match)
 	{
@@ -1026,7 +950,7 @@ public partial class NakamaService : Node
 
 	private async Task AbortMatchForDuplicateIdentityAsync(string source)
 	{
-		string reason = $"[NAKAMA] Duplicate local userId detected from {source} for userId={_userId}. " +
+		string reason = $"[NAKAMA] Duplicate local userId detected from {source} for userId={_userId}. "+
 			"Stop join to avoid same-camp spawn and relay self-filtering. Use distinct slots: --nakama-slot=1 and --nakama-slot=2.";
 		GD.PrintErr(reason);
 
@@ -1068,6 +992,7 @@ public partial class NakamaService : Node
 	{
 		public int Seed { get; set; }
 		public string[] OrderedUserIds { get; set; } = Array.Empty<string>();
+		public int MapType { get; set; }
 	}
 
 	private static int GenerateSeedFromMatchId(string matchId)

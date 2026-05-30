@@ -70,16 +70,14 @@ public partial class Ship
 			SpriteDirection.Back => "Back",
 			SpriteDirection.Left => "Left",
 			SpriteDirection.Right => "Right",
-			_ => "Front"
-		};
+			_ => "Front"};
 
 		return ShipType switch
 		{
-			"Destroyer" => $"res://Assets/Units/Ships/Destroyer/Destroyers_{dirSuffix}.png",
-			"Fregate" => $"res://Assets/Units/Ships/Frégate/frégate_{dirSuffix}.png",
-			"Transport" => $"res://Assets/Units/Ships/Transport/Transport_{dirSuffix}.png",
-			_ => $"res://Assets/Units/Ships/Transport/Transport_{dirSuffix}.png"
-		};
+			"Destroyer"=> $"res://Assets/Units/Ships/Destroyer/Destroyers_{dirSuffix}.png",
+			"Fregate"=> $"res://Assets/Units/Ships/Frégate/frégate_{dirSuffix}.png",
+			"Transport"=> $"res://Assets/Units/Ships/Transport/Transport_{dirSuffix}.png",
+			_ => $"res://Assets/Units/Ships/Transport/Transport_{dirSuffix}.png"};
 	}
 
 	private static Texture2D LoadShipTexture(string path)
@@ -88,7 +86,7 @@ public partial class Ship
 		if (texture != null)
 			return texture;
 
-		// Secours si le chemin accentué échoue (export / FS) — noms ASCII alternatifs.
+		// Secours si le chemin accentué échoue (export / FS) - noms ASCII alternatifs.
 		if (path.Contains("Frégate"))
 		{
 			string ascii = path
@@ -157,7 +155,7 @@ public partial class Ship
 
 	public override void _Draw()
 	{
-		if (ShipType == "Transport" && _loadedUnits.Count > 0)
+		if (ShipType == "Transport"&& _loadedUnits.Count > 0)
 		{
 			var font = ThemeDB.FallbackFont;
 			DrawString(font, new Vector2(-10, -215), $"{_loadedUnits.Count}/{_stats.Capacity}",

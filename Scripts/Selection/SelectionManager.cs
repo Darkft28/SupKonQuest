@@ -370,7 +370,7 @@ public partial class SelectionManager : Node2D
 			bool hasTransportWithUnits = false;
 			foreach (var ship in _selectedShips)
 			{
-				if (IsInstanceValid(ship) && ship.GetShipType() == "Transport" && ship.GetLoadedUnitCount() > 0)
+				if (IsInstanceValid(ship) && ship.GetShipType() == "Transport"&& ship.GetLoadedUnitCount() > 0)
 				{
 					hasTransportWithUnits = true;
 					break;
@@ -396,7 +396,7 @@ public partial class SelectionManager : Node2D
 						var transportsToUnload = new List<Ship>();
 						foreach (var ship in _selectedShips)
 						{
-							if (IsInstanceValid(ship) && ship.GetShipType() == "Transport" && ship.GetLoadedUnitCount() > 0
+							if (IsInstanceValid(ship) && ship.GetShipType() == "Transport"&& ship.GetLoadedUnitCount() > 0
 								&& ship.IsValidUnloadPosition(target))
 							{
 								transportsToUnload.Add(ship);
@@ -410,7 +410,7 @@ public partial class SelectionManager : Node2D
 
 					foreach (var ship in _selectedShips)
 					{
-						if (IsInstanceValid(ship) && ship.GetShipType() == "Transport" && ship.GetLoadedUnitCount() > 0)
+						if (IsInstanceValid(ship) && ship.GetShipType() == "Transport"&& ship.GetLoadedUnitCount() > 0)
 						{
 							if (ship.IsValidUnloadPosition(target))
 								ship.MoveToUnload(target);

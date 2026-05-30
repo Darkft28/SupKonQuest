@@ -16,7 +16,9 @@ public enum AuthType
 /// </summary>
 public static class AuthSessionStore
 {
-	private const string SessionFilePath = "user://nakama_auth_session.dat";
+	private static string SessionFilePath =>
+		NakamaDeviceSlot.SlottedUserFile("nakama_auth_session", ".dat");
+
 	private const string DeviceKeyFilePath = "user://device_key.txt";
 
 	private static readonly JsonSerializerOptions JsonOptions = new()
@@ -40,8 +42,7 @@ public static class AuthSessionStore
 		{
 			AuthToken = session.AuthToken,
 			RefreshToken = session.RefreshToken,
-			AuthType = authType == AuthType.Email ? "email" : "guest"
-		};
+			AuthType = authType == AuthType.Email ? "email": "guest"};
 
 		string json = JsonSerializer.Serialize(payload, JsonOptions);
 		if (!TryWriteEncrypted(json))

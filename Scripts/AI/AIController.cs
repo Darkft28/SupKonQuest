@@ -37,7 +37,7 @@ public partial class AIController : Node
 	private static readonly float[] SkipTickChance   = { 0.35f, 0.10f, 0f  };
 	// Minimum units at rally point before attacking
 	private static readonly int[]   MinRallyUnits    = { 1,   4,    6   };
-	// Radius used to consider a unit "arrived" at rally point
+	// Radius used to consider a unit "arrived"at rally point
 	private static readonly float[] RallyArrivalRadius = { 0f, 600f, 500f };
 	// Amphibious waves: tick chance (Hard, before full home) + min cooldown between unload launches
 	private static readonly float[] NavalEarlyAttackChance = { 0f,  0f,   0.20f };
@@ -104,7 +104,7 @@ public partial class AIController : Node
 
 	private readonly Random _rng = new Random();
 
-	// ── Initialisation ────────────────────────────────────────────────────────
+	// Initialisation
 
 	public void Initialize(Difficulty difficulty, int teamId = 2)
 	{
@@ -115,7 +115,7 @@ public partial class AIController : Node
 		GD.Print($"[IA] Started - team {teamId}, level: {difficulty}");
 	}
 
-	// ── Boucle principale ─────────────────────────────────────────────────────
+	// Boucle principale
 
 	public override void _Process(double delta)
 	{
@@ -689,7 +689,7 @@ public partial class AIController : Node
 			if (!IsTransportDockedForBoarding(transport))
 				continue;
 
-			// Nearest idle units (anywhere) — rally point is often far from the port
+			// Nearest idle units (anywhere) - rally point is often far from the port
 			var boarders = GetIdleAIUnits()
 				.Where(u => u.CanBoardTransport())
 				.OrderBy(u => u.GlobalPosition.DistanceTo(transport.GlobalPosition))
@@ -904,8 +904,7 @@ public partial class AIController : Node
 			.Where(s => IsInstanceValid(s)
 				&& s.GetTeamId() == _teamId
 				&& s.GetCurrentHealth() > 0
-				&& s.GetShipType() != "Transport"
-				&& !s.IsEngagedInNavalCombat())
+				&& s.GetShipType() != "Transport"&& !s.IsEngagedInNavalCombat())
 			.ToList();
 	}
 
@@ -1018,7 +1017,7 @@ public partial class AIController : Node
 			.FirstOrDefault();
 	}
 
-	// ── Helpers ──────────────────────────────────────────────────────────────
+	// Helpers
 
 	private int GetCurrentTier()
 		=> GameManager.Instance?.GetUnlockedTier(_teamId) ?? 1;

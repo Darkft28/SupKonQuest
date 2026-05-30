@@ -6,6 +6,7 @@ public partial class GameManager : Node
 {
 	[Signal] public delegate void OnlinePlayerLeftEventHandler(int teamId);
 	[Signal] public delegate void LocalPlayerEliminatedEventHandler();
+	[Signal] public delegate void GameWonEventHandler(int winningTeamId);
 
 	public const int MaxGold = 9999;
 
@@ -425,6 +426,11 @@ public partial class GameManager : Node
 		EmitSignal(SignalName.LocalPlayerEliminated);
 	}
 
+	public void NotifyGameWon(int winningTeamId)
+	{
+		EmitSignal(SignalName.GameWon, winningTeamId);
+	}
+
 	public bool TeamOwnsAnyCamp(int teamId)
 	{
 		if (teamId <= 0)
@@ -589,16 +595,16 @@ public partial class GameManager : Node
 
 	public static int GetUnitTier(string unitType) => unitType switch
 	{
-		"Infantry" or "Support" or "Range" => 1,
-		"Heal" or "AntiArmor" => 2,
-		"Mortar" or "Heavy" or "Tank" => 3,
+		"Infantry"or "Support"or "Range"=> 1,
+		"Heal"or "AntiArmor"=> 2,
+		"Mortar"or "Heavy"or "Tank"=> 3,
 		_ => 1
 	};
 
 	public static int GetShipTier(string shipType) => shipType switch
 	{
-		"Transport" => 3,
-		"Fregate" or "Destroyer" => 3,
+		"Transport"=> 3,
+		"Fregate"or "Destroyer"=> 3,
 		_ => 1
 	};
 

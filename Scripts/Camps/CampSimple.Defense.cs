@@ -246,11 +246,11 @@ public partial class CampSimple
 		if (IsOnlineMultiplayer())
 			NetworkCommandRouter.SendCampCaptured(CampId, newTeamId);
 
-		// Appel direct garanti — ne dépend pas de la connexion signal
+		// Appel direct garanti - ne dépend pas de la connexion signal
 		TerritoryManager.Instance?.RefreshTerritory(newTeamId);
-		GD.Print($"[TERRITOIRE] Camp #{CampId} capturé : Team {oldTeamId} → {newTeamId}");
+		GD.Print($"[TERRITOIRE] Camp #{CampId} capturé : Team {oldTeamId} -> {newTeamId}");
 
-		// Si l'ancienne équipe n'a plus aucun camp → toutes ses unités meurent
+		// Si l'ancienne équipe n'a plus aucun camp -> toutes ses unités meurent
 		if (oldTeamId > 0)
 		{
 			bool hasAnyCamp = false;
@@ -261,7 +261,7 @@ public partial class CampSimple
 
 			if (!hasAnyCamp)
 			{
-				GD.Print($"[ELIMINATION] Team {oldTeamId} n'a plus de camp → toutes ses unités meurent");
+				GD.Print($"[ELIMINATION] Team {oldTeamId} n'a plus de camp -> toutes ses unités meurent");
 				foreach (var node in GetTree().GetNodesInGroup("units"))
 				{
 					if (node is Unit unit && unit.GetTeamId() == oldTeamId && IsInstanceValid(unit))
@@ -278,7 +278,7 @@ public partial class CampSimple
 			return;
 
 		Vector2 campPos = GlobalPosition;
-		string[] bonusUnits = new[] { "Infantry", "Range", "Infantry" };
+		string[] bonusUnits = new[] { "Infantry", "Range", "Infantry"};
 
 		for (int i = 0; i < bonusUnits.Length; i++)
 		{

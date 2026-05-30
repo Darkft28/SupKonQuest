@@ -245,7 +245,7 @@ public partial class LobbyUI : Control
 		_inMatchLobby = false;
 		SetButtonsEnabled(true);
 
-		if (reason == "auth_session_expired" || reason == "auth_not_authenticated")
+		if (reason == "auth_session_expired"|| reason == "auth_not_authenticated")
 		{
 			RedirectToAuth(GetText(reason));
 			return;
@@ -254,7 +254,7 @@ public partial class LobbyUI : Control
 		string hint = "";
 		string lower = reason?.ToLowerInvariant() ?? "";
 		if (lower.Contains("connection") || lower.Contains("refused") || lower.Contains("timeout") || lower.Contains("host"))
-			hint = " | Verifie nakama/host dans project.godot et que le serveur est joignable.";
+			hint = "| Verifie nakama/host dans project.godot et que le serveur est joignable.";
 
 		string display = reason.StartsWith("auth_") ? GetText(reason) : reason;
 		UpdateStatus($"{GetText("connection_failed")} : {display}{hint}");
@@ -280,7 +280,7 @@ public partial class LobbyUI : Control
 		_inMatchLobby = true;
 		SetButtonsEnabled(false);
 		UpdatePlayerList();
-		UpdateStatus($"{GetText("match_found")} — {GetText("waiting_players")}");
+		UpdateStatus($"{GetText("match_found")} - {GetText("waiting_players")}");
 		GD.Print($"[LOBBY] In-match lobby matchId={matchId} seed={pendingSeed}");
 	}
 
@@ -290,24 +290,25 @@ public partial class LobbyUI : Control
 		string countdown = secondsRemaining < 0
 			? GetText("waiting_server")
 			: secondsRemaining > 0
-				? $"{GetText("starting_in")} {secondsRemaining}s"
-				: GetText("starting_soon");
-		UpdateStatus($"{playerCount}/{NakamaService.MaxMatchPlayers} {GetText("players_connected").ToLower()} — {countdown}");
+				? $"{GetText("starting_in")} {secondsRemaining}s": GetText("starting_soon");
+		UpdateStatus($"{playerCount}/{NakamaService.MaxMatchPlayers} {GetText("players_connected").ToLower()} - {countdown}");
 	}
 
-	private void OnMatchStarting(string matchId, int localTeamId, int seed, int playerCount)
+	private void OnMatchStarting(string matchId, int localTeamId, int seed, int playerCount, int mapType)
 	{
 		_isMatchmaking = false;
 		_inMatchLobby = false;
 		SetButtonsEnabled(true);
-		UpdateStatus(GetText("starting_soon"));
+		var mapName = GameState.GetMapTypeDisplayName(GameState.MapTypeFromIndex(mapType));
+		UpdateStatus($"{GetText("starting_soon")} - {mapName}");
 		_gameState?.StartOnlineGameFromMatch(
 			matchId,
 			localTeamId,
 			seed,
 			playerCount,
 			_nakamaService.UserId,
-			_nakamaService.DisplayName);
+			_nakamaService.DisplayName,
+			mapType);
 	}
 
 	private void OnDisconnected()
@@ -333,7 +334,7 @@ public partial class LobbyUI : Control
 
 		foreach (var player in _nakamaService.MatchPlayers)
 		{
-			string suffix = player.Key == _nakamaService.UserId ? " (Vous)" : "";
+			string suffix = player.Key == _nakamaService.UserId ? "(Vous)": "";
 			_playerList.AddItem($"{player.Value}{suffix}");
 		}
 	}

@@ -64,11 +64,11 @@ public partial class Unit : CharacterBody2D
 	private const float NavUpdateDistance = 64f; // recalcule le chemin si la cible bouge > 64px
 	private Vector2 _intendedDirection = Vector2.Zero; // direction voulue avant MoveAndSlide
 
-	// Throttle recherche ennemis/camps — évite O(n²) chaque frame
+	// Throttle recherche ennemis/camps - évite O(n²) chaque frame
 	private float _aiSearchTimer = 0f;
 	private const float EnemySearchInterval = 0.5f;
 
-	// Throttle vérification défenseurs camp — évite LINQ chaque frame
+	// Throttle vérification défenseurs camp - évite LINQ chaque frame
 	private float _campDefeatCheckTimer = 0f;
 	private bool _campDefeatCached = false;
 	private const float CampDefeatCheckInterval = 0.3f;
