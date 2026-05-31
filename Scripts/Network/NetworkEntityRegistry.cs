@@ -7,7 +7,7 @@ public static class NetworkEntityRegistry
 	private static readonly Dictionary<string, Node> _entities = new();
 	private static int _counter = 0;
 
-	// ID format: "{peerId}_{counter}" — deterministe par peer pour eviter les collisions
+	// ID format: "{peerId}_{counter}"- deterministe par peer pour eviter les collisions
 	public static string GenerateId()
 	{
 		long peerId = 1;

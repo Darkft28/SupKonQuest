@@ -7,13 +7,11 @@ public partial class CampSimple : Area2D
 
 	[Export] public int TeamId = 1;
 	[Export] public bool IsNeutralCamp = false;
-	[Export] public float MaxHealth = 500f;
-	[Export] public int GoldPerSecond = 500;
+	[Export] public float MaxHealth = 600f;
+	[Export] public int GoldPerSecond = 50;
 
-	[Export] public float TurretDamage = 10f;
+	[Export] public float TurretDamage = 5f;
 	[Export] public float TurretRange = 600f;
-	private float _turretTimer = 0f;
-	private const float TurretAttackInterval = 1f;
 
 	private float _currentHealth;
 	private float _goldTimer = 0f;
@@ -29,16 +27,18 @@ public partial class CampSimple : Area2D
 
 	private List<Unit> _spawnedUnits = new List<Unit>();
 
-	// Defenseurs du camp (initiaux + bonus capture) — distinct des unites produites
+	// Defenseurs du camp (initiaux + bonus capture) - distinct des unites produites
 	private List<Unit> _defenders = new List<Unit>();
 
 	private Queue<string> _productionQueue = new Queue<string>();
 	private string _currentProduction = null;
 	private float _productionTimer = 0f;
+	private int _dynamicUnitSpawnSequence = 0;
+	private int _dynamicShipSpawnSequence = 0;
 	private const int MaxQueueSize = 7;
-	public const int MaxLiveUnitsPerCamp = 12; // cap anti-crash
+	// Plafond global d'unités géré par GameManager.GetMaxUnitsForTeam() (10 par camp contrôlé)
 
-	// Region economique (1, 2 ou 3) — secteur angulaire par rapport au centre
+	// Region economique (1, 2 ou 3) - secteur angulaire par rapport au centre
 	public int RegionId { get; set; } = 0;
 
 	public bool HasPort { get; private set; }
@@ -52,10 +52,16 @@ public partial class CampSimple : Area2D
 	private TileMapLayer _tileMapSol;
 	private TileMapLayer _tileMapObjets;
 
-	private ColorRect _healthBarBackground;
-	private ColorRect _healthBarForeground;
+	private ProgressBar _healthBar;
+	private StyleBoxFlat _healthBarBackgroundStyle;
+	private StyleBoxFlat _healthBarFillStyle;
 	private const float HealthBarWidth = 100f;
 	private const float HealthBarHeight = 10f;
+	private bool _campTimersSetup = false;
+
+	private Timer _turretTimerNode;
+	private Timer _territoryAlertTimerNode;
+	private Timer _territoryAlertCooldownTimerNode;
 
 	private static readonly string[] UnitTypes = new[]
 	{
@@ -106,12 +112,14 @@ public partial class CampSimple : Area2D
 		var gameState = GetNodeOrNull<GameState>("/root/GameState");
 		int localTeamId = gameState?.LocalTeamId ?? 1;
 
-		// Camps neutres : le serveur (team 1) a l'autorite
-		if (IsNeutralCamp || TeamId == 0)
-			return localTeamId == 1;
+		// Online: neutral camps are not simulated on every peer (capture via CampCaptured opcode).
+		if (IsOnlineMultiplayer() && (IsNeutralCamp || TeamId == 0))
+			return false;
 
 		return TeamId == localTeamId;
 	}
+
+	private static bool IsOnlineMultiplayer() => GameState.IsOnlineMultiplayer;
 
 	// Reseau : mettre a jour l'autorite des defenseurs apres assignation
 	public void UpdateDefendersAuthority()
@@ -127,17 +135,17 @@ public partial class CampSimple : Area2D
 	// Reseau : appliquer une capture recue du peer distant
 	public void ApplyRemoteCapture(int newTeamId)
 	{
+		if (!IsNeutralCamp && TeamId == newTeamId)
+			return;
+
 		int oldTeamId = TeamId;
 		TeamId = newTeamId;
 		IsNeutralCamp = false;
 
 		SetCurrentHealth(MaxHealth);
-
-		if (_healthBarForeground != null)
-			_healthBarForeground.Color = GetTeamColor();
-
-		if (_campIdLabel != null)
-			_campIdLabel.AddThemeColorOverride("font_color", GetTeamColor());
+		UpdateCampVisualTheme();
+		UpdateCampTimers();
+		RefreshCampLabel(); // label boss/normal selon la nouvelle équipe
 
 		if (GameManager.Instance != null)
 		{
@@ -149,10 +157,18 @@ public partial class CampSimple : Area2D
 			}
 		}
 
+		UpdateSpawnedUnitsTeam();
+		UpdateDefendersAuthority();
+
+		// En mode relay, une capture peut n'être confirmée que par message distant.
+		// On ajoute donc les bonus units ici pour converger avec le peer qui a capturé localement.
+		if (IsOnlineMultiplayer())
+			SpawnBonusUnits();
+
 		GD.Print($"[NET] Camp #{CampId} capture a distance: Team {oldTeamId} -> {newTeamId}");
 		EmitSignal(SignalName.CampCaptured, newTeamId);
 
-		// Appel direct garanti — ne dépend pas de la connexion signal
+		// Appel direct garanti - ne dépend pas de la connexion signal
 		TerritoryManager.Instance?.RefreshTerritory(newTeamId);
 	}
 
@@ -175,15 +191,9 @@ public partial class CampSimple : Area2D
 		TeamId = newTeamId;
 		IsNeutralCamp = isNeutral;
 
-		if (_healthBarForeground != null)
-		{
-			_healthBarForeground.Color = GetTeamColor();
-		}
-
-		if (_campIdLabel != null)
-		{
-			_campIdLabel.AddThemeColorOverride("font_color", GetTeamColor());
-		}
+		UpdateCampVisualTheme();
+		UpdateCampTimers();
+		RefreshCampLabel();
 
 		if (!isNeutral && GameManager.Instance != null)
 		{
@@ -191,6 +201,14 @@ public partial class CampSimple : Area2D
 		}
 
 		UpdateSpawnedUnitsTeam();
+	}
+
+	public void NeutralizeCampAfterPlayerLeave()
+	{
+		SetTeam(0, true);
+		SetCurrentHealth(MaxHealth);
+		RefreshCampLabel();
+		UpdateCampTimers();
 	}
 
 	private void UpdateSpawnedUnitsTeam()
@@ -230,6 +248,8 @@ public partial class CampSimple : Area2D
 
 		CreateHealthBar();
 		CreateCampIdLabel();
+		SetupCampTimers();
+		UpdateCampTimers();
 		SpawnUnits();
 
 		GD.Print($"Camp #{CampId} cree - Team {TeamId}");
@@ -239,11 +259,8 @@ public partial class CampSimple : Area2D
 	{
 		UpdateHealthBar();
 		CleanDeadUnits();
-		GeneratePassiveGold(delta);
 		ProcessProductionQueue(delta);
-		ProcessTurret(delta);
 		ProcessShipProductionQueue(delta);
-		ProcessTerritoryAlert(delta);
 	}
 
 	private void GeneratePassiveGold(double delta)

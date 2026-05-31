@@ -1,6 +1,7 @@
 using Godot;
+using System;
 
-public partial class Minimap : SubViewportContainer
+public partial class Minimap : Control
 {
 	[Export] public int MapWidth = 256;
 	[Export] public int MapHeight = 256;
@@ -8,19 +9,16 @@ public partial class Minimap : SubViewportContainer
 	[Export] public Color ViewRectColor = new Color(1, 0, 0, 1);
 	[Export] public float ViewRectBorderWidth = 2f;
 
-	private SubViewport _viewport;
-	private Camera2D _minimapCamera;
 	private Camera2D _mainCamera;
 	private Vector2 _minimapZoom;
 	private Vector2 _mapPixelSize;
+	private ImageTexture _baseTexture;
+	private float _overlayTimer;
+	private const float OverlayInterval = 0.1f;
+
 
 	public override void _Ready()
 	{
-		_viewport = GetNode<SubViewport>("SubViewport");
-		_minimapCamera = _viewport.GetNode<Camera2D>("MinimapCamera");
-
-		_viewport.World2D = GetTree().Root.GetViewport().World2D;
-
 		var gameState = GetNodeOrNull<GameState>("/root/GameState");
 		if (gameState != null)
 		{
@@ -32,47 +30,107 @@ public partial class Minimap : SubViewportContainer
 			};
 		}
 
-		_mapPixelSize = new Vector2(MapWidth * TileSize, MapHeight * TileSize);
+		if (MapGenerator.MinimapBaseTexture != null)
+			ApplyBaseTexture(MapGenerator.MinimapBaseTexture);
+		else
+			MapGenerator.MinimapTextureReady += OnMinimapTextureReady;
 
-		Vector2 viewportSize = _viewport.Size;
+		_mapPixelSize = new Vector2(MapWidth * TileSize, MapHeight * TileSize);
+		RecalculateZoom();
+		CallDeferred(nameof(FindMainCamera));
+	}
+
+	public override void _ExitTree()
+	{
+		MapGenerator.MinimapTextureReady -= OnMinimapTextureReady;
+	}
+
+	private void OnMinimapTextureReady()
+	{
+		if (MapGenerator.MinimapBaseTexture != null)
+			ApplyBaseTexture(MapGenerator.MinimapBaseTexture);
+	}
+
+	private void ApplyBaseTexture(ImageTexture texture)
+	{
+		_baseTexture = texture;
+		MapWidth = MapGenerator.MinimapMapWidth;
+		MapHeight = MapGenerator.MinimapMapHeight;
+		TileSize = MapGenerator.MinimapTileSize;
+		_mapPixelSize = new Vector2(MapWidth * TileSize, MapHeight * TileSize);
+		RecalculateZoom();
+		QueueRedraw();
+	}
+
+	private void RecalculateZoom()
+	{
+		Vector2 viewportSize = Size;
+		if (viewportSize.X <= 0f || viewportSize.Y <= 0f)
+			viewportSize = new Vector2(129, 128);
 
 		_minimapZoom = new Vector2(
 			viewportSize.X / _mapPixelSize.X,
 			viewportSize.Y / _mapPixelSize.Y
 		);
-
-		_minimapCamera.Zoom = _minimapZoom;
-		_minimapCamera.Position = Vector2.Zero;
-
-		CallDeferred(nameof(FindMainCamera));
 	}
 
-	private void FindMainCamera()
+	public override void _Notification(int what)
 	{
-		var currentScene = GetTree().CurrentScene;
-		_mainCamera = currentScene?.GetNodeOrNull<Camera2D>("Camera2D");
-		if (_mainCamera == null)
-			GD.PrintErr("Minimap: Camera2D non trouvée!");
+		if (what == NotificationResized)
+			RecalculateZoom();
 	}
 
 	public override void _Process(double delta)
 	{
-		QueueRedraw();
+		_overlayTimer += (float)delta;
+		if (_overlayTimer >= OverlayInterval)
+		{
+			_overlayTimer = 0f;
+			QueueRedraw();
+		}
 	}
 
 	public override void _Draw()
+	{
+		Vector2 minimapSize = Size;
+		if (minimapSize.X <= 0f || minimapSize.Y <= 0f)
+			return;
+
+		if (_baseTexture != null)
+			DrawTextureRect(_baseTexture, new Rect2(Vector2.Zero, minimapSize), false);
+
+		DrawCampOverlay(minimapSize);
+		DrawCameraRect(minimapSize);
+	}
+
+	private void DrawCampOverlay(Vector2 minimapSize)
+	{
+		Vector2 minimapCenter = minimapSize / 2;
+
+		foreach (var node in GetTree().GetNodesInGroup("camps"))
+		{
+			if (node is not CampSimple camp || !IsInstanceValid(camp))
+				continue;
+
+			int teamId = camp.GetTeamId();
+			if (teamId <= 0)
+				continue;
+
+			Vector2 p = WorldToMinimap(camp.GlobalPosition, minimapCenter);
+			Color c = GetTeamColor(teamId);
+			DrawRect(new Rect2(p - new Vector2(3, 3), new Vector2(6, 6)), c);
+		}
+	}
+
+	private void DrawCameraRect(Vector2 minimapSize)
 	{
 		if (_mainCamera == null)
 			return;
 
 		Vector2 cameraPos = _mainCamera.Position;
 		Vector2 cameraZoom = _mainCamera.Zoom;
-
 		Vector2 mainViewportSize = _mainCamera.GetViewportRect().Size;
 		Vector2 visibleWorldSize = mainViewportSize / cameraZoom;
-
-		Vector2 minimapSize = _viewport.Size;
-
 		Vector2 minimapCenter = minimapSize / 2;
 
 		Vector2 rectCenterInMinimap = minimapCenter + new Vector2(
@@ -87,11 +145,28 @@ public partial class Minimap : SubViewportContainer
 		Vector2 rectTopLeft = rectCenterInMinimap - rectSizeInMinimap / 2;
 		Rect2 viewRect = new Rect2(rectTopLeft, rectSizeInMinimap);
 		viewRect = viewRect.Intersection(new Rect2(Vector2.Zero, minimapSize));
-
 		DrawRect(viewRect, ViewRectColor, false, ViewRectBorderWidth);
 	}
 
-	private bool _isDragging = false;
+	private Vector2 WorldToMinimap(Vector2 worldPos, Vector2 minimapCenter)
+	{
+		return minimapCenter + new Vector2(
+			worldPos.X * _minimapZoom.X,
+			worldPos.Y * _minimapZoom.Y
+		);
+	}
+
+	private static Color GetTeamColor(int teamId) => CampSimple.GetTeamColor(teamId);
+
+	private void FindMainCamera()
+	{
+		var currentScene = GetTree().CurrentScene;
+		_mainCamera = currentScene?.GetNodeOrNull<Camera2D>("Camera2D");
+		if (_mainCamera == null)
+			GD.PrintErr("Minimap: Camera2D non trouvée!");
+	}
+
+	private bool _isDragging;
 
 	public override void _GuiInput(InputEvent @event)
 	{
@@ -99,9 +174,7 @@ public partial class Minimap : SubViewportContainer
 		{
 			_isDragging = mb.Pressed;
 			if (mb.Pressed)
-			{
 				HandleMinimapClick(mb.Position);
-			}
 			GetViewport().SetInputAsHandled();
 		}
 
@@ -117,9 +190,8 @@ public partial class Minimap : SubViewportContainer
 		if (_mainCamera == null)
 			return;
 
-		Vector2 minimapSize = _viewport.Size;
+		Vector2 minimapSize = Size;
 		Vector2 minimapCenter = minimapSize / 2;
-
 		Vector2 relativePos = clickPos - minimapCenter;
 
 		Vector2 worldPos = new Vector2(

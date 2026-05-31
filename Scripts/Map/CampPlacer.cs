@@ -33,7 +33,7 @@ public static class CampPlacer
 			if (camp is CampSimple campSimple)
 			{
 				campSimple.IsNeutralCamp = true;
-				campSimple.TeamId = campCount;
+				campSimple.TeamId = 0;
 				campSimple.RegionId = GetRegionIdFromGrid(worldPos, tileSize, territoryGrid, halfWidth, halfHeight, armAngles);
 				campSimple.SetTileMapSol(sol);
 			}

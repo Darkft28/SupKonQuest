@@ -8,6 +8,7 @@ public partial class SelectionManager : Node2D
 	private CampSimple _selectedCamp = null;
 	private CampSimple _selectedPort = null;
 	private List<Ship> _selectedShips = new List<Ship>();
+	private string _pendingAbilityId = "";
 
 	private Vector2 _selectionStart;
 	private bool _isSelecting = false;
@@ -23,14 +24,29 @@ public partial class SelectionManager : Node2D
 		AddChild(_selectionRect);
 	}
 
+	private bool IsLocalPlayerSpectating()
+		=> GameManager.Instance?.IsLocalPlayerEliminated() ?? false;
+
 	public override void _UnhandledInput(InputEvent @event)
 	{
+		if (IsLocalPlayerSpectating())
+		{
+			if (@event is InputEventKey key && key.Pressed && !string.IsNullOrWhiteSpace(_pendingAbilityId))
+				CancelAbilityTargeting();
+			return;
+		}
+
 		if (@event is InputEventMouseButton mb)
 		{
 			if (mb.ButtonIndex == MouseButton.Left)
 			{
 				if (mb.Pressed)
 				{
+					if (!string.IsNullOrWhiteSpace(_pendingAbilityId))
+					{
+						CastPendingAbilityAt(GetGlobalMousePosition());
+						return;
+					}
 					StartSelection(GetGlobalMousePosition());
 				}
 				else
@@ -40,6 +56,11 @@ public partial class SelectionManager : Node2D
 			}
 			else if (mb.ButtonIndex == MouseButton.Right && mb.Pressed)
 			{
+				if (!string.IsNullOrWhiteSpace(_pendingAbilityId))
+				{
+					CancelAbilityTargeting();
+					return;
+				}
 				HandleRightClick(GetGlobalMousePosition());
 			}
 		}
@@ -47,6 +68,35 @@ public partial class SelectionManager : Node2D
 		if (@event is InputEventMouseMotion && _isSelecting)
 		{
 			UpdateSelectionRect(GetGlobalMousePosition());
+		}
+
+		if (@event is InputEventKey)
+		{
+			if (@event.IsActionPressed(KeybindingsManager.AllOwnedUnitsAction))
+			{
+				SelectAllOwnedUnits();
+				GetViewport().SetInputAsHandled();
+				return;
+			}
+
+			foreach (string unitType in KeybindingsManager.UnitTypes)
+			{
+				if (@event.IsActionPressed($"unit_macro_{unitType}"))
+				{
+					SelectUnitsByType(unitType);
+					GetViewport().SetInputAsHandled();
+					return;
+				}
+			}
+			foreach (string shipType in KeybindingsManager.ShipTypes)
+			{
+				if (@event.IsActionPressed($"ship_macro_{shipType}"))
+				{
+					SelectShipsByType(shipType);
+					GetViewport().SetInputAsHandled();
+					return;
+				}
+			}
 		}
 	}
 
@@ -194,6 +244,7 @@ public partial class SelectionManager : Node2D
 
 	private void SelectCamp(CampSimple camp)
 	{
+		if (camp.GetTeamId() != GetLocalTeamId()) return;
 		_selectedCamp = camp;
 		_selectedCamp.Modulate = new Color(1.2f, 1.2f, 0.8f, 1);
 	}
@@ -249,17 +300,22 @@ public partial class SelectionManager : Node2D
 	{
 		if (_selectedUnits.Count > 0)
 		{
+			bool relayMode = ShouldUseRelayCommands();
+
 			var ships = GetTree().GetNodesInGroup("ships");
 			foreach (var node in ships)
 			{
 				if (node is Ship ship && ship.GetShipType() == "Transport")
 				{
-					if (ship.GlobalPosition.DistanceTo(target) < 150)
+					if (ship.GlobalPosition.DistanceTo(target) < 250)
 					{
 						int unitTeam = _selectedUnits[0].GetTeamId();
 						if (ship.GetTeamId() == unitTeam)
 						{
-							SendUnitsToTransport(ship);
+							if (relayMode)
+								NetworkCommandRouter.RequestUnitsMoveToTransport(ship, _selectedUnits);
+							else
+								SendUnitsToTransport(ship);
 							return;
 						}
 					}
@@ -285,9 +341,22 @@ public partial class SelectionManager : Node2D
 
 			if (targetCamp != null)
 			{
-				foreach (var unit in _selectedUnits)
-					if (IsInstanceValid(unit))
-						unit.AttackCamp(targetCamp);
+				if (relayMode)
+				{
+					NetworkCommandRouter.RequestAttackCamp(_selectedUnits, targetCamp);
+				}
+				else
+				{
+					foreach (var unit in _selectedUnits)
+						if (IsInstanceValid(unit))
+							unit.AttackCamp(targetCamp);
+				}
+				return;
+			}
+
+			if (relayMode)
+			{
+				NetworkCommandRouter.RequestMoveUnits(_selectedUnits, target);
 				return;
 			}
 
@@ -297,10 +366,11 @@ public partial class SelectionManager : Node2D
 
 		if (_selectedShips.Count > 0)
 		{
+			bool relayMode = ShouldUseRelayCommands();
 			bool hasTransportWithUnits = false;
 			foreach (var ship in _selectedShips)
 			{
-				if (IsInstanceValid(ship) && ship.GetShipType() == "Transport" && ship.GetLoadedUnitCount() > 0)
+				if (IsInstanceValid(ship) && ship.GetShipType() == "Transport"&& ship.GetLoadedUnitCount() > 0)
 				{
 					hasTransportWithUnits = true;
 					break;
@@ -321,23 +391,80 @@ public partial class SelectionManager : Node2D
 
 				if (!isWater)
 				{
+					if (relayMode)
+					{
+						var transportsToUnload = new List<Ship>();
+						foreach (var ship in _selectedShips)
+						{
+							if (IsInstanceValid(ship) && ship.GetShipType() == "Transport"&& ship.GetLoadedUnitCount() > 0
+								&& ship.IsValidUnloadPosition(target))
+							{
+								transportsToUnload.Add(ship);
+							}
+						}
+
+						if (transportsToUnload.Count > 0)
+							NetworkCommandRouter.RequestMoveShipsUnload(transportsToUnload, target);
+						return;
+					}
+
 					foreach (var ship in _selectedShips)
 					{
-						if (IsInstanceValid(ship) && ship.GetShipType() == "Transport" && ship.GetLoadedUnitCount() > 0)
+						if (IsInstanceValid(ship) && ship.GetShipType() == "Transport"&& ship.GetLoadedUnitCount() > 0)
 						{
 							if (ship.IsValidUnloadPosition(target))
-							{
 								ship.MoveToUnload(target);
-							}
 						}
 					}
 					return;
 				}
 			}
 
-				MoveSelectedShips(target);
+			if (relayMode)
+			{
+				NetworkCommandRouter.RequestMoveShips(_selectedShips, target);
+				return;
+			}
+
+			MoveSelectedShips(target);
 			return;
 		}
+	}
+
+	public void BeginAbilityTargeting(string abilityId)
+	{
+		_pendingAbilityId = abilityId ?? "";
+	}
+
+	public void CancelAbilityTargeting()
+	{
+		_pendingAbilityId = "";
+	}
+
+	public bool HasPendingAbility()
+	{
+		return !string.IsNullOrWhiteSpace(_pendingAbilityId);
+	}
+
+	private void CastPendingAbilityAt(Vector2 target)
+	{
+		string abilityId = _pendingAbilityId;
+		_pendingAbilityId = "";
+
+		if (string.IsNullOrWhiteSpace(abilityId))
+			return;
+
+		int localTeamId = GetLocalTeamId();
+		if (localTeamId <= 0)
+			return;
+
+		if (ShouldUseRelayCommands())
+		{
+			NetworkCommandRouter.RequestCastUltimate(localTeamId, abilityId, target);
+			return;
+		}
+
+		GameManager.Instance?.TryCastTeamUltimate(localTeamId, abilityId, target);
 	}
 
 	private void SendUnitsToTransport(Ship transport)
@@ -347,7 +474,7 @@ public partial class SelectionManager : Node2D
 
 		foreach (var unit in _selectedUnits)
 		{
-			if (IsInstanceValid(unit) && sent < capacity)
+			if (IsInstanceValid(unit) && sent < capacity && unit.CanBoardTransport())
 			{
 				unit.MoveToTransport(transport);
 				sent++;
@@ -385,6 +512,8 @@ public partial class SelectionManager : Node2D
 		}
 	}
 
+	private static bool ShouldUseRelayCommands() => GameState.IsOnlineMultiplayer;
+
 	public void OnUnitClicked(Unit unit)
 	{
 		foreach (var u in _selectedUnits)
@@ -409,6 +538,53 @@ public partial class SelectionManager : Node2D
 		DeselectPort();
 
 		SelectUnit(unit);
+	}
+
+	private void SelectUnitsByType(string unitType)
+	{
+		ClearSelection();
+		int localTeamId = GetLocalTeamId();
+		foreach (var node in GetTree().GetNodesInGroup("units"))
+		{
+			if (node is Unit unit && unit.GetTeamId() == localTeamId && unit.GetUnitType() == unitType)
+				SelectUnit(unit);
+		}
+	}
+
+	private void SelectAllOwnedUnits()
+	{
+		ClearSelection();
+		int localTeamId = GetLocalTeamId();
+		foreach (var node in GetTree().GetNodesInGroup("units"))
+		{
+			if (node is Unit unit && unit.GetTeamId() == localTeamId)
+				SelectUnit(unit);
+		}
+	}
+
+	private void SelectShipsByType(string shipType)
+	{
+		ClearSelection();
+		int localTeamId = GetLocalTeamId();
+		foreach (var node in GetTree().GetNodesInGroup("ships"))
+		{
+			if (node is Ship ship && ship.GetTeamId() == localTeamId && ship.GetShipType() == shipType)
+				SelectShip(ship);
+		}
+	}
+
+	private void ClearSelection()
+	{
+		foreach (var u in _selectedUnits)
+			if (IsInstanceValid(u)) u.Modulate = Colors.White;
+		_selectedUnits.Clear();
+
+		foreach (var s in _selectedShips)
+			if (IsInstanceValid(s)) s.Modulate = Colors.White;
+		_selectedShips.Clear();
+
+		DeselectCamp();
+		DeselectPort();
 	}
 
 	public CampSimple GetSelectedCamp()

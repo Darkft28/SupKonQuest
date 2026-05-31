@@ -36,6 +36,8 @@ public partial class Ship : CharacterBody2D
 	private ShipState _currentState = ShipState.Idle;
 	private float _attackTimer = 0f;
 	private const float AttackInterval = 1.5f;
+	private const float ShipSearchInterval = 0.5f;
+	private float _shipSearchTimer = 0f;
 	private Ship _currentTarget = null;
 
 	private Area2D _detectionZone = null;
@@ -71,6 +73,12 @@ public partial class Ship : CharacterBody2D
 	public float GetRange() => _stats.Range;
 	public float GetAttack() => _stats.Attack;
 	public bool GetIsMoving() => _targetPosition.HasValue;
+
+	public bool IsEngagedInNavalCombat() =>
+		ShipType != "Transport"&& (_currentState == ShipState.Attacking
+			|| (_currentState == ShipState.MovingToTarget
+				&& _currentTarget != null
+				&& IsInstanceValid(_currentTarget)));
 	public int GetLoadedUnitCount() => _loadedUnits.Count;
 	public int GetCapacity() => _stats.Capacity;
 
@@ -102,14 +110,21 @@ public partial class Ship : CharacterBody2D
 			NetworkEntityRegistry.Register(NetworkId, this);
 		}
 
-		// Créer le NavigationAgent2D pour le pathfinding maritime (couche 2 = eau)
-		_navAgent = new NavigationAgent2D();
+		// NavigationAgent2D pré-instancié dans la scène (fallback runtime si manquant)
+		_navAgent = GetNodeOrNull<NavigationAgent2D>("NavigationAgent2D");
+		if (_navAgent == null)
+		{
+			_navAgent = new NavigationAgent2D();
+			_navAgent.Name = "NavigationAgent2D";
+			AddChild(_navAgent);
+		}
+
 		_navAgent.PathDesiredDistance = 15f;
 		_navAgent.TargetDesiredDistance = ArrivalDistance;
-		_navAgent.AvoidanceEnabled = false;
+		_navAgent.AvoidanceEnabled = ShipType != "Transport";
 		_navAgent.NavigationLayers = 2u;
-		_navAgent.Radius = 60f; // marge autour des côtes
-		AddChild(_navAgent);
+		_navAgent.MaxSpeed = _stats.Speed;
+		_navAgent.VelocityComputed += OnNavVelocityComputed;
 
 		_currentState = ShipState.Idle;
 
@@ -125,6 +140,14 @@ public partial class Ship : CharacterBody2D
 		{
 			NetworkEntityRegistry.Unregister(NetworkId);
 		}
+	}
+
+	public void SetCurrentHealth(float value)
+	{
+		_currentHealth = value;
+		if (_currentHealth < 0)
+			_currentHealth = 0;
+		QueueRedraw();
 	}
 
 	public void ApplyNetworkState(Vector2 pos, float health)
@@ -162,17 +185,6 @@ public partial class Ship : CharacterBody2D
 
 	public override void _PhysicsProcess(double delta)
 	{
-		// Puppet : interpoler vers la position reseau, pas d'IA (multi seulement)
-		bool isMulti = NetworkSync.Instance?.IsMultiplayer() == true;
-		if (isMulti && !IsLocalAuthority)
-		{
-			if (_networkTargetPosition.HasValue)
-			{
-				GlobalPosition = GlobalPosition.Lerp(_networkTargetPosition.Value, 10f * (float)delta);
-			}
-			return;
-		}
-
 		switch (_currentState)
 		{
 			case ShipState.Idle:

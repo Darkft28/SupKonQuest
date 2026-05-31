@@ -4,7 +4,7 @@ public partial class CampSimple
 {
 	private void ProcessProductionQueue(double delta)
 	{
-		if (!IsLocallyOwned()) return;
+		if (IsOnlineMultiplayer() && !IsLocallyOwned()) return;
 
 		if (_currentProduction == null && _productionQueue.Count > 0)
 		{
@@ -53,13 +53,26 @@ public partial class CampSimple
 		return true;
 	}
 
+	public bool ApplyRelayBuyUnit(string unitType)
+	{
+		// Remote peers do not simulate the queue; the owner sends SpawnUnit when production ends.
+		return !IsNeutralCamp;
+	}
+
+	public void RegisterRelaySpawnedUnit(Unit unit)
+	{
+		if (unit == null || !IsInstanceValid(unit))
+			return;
+
+		_spawnedUnits.Add(unit);
+	}
+
 	// IDs des biomes/objets à éviter au spawn (forêt, neige, eau, arbres, montagnes)
 	private const int IdSolForet = 3;
 	private const int IdSolNeige = 4;
 	private const int IdSolEau = 6;
-	private const int IdObjetArbreSpawn = 100;
-	private const int IdObjetMontagneSpawn = 101;
 	private const float SpawnRadius = 525f;
+	public const float DefenderRelevanceRadius = 1200f;
 
 	private bool IsSpawnBlocked(Vector2 worldPos)
 	{
@@ -67,11 +80,6 @@ public partial class CampSimple
 		Vector2I tc = _tileMapSol.LocalToMap(_tileMapSol.ToLocal(worldPos));
 		int solId = _tileMapSol.GetCellSourceId(tc);
 		if (solId == IdSolForet || solId == IdSolNeige || solId == IdSolEau) return true;
-		if (_tileMapObjets != null)
-		{
-			int objId = _tileMapObjets.GetCellSourceId(tc);
-			if (objId == IdObjetArbreSpawn || objId == IdObjetMontagneSpawn) return true;
-		}
 		return false;
 	}
 
@@ -108,7 +116,8 @@ public partial class CampSimple
 
 		var unit = unitScene.Instantiate<Unit>();
 
-		float spawnAngle = (float)GD.RandRange(0, Mathf.Tau);
+		int spawnSequence = ++_dynamicUnitSpawnSequence;
+		float spawnAngle = GetDeterministicSpawnAngle(spawnSequence);
 		unit.GlobalPosition = FindClearSpawnPosition(spawnAngle, SpawnRadius);
 		unit.UnitType = unitType;
 		unit.TeamId = TeamId;
@@ -117,15 +126,30 @@ public partial class CampSimple
 		unit.RegionId = RegionId;
 
 		// Reseau : assigner un NetworkId et broadcaster le spawn
-		string networkId = NetworkEntityRegistry.GenerateId();
+		string networkId = BuildDynamicUnitNetworkId(spawnSequence);
 		unit.NetworkId = networkId;
 		unit.IsLocalAuthority = true;
 
 		GetParent().AddChild(unit);
 		_spawnedUnits.Add(unit);
 
-		NetworkSync.Instance?.SendSpawnUnit(networkId, unitType, TeamId,
-			unit.GlobalPosition.X, unit.GlobalPosition.Y, unit.GetCurrentHealth(), false);
+		if (IsOnlineMultiplayer())
+		{
+			NetworkCommandRouter.SendSpawnUnit(networkId, unitType, TeamId, CampId,
+				unit.GlobalPosition.X, unit.GlobalPosition.Y, unit.GetCurrentHealth());
+		}
+	}
+
+	private string BuildDynamicUnitNetworkId(int spawnSequence)
+	{
+		return $"camp_{CampId}_dyn_{spawnSequence}";
+	}
+
+	private float GetDeterministicSpawnAngle(int spawnSequence)
+	{
+		int hash = (CampId * 73856093) ^ (spawnSequence * 19349663);
+		hash &= int.MaxValue;
+		return (hash / (float)int.MaxValue) * Mathf.Tau;
 	}
 
 	private void SpawnUnits()
@@ -133,7 +157,7 @@ public partial class CampSimple
 		var unitScene = GD.Load<PackedScene>("res://Scenes/Unit.tscn");
 		if (unitScene == null)
 		{
-			GD.PrintErr("Impossible de charger Unit.tscn");
+			GD.PrintErr("Failed to load Unit.tscn");
 			return;
 		}
 
@@ -160,6 +184,25 @@ public partial class CampSimple
 		}
 	}
 
+	public void RespawnNeutralDefenders()
+	{
+		ClearCampUnits();
+		SpawnUnits();
+		UpdateDefendersAuthority();
+	}
+
+	private void ClearCampUnits()
+	{
+		foreach (var unit in _spawnedUnits)
+		{
+			if (unit != null && IsInstanceValid(unit))
+				unit.QueueFree();
+		}
+
+		_spawnedUnits.Clear();
+		_defenders.Clear();
+	}
+
 	public int GetLiveUnitCount()
 	{
 		CleanDeadUnits();
@@ -168,21 +211,36 @@ public partial class CampSimple
 
 	public bool CanBuyUnit(string unitType)
 	{
-		if (GameManager.Instance == null)
-			return false;
+		return GetBuyUnitDenyReason(unitType) == null;
+	}
 
-		if (GetLiveUnitCount() >= MaxLiveUnitsPerCamp)
-			return false;
+	/// <summary>Raison d'achat refusé, ou null si l'achat est possible.</summary>
+	public string GetBuyUnitDenyReason(string unitType)
+	{
+		if (GameManager.Instance == null)
+			return "Jeu non initialisé";
+
+		if (IsNeutralCamp)
+			return "Camp neutre";
+
+		int unitCount = GameManager.Instance.GetTeamUnitCount(TeamId);
+		int maxUnits = GameManager.Instance.GetMaxUnitsForTeam(TeamId);
+		if (unitCount >= maxUnits)
+			return $"Limite d'unités ({unitCount}/{maxUnits})";
 
 		int totalInQueue = _productionQueue.Count + (_currentProduction != null ? 1 : 0);
 		if (totalInQueue >= MaxQueueSize)
-			return false;
+			return "File de production pleine";
 
 		if (GameManager.Instance.GetUnlockedTier(TeamId) < GameManager.GetUnitTier(unitType))
-			return false;
+			return $"Palier {GameManager.GetUnitTier(unitType)} requis";
 
 		var stats = UnitStats.GetStats(unitType);
-		return GameManager.Instance.CanAfford(TeamId, stats.Price);
+		int gold = GameManager.Instance.GetGold(TeamId);
+		if (gold < stats.Price)
+			return $"Or insuffisant ({gold}g / {stats.Price}g)";
+
+		return null;
 	}
 
 	private void CleanDeadUnits()
@@ -197,10 +255,28 @@ public partial class CampSimple
 		return new System.Collections.Generic.List<Unit>(_defenders);
 	}
 
+	public bool IsRelevantDefender(Unit unit)
+	{
+		if (unit == null || !IsInstanceValid(unit) || unit.GetCurrentHealth() <= 0)
+			return false;
+
+		return GlobalPosition.DistanceTo(unit.GlobalPosition) <= DefenderRelevanceRadius;
+	}
+
+	public System.Collections.Generic.List<Unit> GetRelevantDefenders()
+	{
+		var relevant = new System.Collections.Generic.List<Unit>();
+		foreach (var unit in GetLiveDefenders())
+		{
+			if (IsRelevantDefender(unit))
+				relevant.Add(unit);
+		}
+		return relevant;
+	}
+
 	public bool AreAllUnitsDefeated()
 	{
-		CleanDeadUnits();
-		return _defenders.Count == 0;
+		return GetRelevantDefenders().Count == 0;
 	}
 
 	public int GetQueueCount()
@@ -234,13 +310,13 @@ public partial class CampSimple
 
 	public void RefundProductionQueue(int refundTeamId)
 	{
-		// Pas de remboursement pour les camps neutres (or local, pas de GameManager)
+		// No refund for neutral camps (local gold, no GameManager)
 		if (refundTeamId <= 0) return;
 		if (GameManager.Instance == null) return;
 
 		int totalRefund = 0;
 
-		// Rembourser l'unité en cours de production
+		// Refund currently produced unit
 		if (_currentProduction != null)
 		{
 			int price = UnitStats.GetStats(_currentProduction).Price;
@@ -249,7 +325,7 @@ public partial class CampSimple
 			_productionTimer = 0f;
 		}
 
-		// Rembourser toutes les unités dans la file
+		// Refund all queued units
 		while (_productionQueue.Count > 0)
 		{
 			string unitType = _productionQueue.Dequeue();

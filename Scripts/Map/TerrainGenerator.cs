@@ -51,15 +51,23 @@ public static class TerrainGenerator
 		}
 	}
 
-	// Hash déterministe par position → variante 0-3 (FlipH/FlipV combinés).
-	// N'utilise pas le Random → déterminisme multijoueur garanti.
-	public static int PickAlt(int x, int y)
+	// Hash déterministe par position+type de tuile -> variante 0-3 (FlipH/FlipV).
+	// On évite les motifs réguliers en utilisant un mix binaire plus fort que les bits bas d'un LCG.
+	public static int PickAlt(int x, int y, int sourceId)
 	{
 		unchecked
 		{
-			uint h = (uint)(x * 1664525 + y * 22695477 + 1013904223);
-			h ^= h >> 14;
-			return (int)(h & 3);
+			uint h = (uint)x;
+			h ^= (uint)y * 0x9E3779B9u;
+			h ^= (uint)(sourceId + 1) * 0x85EBCA6Bu;
+
+			h ^= h >> 16;
+			h *= 0x7FEB352Du;
+			h ^= h >> 15;
+			h *= 0x846CA68Bu;
+			h ^= h >> 16;
+
+			return (int)((h >> 30) & 3u);
 		}
 	}
 
@@ -68,8 +76,7 @@ public static class TerrainGenerator
 		if (container == null) return;
 
 		string texPath = objetId == IdObjetArbre
-			? "res://Assets/Objects/Tree.png"
-			: "res://Assets/Objects/montagne.png";
+			? "res://Assets/Objects/Tree.png": "res://Assets/Objects/montagne.png";
 
 		if (objetId == IdObjetArbre)
 			_texTree ??= GD.Load<Texture2D>(texPath);

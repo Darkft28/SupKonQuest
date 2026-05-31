@@ -2,6 +2,8 @@ using Godot;
 
 public partial class Unit
 {
+	private static readonly PackedScene ProjectileScene = GD.Load<PackedScene>("res://Scenes/Projectile.tscn");
+
 	private void ProcessAttackingState(double delta)
 	{
 		if (!IsTargetValid())
@@ -38,7 +40,7 @@ public partial class Unit
 			return;
 		}
 
-		// Camp capturé par notre équipe → succès
+		// Camp capturé par notre équipe -> succès
 		if (_campTarget.GetTeamId() == TeamId)
 		{
 			_campTarget = null;
@@ -74,7 +76,7 @@ public partial class Unit
 
 		float effectiveRange = _stats.Range + 80f;
 
-		// Phase 1 : des défenseurs sont encore en vie → les combattre en priorité
+		// Phase 1 : des défenseurs sont encore en vie -> les combattre en priorité
 		if (!_campDefeatCached)
 		{
 			Unit defender = FindNearestDefenderOfCamp(_campTarget);
@@ -96,20 +98,24 @@ public partial class Unit
 				else
 				{
 					MoveWithNav(combatTarget.GlobalPosition);
+					ProcessStuckDetection();
 				}
 			}
 			else
 			{
 				// Aucun ennemi visible : avancer vers le camp
 				if (distanceToCamp > _stats.Range)
+				{
 					MoveWithNav(_campTarget.GlobalPosition);
+					ProcessStuckDetection();
+				}
 				else
 					Velocity = Vector2.Zero;
 			}
 			return;
 		}
 
-		// Phase 2 : plus de défenseurs → attaquer le bâtiment, mais engager les ennemis de passage
+		// Phase 2 : plus de défenseurs -> attaquer le bâtiment, mais engager les ennemis de passage
 		if (_opportunisticTarget != null)
 		{
 			float distToOpp = GlobalPosition.DistanceTo(_opportunisticTarget.GlobalPosition);
@@ -131,6 +137,7 @@ public partial class Unit
 		if (distanceToCamp > effectiveCampRange)
 		{
 			MoveWithNav(_campTarget.GlobalPosition);
+			ProcessStuckDetection();
 			return;
 		}
 
@@ -151,8 +158,10 @@ public partial class Unit
 		if (target.GetCurrentHealth() <= 0)
 			return;
 
+		PlayAttackSfx();
+
 		// Range et Mortar : projectile au lieu de dégâts directs
-		if (UnitType == "Range" || UnitType == "Mortar")
+		if (UnitType == "Range"|| UnitType == "Mortar")
 		{
 			SpawnProjectile(target);
 			return;
@@ -160,12 +169,11 @@ public partial class Unit
 
 		// AntiArmor : dégâts x2 contre les unités Heavy
 		float attackDamage = _stats.Attack;
-		if (UnitType == "AntiArmor" && target.GetUnitType() == "Heavy")
+		if (UnitType == "AntiArmor"&& target.GetUnitType() == "Heavy")
 			attackDamage *= 2f;
 
-		// Réseau : si la cible est un puppet, envoyer via RPC
 		bool isMulti = NetworkSync.Instance?.IsMultiplayer() == true;
-		if (isMulti && !target.IsLocalAuthority && !string.IsNullOrEmpty(target.NetworkId))
+		if (isMulti && !string.IsNullOrEmpty(target.NetworkId))
 		{
 			NetworkSync.Instance?.SendUnitDamage(target.NetworkId, attackDamage, TeamId);
 			return;
@@ -176,11 +184,11 @@ public partial class Unit
 
 	private void SpawnProjectile(Unit target)
 	{
-		var projectile = new Projectile();
+		var projectile = ProjectileScene?.Instantiate<Projectile>() ?? new Projectile();
 		GetTree().CurrentScene.AddChild(projectile);
 
-		var type = UnitType == "Mortar" ? Projectile.ProjectileType.Cannonball : Projectile.ProjectileType.Arrow;
-		float speed = UnitType == "Mortar" ? 300f : 500f;
+		var type = UnitType == "Mortar"? Projectile.ProjectileType.Cannonball : Projectile.ProjectileType.Arrow;
+		float speed = UnitType == "Mortar"? 300f : 500f;
 
 		projectile.Initialize(GlobalPosition, target, _stats.Attack, TeamId, type, speed);
 	}
@@ -213,7 +221,7 @@ public partial class Unit
 			OwnerCamp.OnDefenderDied(_lastAttackerTeamId, mutualKill);
 		}
 
-		if (IsLocalAuthority && !string.IsNullOrEmpty(NetworkId))
+		if (NetworkSync.Instance?.IsMultiplayer() == true && !string.IsNullOrEmpty(NetworkId))
 			NetworkSync.Instance?.SendEntityDied(NetworkId);
 
 		QueueFree();
@@ -236,11 +244,6 @@ public partial class Unit
 			_savedTargetPosition ??= _targetPosition;
 			SetNewTarget(otherUnit);
 		}
-	}
-
-	private void OnBodyExitedDetectionZone(Node2D body)
-	{
-		// La logique de poursuite dans ProcessMovingToTargetState gère ce cas
 	}
 
 	private void SetNewTarget(Unit target)
@@ -269,7 +272,7 @@ public partial class Unit
 
 	private Unit FindNearestDefenderOfCamp(CampSimple camp)
 	{
-		var defenders = camp.GetLiveDefenders();
+		var defenders = camp.GetRelevantDefenders();
 		Unit nearest = null;
 		float nearestDist = float.MaxValue;
 
@@ -306,6 +309,10 @@ public partial class Unit
 				float distance = GlobalPosition.DistanceTo(otherUnit.GlobalPosition);
 				if (distance <= DetectionRange && distance < closestDistance)
 				{
+					if (IsAiControlledUnit()
+						&& !MapGenerator.HasClearLandLine(GlobalPosition, otherUnit.GlobalPosition))
+						continue;
+
 					closestEnemy = otherUnit;
 					closestDistance = distance;
 				}
@@ -329,10 +336,15 @@ public partial class Unit
 		{
 			if (node is not CampSimple camp) continue;
 			if (camp.GetTeamId() == TeamId) continue;
-			if (!camp.AreAllUnitsDefeated()) continue;
 
 			float distance = GlobalPosition.DistanceTo(camp.GlobalPosition);
 			if (distance > CampAttackDetectionRange) continue;
+
+			if (OwnerCamp != null && !MapGenerator.AreCampsLandConnected(OwnerCamp, camp))
+				continue;
+
+			if (!MapGenerator.HasClearLandLine(GlobalPosition, camp.GlobalPosition))
+				continue;
 
 			// Score de base : distance euclidienne
 			float score = distance;
@@ -342,8 +354,8 @@ public partial class Unit
 			{
 				if (camp.RegionId == myRegion)
 					score -= 3000f; // Même région = priorité maximale
-				else if (camp.RegionId > 0 && TerritoryConnectivity.AreConnected(graph, myRegion, camp.RegionId))
-					score -= 1500f; // Région adjacente accessible = priorité secondaire
+				else if (camp.RegionId > 0 && TerritoryConnectivity.IsReachable(graph, new[] { myRegion }, camp.RegionId))
+					score -= 1500f; // Territoire terrestre accessible = priorité secondaire
 			}
 			else if (myRegion > 0 && camp.RegionId == myRegion)
 			{

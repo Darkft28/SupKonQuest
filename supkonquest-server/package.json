@@ -1,0 +1,29 @@
+{
+  "name": "nakama-project-template",
+  "version": "0.1.0",
+  "description": "SupKonQuest Nakama TypeScript runtime for matchmaking and relay commands.",
+  "main": "build/index.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/heroiclabs/nakama-project-template.git"
+  },
+  "keywords": [
+    "nakama"
+  ],
+  "author": "Nakama Authors",
+  "license": "Apache-2.0",
+  "bugs": {
+    "url": "https://github.com/heroiclabs/nakama-project-template/issues"
+  },
+  "homepage": "https://github.com/heroiclabs/nakama-project-template#readme",
+  "dependencies": {
+    "nakama-runtime": "github:heroiclabs/nakama-common#master"
+  },
+  "devDependencies": {
+    "typescript": "^4.5.4"
+  }
+}

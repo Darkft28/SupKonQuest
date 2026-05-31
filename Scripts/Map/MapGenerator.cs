@@ -1,6 +1,7 @@
 ﻿using Godot;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using SupKonQuest.Map.Presets;
 
 [Tool]
@@ -13,12 +14,28 @@ public partial class MapGenerator : Node
 	private Node2D _objectsContainer;
 	private SelectionManager _selectionManager;
 	private TerritoryManager _territoryManager;
-	// Grille de territoires (256×256) décodée depuis le RLE de la map preset
+	// Territory grid (256x256) decoded from preset map RLE
 	private int[,] _territoryGrid;
 	private string[] _territoireNoms;
 
-	// Graphe de connectivité des territoires (exposé pour l'IA et les unités)
+	// Territory connectivity graph (exposed for AI and units)
 	public static Dictionary<int, HashSet<int>> TerritoryGraph { get; private set; }
+	public static Rid LandNavigationMap { get; private set; }
+
+	private static MapGenerator _activeInstance;
+	private static readonly Dictionary<long, bool> _campLandLinks = new();
+
+	public static ImageTexture MinimapBaseTexture { get; private set; }
+	public static int MinimapMapWidth { get; private set; } = 256;
+	public static int MinimapMapHeight { get; private set; } = 256;
+	public const int MinimapTileSize = 128;
+	public static event Action MinimapTextureReady;
+
+	private const float LandPathEndTolerance = 768f;
+	private const float LandPathEndpointTolerance = 640f;
+	private const float LandPathDetourFactor = 1.55f;
+	private const float LandPathDetourPadding = 640f;
+	private const float MaxLandAssaultDistance = 9000f;
 
 	private PackedScene _campScene;
 
@@ -27,11 +44,29 @@ public partial class MapGenerator : Node
 	private const int TileSize = 128;
 
 	private int? _networkSeed = null;
+	private CanvasLayer _loadingOverlay;
+	private Label _loadingStatusLabel;
 
 	private Random _seededRandom;
 
-	public override void _Ready()
+	private const int MinimapBakeResolution = 512;
+
+	private struct BakeMaskSnapshot
 	{
+		public bool Active;
+		public bool UnitsVisible;
+		public bool HudVisible;
+		public bool VfxVisible;
+		public bool SelectionVisible;
+		public bool CameraEnabled;
+		public bool LoadingOverlayVisible;
+	}
+
+	private BakeMaskSnapshot _bakeMaskSnapshot;
+
+	public override async void _Ready()
+	{
+		_activeInstance = this;
 		_tileMapSol = GetNode<TileMapLayer>("Sol");
 		_tileMapObjets = GetNode<TileMapLayer>("Objets");
 		_camera = GetNode<Camera2D>("Camera2D");
@@ -40,19 +75,11 @@ public partial class MapGenerator : Node
 
 		_unitsContainer = GetNodeOrNull<Node2D>("Units");
 		if (_unitsContainer == null && !Engine.IsEditorHint())
-		{
-			_unitsContainer = new Node2D();
-			_unitsContainer.Name = "Units";
-			AddChild(_unitsContainer);
-		}
+			GD.PrintErr("[MAP] Missing 'Units' node in Game.tscn");
 
 		_selectionManager = GetNodeOrNull<SelectionManager>("SelectionManager");
 		if (_selectionManager == null && !Engine.IsEditorHint())
-		{
-			_selectionManager = new SelectionManager();
-			_selectionManager.Name = "SelectionManager";
-			AddChild(_selectionManager);
-		}
+			GD.PrintErr("[MAP] Missing 'SelectionManager' node in Game.tscn");
 
 		if (_camera != null)
 		{
@@ -63,28 +90,111 @@ public partial class MapGenerator : Node
 		if (!Engine.IsEditorHint())
 		{
 			var gameState = GetNodeOrNull<GameState>("/root/GameState");
-			if (gameState != null && gameState.MapSeed != 0)
-			{
-				_networkSeed = gameState.MapSeed;
-			}
+			if (gameState != null)
+				_networkSeed = gameState.GetEffectiveMapSeed();
 		}
 
 		if (!Engine.IsEditorHint())
 		{
 			if (GetNodeOrNull<NetworkSync>("NetworkSync") == null)
-			{
-				var networkSync = new NetworkSync();
-				networkSync.Name = "NetworkSync";
-				AddChild(networkSync);
-			}
+				GD.PrintErr("[MAP] Missing 'NetworkSync' node in Game.tscn");
 
-			ReadMapSettings();
-			GenererMap();
-			CallDeferred(nameof(InitTerritory));
+			await LancerAvecChargement();
 		}
-		else if (_tileMapSol.GetUsedCells().Count == 0)
+	}
+
+	// Starts map generation and waits for nav sync before starting AI
+	private async System.Threading.Tasks.Task LancerAvecChargement()
+	{
+		ShowLoadingScreen("Generating map...");
+
+		// Allow one frame so the overlay is visible before heavy work
+		await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+
+		GenererMap();
+
+		// NavigationServer2D processes nav regions asynchronously.
+		// Wait until navmesh sync is done before units compute paths,
+		// otherwise two AIs between identical points can produce different
+		// paths depending on which one computes first.
+		SetLoadingStatus("Precomputing paths...");
+		await WaitForLandNavigationReady();
+
+		RefreshLandNavigationMap();
+
+		var camps = GameManager.Instance?.GetAllCamps();
+		if (camps != null)
 		{
-			GenererMap();
+			for (int attempt = 0; attempt < 4; attempt++)
+			{
+				BuildCampLandConnectivity(camps);
+				int connected = _campLandLinks.Values.Count(v => v);
+				if (connected > 0 || attempt == 3)
+					break;
+				for (int i = 0; i < 8; i++)
+					await ToSignal(GetTree(), SceneTree.SignalName.PhysicsFrame);
+				RefreshLandNavigationMap();
+			}
+		}
+
+		SetLoadingStatus("Building minimap...");
+		await BakeMinimapScreenshotAsync();
+
+		HideLoadingScreen();
+
+		InitTerritory();
+		InitAIController();
+	}
+
+	private void ShowLoadingScreen(string status)
+	{
+		_loadingOverlay = new CanvasLayer();
+		_loadingOverlay.Layer = 128; // above everything
+		AddChild(_loadingOverlay);
+
+		// Opaque background
+		var bg = new ColorRect();
+		bg.Color = new Color(0.06f, 0.07f, 0.1f, 1f);
+		bg.SetAnchorsPreset(Control.LayoutPreset.FullRect);
+		bg.MouseFilter = Control.MouseFilterEnum.Stop; // blocks all player clicks
+		_loadingOverlay.AddChild(bg);
+
+		// Centered container
+		var vbox = new VBoxContainer();
+		vbox.SetAnchorsPreset(Control.LayoutPreset.Center);
+		vbox.GrowHorizontal = Control.GrowDirection.Both;
+		vbox.GrowVertical = Control.GrowDirection.Both;
+		vbox.AddThemeConstantOverride("separation", 16);
+		_loadingOverlay.AddChild(vbox);
+
+		var title = new Label();
+		title.Text = "SupKonQuest";
+		title.HorizontalAlignment = HorizontalAlignment.Center;
+		title.AddThemeFontSizeOverride("font_size", 36);
+		title.Modulate = new Color(1f, 0.85f, 0.4f);
+		vbox.AddChild(title);
+
+		_loadingStatusLabel = new Label();
+		_loadingStatusLabel.Text = status;
+		_loadingStatusLabel.HorizontalAlignment = HorizontalAlignment.Center;
+		_loadingStatusLabel.AddThemeFontSizeOverride("font_size", 18);
+		_loadingStatusLabel.Modulate = new Color(0.75f, 0.85f, 1f);
+		vbox.AddChild(_loadingStatusLabel);
+	}
+
+	private void SetLoadingStatus(string status)
+	{
+		if (_loadingStatusLabel != null && IsInstanceValid(_loadingStatusLabel))
+			_loadingStatusLabel.Text = status;
+	}
+
+	private void HideLoadingScreen()
+	{
+		if (_loadingOverlay != null && IsInstanceValid(_loadingOverlay))
+		{
+			_loadingOverlay.QueueFree();
+			_loadingOverlay = null;
+			_loadingStatusLabel = null;
 		}
 	}
 
@@ -95,7 +205,7 @@ public partial class MapGenerator : Node
 
 	private void GenererMap()
 	{
-		// Reset les IDs déterministes pour le multijoueur
+		// Reset deterministic IDs for multiplayer
 		CampSimple.ResetCampIdCounter();
 		NetworkEntityRegistry.Clear();
 
@@ -105,15 +215,13 @@ public partial class MapGenerator : Node
 		_tileMapObjets.Clear();
 		_tileMapObjets.Visible = true;
 
-		// Detruire et recreer les conteneurs pour un reset complet
-		if (_unitsContainer != null)
+		// Full content reset without recreating pre-instanced scene nodes.
+		if (_unitsContainer == null)
 		{
-			RemoveChild(_unitsContainer);
-			_unitsContainer.QueueFree();
+			GD.PrintErr("[MAP] Missing 'Units' node, generation cancelled.");
+			return;
 		}
-		_unitsContainer = new Node2D();
-		_unitsContainer.Name = "Units";
-		AddChild(_unitsContainer);
+		ClearContainerChildren(_unitsContainer);
 
 		if (_objectsContainer != null)
 		{
@@ -127,42 +235,197 @@ public partial class MapGenerator : Node
 		int halfWidth = _mapWidth / 2;
 		int halfHeight = _mapHeight / 2;
 
-		// Générer le terrain depuis la map preset sélectionnée
+		// Generate terrain from selected preset map
 		var gsMap = GetNodeOrNull<GameState>("/root/GameState");
 		int baseSeed = _networkSeed ?? (int)GD.Randi();
 		_seededRandom = new Random(baseSeed + 2000);
 		float[] armAngles;
 		var presetCampPositions = new System.Collections.Generic.List<Vector2I>();
-		armAngles = ApplyPresetMap(gsMap.SelectedMapType, halfWidth, halfHeight, out presetCampPositions);
+		armAngles = ApplyPresetMap(gsMap?.SelectedMapType ?? GameState.MapType.Irridium, halfWidth, halfHeight, out presetCampPositions);
 		SpawnPresetObjectSprites(halfWidth, halfHeight);
 
-		// Construire les meshes de navigation (terrestre pour unités, maritime pour bateaux)
+		// Build navigation meshes (land for units, water for ships)
 		BuildNavigationMesh();
 		BuildWaterNavigationMesh();
 
-		// Les arbres et montagnes sont rendus via Sprite2D dans _objectsContainer (plus grands).
-		// La couche Objets reste active pour la navigation (GetCellSourceId) mais n'est pas affichée.
+		// Trees and mountains are rendered via Sprite2D in _objectsContainer (larger visuals).
+		// The Objects layer stays active for navigation checks (GetCellSourceId) but is hidden.
 		_tileMapObjets.Visible = false;
 
-		// Placer les camps depuis les positions prédéfinies de la map preset
+		// Place camps from preset map positions
 		CampPlacer.PlacePresetCamps(presetCampPositions, _tileMapSol, _unitsContainer, _campScene,
 			_seededRandom, TileSize, armAngles, _territoryGrid, halfWidth, halfHeight);
 
-		// Construire le graphe de connectivité des territoires
+		// Build territory connectivity graph
 		TerritoryGraph = TerritoryConnectivity.Build(_territoryGrid, _tileMapSol, halfWidth, halfHeight);
 
 		if (GameManager.Instance != null)
 		{
 			GameManager.Instance.OnMapGenerationComplete();
 		}
-		CallDeferred(nameof(InitAIController));
 
-		// Mettre à jour les limites de la caméra avec la vraie taille de map
+		// Update camera bounds using actual map size
 		if (_camera is SupKonQuest.CameraController cam)
 			cam.SetupForMap(_mapWidth, _mapHeight);
 
-		// Zoom intro vers la base du joueur local
+		// Intro zoom to local player's base
 		TriggerIntroZoom();
+	}
+
+	private void SetBakeMask(bool hidden)
+	{
+		if (hidden)
+		{
+			if (_bakeMaskSnapshot.Active)
+				return;
+
+			var hud = GetNodeOrNull<CanvasLayer>("CanvasLayer");
+			var vfx = GetNodeOrNull<Node2D>("UltimateVfxManager");
+
+			_bakeMaskSnapshot = new BakeMaskSnapshot
+			{
+				Active = true,
+				UnitsVisible = _unitsContainer?.Visible ?? true,
+				HudVisible = hud?.Visible ?? true,
+				VfxVisible = vfx?.Visible ?? true,
+				SelectionVisible = _selectionManager?.Visible ?? true,
+				CameraEnabled = _camera?.Enabled ?? true,
+				LoadingOverlayVisible = _loadingOverlay?.Visible ?? true,
+			};
+
+			if (_unitsContainer != null)
+				_unitsContainer.Visible = false;
+			if (hud != null)
+				hud.Visible = false;
+			if (vfx != null)
+				vfx.Visible = false;
+			if (_selectionManager != null)
+				_selectionManager.Visible = false;
+			if (_camera != null)
+				_camera.Enabled = false;
+			if (_loadingOverlay != null && IsInstanceValid(_loadingOverlay))
+				_loadingOverlay.Visible = false;
+		}
+		else
+		{
+			if (!_bakeMaskSnapshot.Active)
+				return;
+
+			var hud = GetNodeOrNull<CanvasLayer>("CanvasLayer");
+			var vfx = GetNodeOrNull<Node2D>("UltimateVfxManager");
+
+			if (_unitsContainer != null)
+				_unitsContainer.Visible = _bakeMaskSnapshot.UnitsVisible;
+			if (hud != null)
+				hud.Visible = _bakeMaskSnapshot.HudVisible;
+			if (vfx != null)
+				vfx.Visible = _bakeMaskSnapshot.VfxVisible;
+			if (_selectionManager != null)
+				_selectionManager.Visible = _bakeMaskSnapshot.SelectionVisible;
+			if (_camera != null)
+				_camera.Enabled = _bakeMaskSnapshot.CameraEnabled;
+			if (_loadingOverlay != null && IsInstanceValid(_loadingOverlay))
+				_loadingOverlay.Visible = _bakeMaskSnapshot.LoadingOverlayVisible;
+
+			_bakeMaskSnapshot = default;
+		}
+	}
+
+	private async System.Threading.Tasks.Task BakeMinimapScreenshotAsync()
+	{
+		if (_tileMapSol == null)
+			return;
+
+		MinimapMapWidth = _mapWidth;
+		MinimapMapHeight = _mapHeight;
+
+		Rect2I used = _tileMapSol.GetUsedRect();
+		if (used.Size.X <= 0 || used.Size.Y <= 0)
+		{
+			GD.PrintErr("[MAP] Minimap bake: GetUsedRect() empty, using logical map bounds.");
+			int halfWidth = _mapWidth / 2;
+			int halfHeight = _mapHeight / 2;
+			used = new Rect2I(-halfWidth, -halfHeight, _mapWidth, _mapHeight);
+		}
+
+		Vector2 topLeftWorld = _tileMapSol.ToGlobal(_tileMapSol.MapToLocal(used.Position));
+		Vector2 bottomRightWorld = _tileMapSol.ToGlobal(_tileMapSol.MapToLocal(used.Position + used.Size));
+		Vector2 worldCenter = (topLeftWorld + bottomRightWorld) / 2f;
+		Vector2 usedPixelSize = bottomRightWorld - topLeftWorld;
+
+		if (usedPixelSize.X <= 0f || usedPixelSize.Y <= 0f)
+		{
+			GD.PrintErr("[MAP] Minimap bake: invalid used pixel size.");
+			return;
+		}
+
+		Vector2 bakeViewportSize = new Vector2(MinimapBakeResolution, MinimapBakeResolution);
+		Vector2 bakeZoom = new Vector2(
+			bakeViewportSize.X / usedPixelSize.X,
+			bakeViewportSize.Y / usedPixelSize.Y);
+
+		SubViewport subViewport = null;
+		try
+		{
+			SetBakeMask(hidden: true);
+
+			subViewport = new SubViewport
+			{
+				Size = new Vector2I(MinimapBakeResolution, MinimapBakeResolution),
+				RenderTargetUpdateMode = SubViewport.UpdateMode.Disabled,
+				World2D = _tileMapSol.GetWorld2D(),
+			};
+
+			var bakeCam = new Camera2D
+			{
+				GlobalPosition = worldCenter,
+				Zoom = bakeZoom,
+				Enabled = true,
+			};
+			subViewport.AddChild(bakeCam);
+			AddChild(subViewport);
+
+			await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+
+			subViewport.RenderTargetUpdateMode = SubViewport.UpdateMode.Once;
+			await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+			await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+
+			var viewportTex = subViewport.GetTexture();
+			if (viewportTex != null)
+			{
+				Image image = viewportTex.GetImage();
+				if (image != null && !image.IsEmpty())
+				{
+					MinimapBaseTexture?.Dispose();
+					MinimapBaseTexture = ImageTexture.CreateFromImage(image);
+				}
+				else
+					GD.PrintErr("[MAP] Minimap bake: captured image is empty.");
+			}
+			else
+				GD.PrintErr("[MAP] Minimap bake: SubViewport texture is null.");
+		}
+		finally
+		{
+			SetBakeMask(hidden: false);
+			if (subViewport != null && IsInstanceValid(subViewport))
+			{
+				subViewport.QueueFree();
+				subViewport = null;
+			}
+			MinimapTextureReady?.Invoke();
+		}
+	}
+
+	private static void ClearContainerChildren(Node container)
+	{
+		foreach (Node child in container.GetChildren())
+		{
+			// Use Free() to remove nodes immediately from the scene tree and groups,
+			// ensuring they are not visible to subsequent logic in the same frame.
+			child.Free();
+		}
 	}
 
 	private void SpawnPresetObjectSprites(int halfWidth, int halfHeight)
@@ -178,10 +441,18 @@ public partial class MapGenerator : Node
 	private float[] ApplyPresetMap(GameState.MapType mapType, int halfWidth, int halfHeight,
 		out System.Collections.Generic.List<Vector2I> campPositions)
 	{
-		int[] solRle = mapType == GameState.MapType.Irridium
-			? IrridiumMap.SolRle : AlabastaMap.SolRle;
-		int[] objetsRle = mapType == GameState.MapType.Irridium
-			? IrridiumMap.ObjetsRle : AlabastaMap.ObjetsRle;
+		int[] solRle = mapType switch
+		{
+			GameState.MapType.Alabasta => AlabastaMap.SolRle,
+			GameState.MapType.Torskey => TorskeyMap.SolRle,
+			_                          => IrridiumMap.SolRle,
+		};
+		int[] objetsRle = mapType switch
+		{
+			GameState.MapType.Alabasta => AlabastaMap.ObjetsRle,
+			GameState.MapType.Torskey => TorskeyMap.ObjetsRle,
+			_                          => IrridiumMap.ObjetsRle,
+		};
 
 		int width  = halfWidth  * 2;
 		int height = halfHeight * 2;
@@ -190,22 +461,30 @@ public partial class MapGenerator : Node
 		// skipCamps=true : les camps (ID 102) ne sont pas placés sur le tilemap pour ne pas bloquer le nav mesh
 		ApplyPresetLayer(_tileMapObjets, objetsRle, width, height, -halfWidth, -halfHeight, skipId: -1, addVariants: false, skipCamps: true);
 
-		// Collecter les positions de camps depuis le RLE pour un placement aléatoire ensuite
+		// Collect camp positions from RLE for later randomized assignment
 		campPositions = CollectPresetCampPositions(objetsRle, width, height, -halfWidth, -halfHeight);
 
-		// Charger la grille de territoires depuis le RLE de la map preset
-		int[] territoiresRle = mapType == GameState.MapType.Irridium
-			? IrridiumMap.TerritoiresRle : AlabastaMap.TerritoiresRle;
-		_territoireNoms = mapType == GameState.MapType.Irridium
-			? IrridiumMap.TerritoireNoms : AlabastaMap.TerritoireNoms;
+		// Load territory grid from preset map RLE
+		int[] territoiresRle = mapType switch
+		{
+			GameState.MapType.Alabasta => AlabastaMap.TerritoiresRle,
+			GameState.MapType.Torskey => TorskeyMap.TerritoiresRle,
+			_                          => IrridiumMap.TerritoiresRle,
+		};
+		_territoireNoms = mapType switch
+		{
+			GameState.MapType.Alabasta => AlabastaMap.TerritoireNoms,
+			GameState.MapType.Torskey => TorskeyMap.TerritoireNoms,
+			_                          => IrridiumMap.TerritoireNoms,
+		};
 		LoadTerritoryMap(territoiresRle, width, height, halfWidth, halfHeight);
 
-		// Angles de régions par défaut pour les presets (3 secteurs à 120°)
+		// Default region angles for presets (3 sectors at 120 deg)
 		return new float[] { 0f, 2.094f, 4.189f }; // 0°, 120°, 240°
 	}
 
-	// Décode le RLE territoire (paires count/id) et remplit _territoryGrid[256,256].
-	// id 0 = pas de territoire assigné.
+	// Decode territory RLE (count/id pairs) into _territoryGrid[256,256].
+	// id 0 = unassigned territory.
 	private void LoadTerritoryMap(int[] rleData, int width, int height, int halfWidth, int halfHeight)
 	{
 		_territoryGrid = new int[width, height];
@@ -220,7 +499,7 @@ public partial class MapGenerator : Node
 				if (x >= width) { x = 0; y++; }
 				if (y >= height) return;
 
-				// Stocker en coordonnées de grille [0, width[ × [0, height[
+				// Store in grid coordinates [0, width[ x [0, height[
 				_territoryGrid[x, y] = id;
 				x++;
 			}
@@ -263,7 +542,7 @@ public partial class MapGenerator : Node
 
 				if (tileId != skipId && !(skipCamps && tileId == 102))
 				{
-					int alt = addVariants ? TerrainGenerator.PickAlt(originX + x, originY + y) : 0;
+					int alt = addVariants ? TerrainGenerator.PickAlt(originX + x, originY + y, tileId) : 0;
 					layer.SetCell(new Vector2I(originX + x, originY + y), tileId, Vector2I.Zero, alt);
 				}
 				x++;
@@ -271,12 +550,17 @@ public partial class MapGenerator : Node
 		}
 	}
 
+	private bool IsSand(int tx, int ty)
+	{
+		return _tileMapSol.GetCellSourceId(new Vector2I(tx, ty)) == 1;
+	}
+
 	private void TriggerIntroZoom()
 	{
 		var camera = _camera as SupKonQuest.CameraController;
 		if (camera == null)
 		{
-			GD.PrintErr("[INTRO] Camera introuvable ou n'est pas un CameraController");
+			GD.PrintErr("[INTRO] Camera not found or not a CameraController");
 			return;
 		}
 
@@ -295,7 +579,7 @@ public partial class MapGenerator : Node
 
 		if (playerCamp == null)
 		{
-			GD.PrintErr($"[INTRO] Aucun camp trouvé pour team {localTeamId}");
+			GD.PrintErr($"[INTRO] No camp found for team {localTeamId}");
 			return;
 		}
 
@@ -307,34 +591,13 @@ public partial class MapGenerator : Node
 		_territoryManager = new TerritoryManager();
 		_territoryManager.Name = "TerritoryManager";
 		AddChild(_territoryManager);
-		MoveChild(_territoryManager, 1); // après Sol pour le Z-order
+		MoveChild(_territoryManager, 1); // after Sol for z-order
 		_territoryManager.SetSolLayer(_tileMapSol);
+		_territoryManager.SetTerritoryGrid(_territoryGrid);
 		_territoryManager.Initialize();
 	}
 
-	private void InitAIController()
-	{
-		var gameState = GetNodeOrNull<GameState>("/root/GameState");
-		if (gameState == null || !gameState.IsAIMode) return;
-
-		// Supprimer l'ancien AIController si présent
-		var oldAI = GetNodeOrNull<AIController>("AIController");
-		if (oldAI != null) { RemoveChild(oldAI); oldAI.QueueFree(); }
-
-		var ai = new AIController();
-		ai.Name = "AIController";
-		ai.AILevel = gameState.AILevel;
-		AddChild(ai);
-
-		GD.Print($"[IA] AIController créé — niveau : {gameState.AILevel}");
-	}
-
-	private void ReadMapSettings()
-	{
-		_mapWidth = _mapHeight = 256;
-	}
-
-	// Helper commun : construit un NavigationPolygon à partir d'un prédicat de marchabilité
+	// Shared helper: builds a NavigationPolygon from a walkability predicate
 	private NavigationPolygon BuildNavPolygon(
 		int groupSize, int halfWidth, int halfHeight,
 		System.Func<int, int, int, int, int, bool> cellPredicate,
@@ -343,7 +606,7 @@ public partial class MapGenerator : Node
 		int cellCols = _mapWidth  / groupSize;
 		int cellRows = _mapHeight / groupSize;
 
-		// 1) Collecter vertices ET polygones
+		// 1) Collect vertices and polygons
 		var verticesList = new System.Collections.Generic.List<Vector2>();
 		var vertexMap    = new System.Collections.Generic.Dictionary<long, int>();
 		var polygonList  = new System.Collections.Generic.List<int[]>();
@@ -353,7 +616,7 @@ public partial class MapGenerator : Node
 			long key = ((long)vx << 32) | (uint)vy;
 			if (vertexMap.TryGetValue(key, out int idx))
 				return idx;
-			// Coordonnées monde alignées exactement sur les bords de tuiles
+			// World coordinates aligned exactly on tile edges
 			float wx = (vx * groupSize - halfWidth)  * TileSize;
 			float wy = (vy * groupSize - halfHeight) * TileSize;
 			int newIdx = verticesList.Count;
@@ -377,7 +640,7 @@ public partial class MapGenerator : Node
 			}
 		}
 
-		// 2) Construire le NavigationPolygon : Vertices d'abord, polygones ensuite
+		// 2) Build NavigationPolygon: vertices first, polygons after
 		var navPoly = new NavigationPolygon();
 		navPoly.Vertices = verticesList.ToArray();
 		foreach (var poly in polygonList)
@@ -396,13 +659,235 @@ public partial class MapGenerator : Node
 		int halfWidth = _mapWidth / 2, halfHeight = _mapHeight / 2;
 
 		var navPoly = BuildNavPolygon(groupSize, halfWidth, halfHeight, IsCellWalkable, out int polyCount);
+		navPoly.AgentRadius = 40f;
 
 		var navRegion = new NavigationRegion2D();
 		navRegion.Name = "NavRegion";
-		navRegion.NavigationLayers = 1u; // Couche 1 : terrestre (unités)
+		navRegion.NavigationLayers = 1u; // Layer 1: land (units)
 		navRegion.NavigationPolygon = navPoly;
 		AddChild(navRegion);
+		LandNavigationMap = navRegion.GetNavigationMap();
+	}
 
+	public static void RefreshLandNavigationMap()
+	{
+		var navRegion = _activeInstance?.GetNodeOrNull<NavigationRegion2D>("NavRegion");
+		if (navRegion != null)
+			LandNavigationMap = navRegion.GetNavigationMap();
+	}
+
+	private async System.Threading.Tasks.Task WaitForLandNavigationReady()
+	{
+		RefreshLandNavigationMap();
+		if (!LandNavigationMap.IsValid)
+			return;
+
+		uint stableFrames = 0;
+		uint lastId = 0;
+		for (int attempt = 0; attempt < 240; attempt++)
+		{
+			await ToSignal(GetTree(), SceneTree.SignalName.PhysicsFrame);
+			uint id = NavigationServer2D.MapGetIterationId(LandNavigationMap);
+			if (id >= 2 && id == lastId)
+			{
+				stableFrames++;
+				if (stableFrames >= 5)
+					return;
+			}
+			else
+			{
+				stableFrames = 0;
+				lastId = id;
+			}
+		}
+	}
+
+	public static void BuildCampLandConnectivity(System.Collections.Generic.IEnumerable<CampSimple> camps)
+	{
+		_campLandLinks.Clear();
+		if (!LandNavigationMap.IsValid || camps == null)
+			return;
+
+		var list = camps.Where(c => c != null && Godot.GodotObject.IsInstanceValid(c)).ToList();
+		var navPos = new Dictionary<int, Vector2>(list.Count);
+		foreach (var camp in list)
+			navPos[camp.CampId] = SnapToLandNav(camp.GlobalPosition);
+
+		for (int i = 0; i < list.Count; i++)
+		{
+			for (int j = i + 1; j < list.Count; j++)
+			{
+				bool linked = IsCampPairLandConnected(navPos[list[i].CampId], navPos[list[j].CampId]);
+				_campLandLinks[CampPairKey(list[i].CampId, list[j].CampId)] = linked;
+			}
+		}
+	}
+
+	public static bool AreCampsLandConnected(CampSimple a, CampSimple b)
+	{
+		if (a == null || b == null)
+			return false;
+		if (a.CampId == b.CampId)
+			return true;
+
+		return _campLandLinks.TryGetValue(CampPairKey(a.CampId, b.CampId), out bool linked) && linked;
+	}
+
+	public static Vector2 SnapToLandNav(Vector2 worldPos)
+	{
+		if (!LandNavigationMap.IsValid)
+			return worldPos;
+		return NavigationServer2D.MapGetClosestPoint(LandNavigationMap, worldPos);
+	}
+
+	/// <summary>
+	/// Snaps near origin, rejecting snaps that jump across water to another landmass.
+	/// </summary>
+	public static Vector2 SnapToLandNavNear(Vector2 origin, Vector2 candidate, float maxCandidateSnap = 384f)
+	{
+		if (!LandNavigationMap.IsValid)
+			return candidate;
+
+		Vector2 originSnapped = SnapToLandNav(origin);
+		Vector2 candidateSnapped = SnapToLandNav(candidate);
+
+		if (candidateSnapped.DistanceTo(candidate) > maxCandidateSnap)
+			return originSnapped;
+
+		if (DirectLineCrossesWater(originSnapped, candidateSnapped))
+			return originSnapped;
+
+		return candidateSnapped;
+	}
+
+	/// <summary>Cheap check: straight line between two points does not cross water tiles.</summary>
+	public static bool HasClearLandLine(Vector2 from, Vector2 to)
+		=> !DirectLineCrossesWater(from, to);
+
+	/// <summary>
+	/// True when a land navigation path exists between two world positions.
+	/// Expensive — use only when issuing attack orders, not per-frame.
+	/// </summary>
+	public static bool IsLandPathReachable(Vector2 from, Vector2 to)
+	{
+		if (!LandNavigationMap.IsValid)
+			return false;
+
+		Vector2 snappedFrom = NavigationServer2D.MapGetClosestPoint(LandNavigationMap, from);
+		Vector2 snappedTo = NavigationServer2D.MapGetClosestPoint(LandNavigationMap, to);
+
+		if (snappedFrom.DistanceTo(from) > LandPathEndpointTolerance
+			|| snappedTo.DistanceTo(to) > LandPathEndpointTolerance)
+			return false;
+
+		float direct = snappedFrom.DistanceTo(snappedTo);
+		if (direct > MaxLandAssaultDistance)
+			return false;
+
+		Vector2[] path = NavigationServer2D.MapGetPath(LandNavigationMap, snappedFrom, snappedTo, true);
+		if (path == null || path.Length < 2)
+			return false;
+
+		if (path[path.Length - 1].DistanceTo(snappedTo) > LandPathEndTolerance)
+			return false;
+
+		float walked = 0f;
+		for (int i = 1; i < path.Length; i++)
+			walked += path[i].DistanceTo(path[i - 1]);
+
+		return walked <= direct * LandPathDetourFactor + LandPathDetourPadding
+			&& (!DirectLineCrossesWater(snappedFrom, snappedTo) || walked >= direct * 1.35f);
+	}
+
+	private static bool DirectLineCrossesWater(Vector2 from, Vector2 to)
+	{
+		float length = from.DistanceTo(to);
+		int samples = Mathf.Max(1, (int)(length / 64f));
+		for (int i = 0; i <= samples; i++)
+		{
+			float t = (float)i / samples;
+			if (!IsWorldPositionLand(from.Lerp(to, t)))
+				return true;
+		}
+		return false;
+	}
+
+	public static bool IsWorldPositionLand(Vector2 worldPos)
+	{
+		var instance = _activeInstance;
+		if (instance?._tileMapSol == null)
+			return true;
+
+		Vector2I tile = instance._tileMapSol.LocalToMap(instance._tileMapSol.ToLocal(worldPos));
+		int solId = instance._tileMapSol.GetCellSourceId(tile);
+		return solId != 6 && solId != -1;
+	}
+
+	// BFS tilemap pour vérifier la connectivité terrestre sans déclencher l'assert
+	// C++ de Godot 4.5 ("is_reachable == false") dans NavigationServer2D.MapGetPath.
+	private static bool HasLandPathBFS(Vector2 worldFrom, Vector2 worldTo, int maxVisited = 40000)
+	{
+		var tm = _activeInstance?._tileMapSol;
+		if (tm == null) return true;
+
+		Vector2I tFrom = tm.LocalToMap(tm.ToLocal(worldFrom));
+		Vector2I tTo   = tm.LocalToMap(tm.ToLocal(worldTo));
+		if (tFrom == tTo) return true;
+
+		var visited = new System.Collections.Generic.HashSet<Vector2I> { tFrom };
+		var queue   = new System.Collections.Generic.Queue<Vector2I>();
+		queue.Enqueue(tFrom);
+
+		Span<Vector2I> dirs = stackalloc Vector2I[]
+			{ new Vector2I(1,0), new Vector2I(-1,0), new Vector2I(0,1), new Vector2I(0,-1) };
+
+		while (queue.Count > 0 && visited.Count < maxVisited)
+		{
+			var cur = queue.Dequeue();
+			foreach (var d in dirs)
+			{
+				var nb = cur + d;
+				if (!visited.Add(nb)) continue;
+				int sid = tm.GetCellSourceId(nb);
+				if (sid == 6 || sid == -1) continue; // eau ou vide
+				if (nb == tTo) return true;
+				queue.Enqueue(nb);
+			}
+		}
+		return false;
+	}
+
+	private static bool IsCampPairLandConnected(Vector2 snappedFrom, Vector2 snappedTo)
+	{
+		if (!LandNavigationMap.IsValid)
+			return false;
+
+		// BFS sur la tilemap : si les deux camps ne sont pas sur la même île, on évite
+		// d'appeler MapGetPath qui déclenche un assert C++ dans Godot 4.5.
+		if (!HasLandPathBFS(snappedFrom, snappedTo))
+			return false;
+
+		float direct = snappedFrom.DistanceTo(snappedTo);
+		Vector2[] path = NavigationServer2D.MapGetPath(LandNavigationMap, snappedFrom, snappedTo, true);
+		if (path == null || path.Length < 2)
+			return false;
+
+		if (path[path.Length - 1].DistanceTo(snappedTo) > LandPathEndTolerance)
+			return false;
+
+		float walked = 0f;
+		for (int i = 1; i < path.Length; i++)
+			walked += path[i].DistanceTo(path[i - 1]);
+
+		return walked <= direct * LandPathDetourFactor + LandPathDetourPadding
+			&& (!DirectLineCrossesWater(snappedFrom, snappedTo) || walked >= direct * 1.35f);
+	}
+
+	private static long CampPairKey(int campA, int campB)
+	{
+		if (campA > campB)
+			(campA, campB) = (campB, campA);
+		return ((long)campA << 32) | (uint)campB;
 	}
 
 	private void BuildWaterNavigationMesh()
@@ -414,10 +899,11 @@ public partial class MapGenerator : Node
 		int halfWidth = _mapWidth / 2, halfHeight = _mapHeight / 2;
 
 		var navPoly = BuildNavPolygon(groupSize, halfWidth, halfHeight, IsCellAllWater, out int polyCount);
+		navPoly.AgentRadius = 48f;
 
 		var navRegion = new NavigationRegion2D();
 		navRegion.Name = "NavRegionWater";
-		navRegion.NavigationLayers = 2u; // Couche 2 : maritime (bateaux)
+		navRegion.NavigationLayers = 2u; // Layer 2: sea (ships)
 		navRegion.NavigationPolygon = navPoly;
 		AddChild(navRegion);
 
@@ -432,7 +918,7 @@ public partial class MapGenerator : Node
 				int tx = cx * groupSize - halfWidth  + dx;
 				int ty = cy * groupSize - halfHeight + dy;
 				if (_tileMapSol.GetCellSourceId(new Vector2I(tx, ty)) != 6)
-					return false; // une tuile non-eau → cellule invalide
+					return false; // one non-water tile -> invalid cell
 			}
 		}
 		return true;
@@ -451,18 +937,18 @@ public partial class MapGenerator : Node
 
 				int solId = _tileMapSol.GetCellSourceId(tileCoord);
 				if (solId == 6)
-					return false; // eau dans la cellule → non-marchable (navmesh ne déborde plus dans l'eau)
+					return false; // water in cell -> non-walkable
 				if (solId == -1)
-					continue;     // vide (bord de map) → ignorer
+					return false; // void / bord de carte -> non praticable
 
-				// Forêt = obstacle (même sans objet arbre placé dessus)
+				// Forest = obstacle (even without an object tile)
 				if (solId == 3 || solId == 5 || solId == 4)
 					return false;
 
-				// Si une tuile objet (arbre=100 ou montagne=101) est présente → obstacle physique
+				// Object tile present (tree=100 or mountain=101) -> physical obstacle
 				int objetId = _tileMapObjets.GetCellSourceId(tileCoord);
 				if (objetId != -1)
-					return false; // au moins une tuile bloquante dans la cellule
+					return false; // at least one blocking tile in the cell
 
 				hasLand = true;
 			}
@@ -470,7 +956,91 @@ public partial class MapGenerator : Node
 		return hasLand;
 	}
 
-	public override void _Input(InputEvent @event)
+	private void InitAIController()
+	{
+		var gameState = GetNodeOrNull<GameState>("/root/GameState");
+		if (gameState == null || !gameState.IsAIMode || gameState.IsOnline) return;
+
+		// Remove previous AIControllers
+		for (int i = GetChildCount() - 1; i >= 0; i--)
+		{
+			if (GetChild(i) is AIController old)
+				old.QueueFree();
+		}
+
+		var botTeams = GameManager.Instance?.GetBotTeamIds() ?? new System.Collections.Generic.List<int>();
+		int playerRegion = GameManager.Instance?.GetHomeRegion(1) ?? -1;
+
+		AIController.BossTeamIds.Clear();
+
+		// Boss difficulty = one step above player selection
+		AIController.Difficulty bossLevel = gameState.AILevel switch
+		{
+			AIController.Difficulty.Easy   => AIController.Difficulty.Medium,
+			AIController.Difficulty.Medium => AIController.Difficulty.Hard,
+			_                              => AIController.Difficulty.Hard
+		};
+
+		// One boss per non-player region: farthest bot from player in each region
+		var playerCamp = GameManager.Instance?.GetAllCamps()?.Find(c => c.GetTeamId() == 1);
+		var allCamps   = GameManager.Instance?.GetAllCamps();
+
+		// Group bots by region
+		var botsByRegion = new System.Collections.Generic.Dictionary<int, System.Collections.Generic.List<int>>();
+		foreach (int teamId in botTeams)
+		{
+			int region = GameManager.Instance?.GetHomeRegion(teamId) ?? -1;
+			if (!botsByRegion.ContainsKey(region))
+				botsByRegion[region] = new System.Collections.Generic.List<int>();
+			botsByRegion[region].Add(teamId);
+		}
+
+		// For each non-player region: boss = farthest bot from player
+		foreach (var (region, teams) in botsByRegion)
+		{
+			if (region == playerRegion) continue;
+
+			int bossInRegion = -1;
+			float maxDist = float.MinValue;
+			foreach (int teamId in teams)
+			{
+				var botCamp = allCamps?.Find(c => c.GetTeamId() == teamId);
+				float dist = playerCamp != null && botCamp != null
+					? playerCamp.GlobalPosition.DistanceTo(botCamp.GlobalPosition)
+					: 0f;
+				if (dist > maxDist) { maxDist = dist; bossInRegion = teamId; }
+			}
+			if (bossInRegion != -1)
+				AIController.BossTeamIds.Add(bossInRegion);
+		}
+
+		foreach (int teamId in botTeams)
+		{
+			bool isBoss = AIController.BossTeamIds.Contains(teamId);
+			var ai = new AIController();
+			ai.Name = $"AIController_team{teamId}";
+			AddChild(ai);
+			ai.Initialize(isBoss ? bossLevel : AIController.Difficulty.Easy, teamId);
+		}
+
+		GD.Print($"[MAP] {botTeams.Count} AIController(s) - {AIController.BossTeamIds.Count} boss ({bossLevel}), others Easy");
+		GD.Print($"[IA DEBUG] Player region (team 1): {playerRegion}");
+		foreach (int teamId in botTeams)
+		{
+			int region = GameManager.Instance?.GetHomeRegion(teamId) ?? -1;
+			bool isBoss = AIController.BossTeamIds.Contains(teamId);
+			GD.Print($"[IA DEBUG]   Team {teamId} -> region {region} -> {(isBoss ? $"BOSS ({bossLevel})": "Easy")}");
+		}
+
+		// Refresh camp labels now that BossTeamIds is populated
+		foreach (var node in GetTree().GetNodesInGroup("camps"))
+		{
+			if (node is CampSimple camp)
+				camp.RefreshCampLabel();
+		}
+	}
+
+	public override async void _Input(InputEvent @event)
 	{
 		if (@event.IsActionPressed("ui_accept"))
 		{
@@ -481,9 +1051,7 @@ public partial class MapGenerator : Node
 				_territoryManager = null;
 			}
 
-			ReadMapSettings();
-			GenererMap();
-			CallDeferred(nameof(InitTerritory)); // différé comme dans _Ready(), pour que les camps aient leur _Ready()
+			await LancerAvecChargement();
 		}
 	}
 }

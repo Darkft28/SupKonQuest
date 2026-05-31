@@ -1,6 +1,7 @@
 using Godot;
 using System;
 using System.Collections.Generic;
+using System.Threading.Tasks;
 
 public partial class TerritoryManager : Node2D
 {
@@ -16,17 +17,6 @@ public partial class TerritoryManager : Node2D
 	// teamId par tuile, -1 = wilderness
 	private int[,] _territoryMap = new int[MapWidth, MapHeight];
 
-	// Tuiles achetées manuellement
-	private Dictionary<(int, int), int> _manualTiles = new();
-	public const int TileCost = 200;
-
-	// Mode achat territoire
-	private bool _buyMode = false;
-	public bool IsBuyMode => _buyMode;
-	public int BrushSize { get; private set; } = 3;
-	private bool _isPainting = false;
-	private (int, int) _lastPaintedTile = (-1, -1);
-
 	// Mode placement port
 	private CampSimple _pendingPortCamp = null;
 	public bool IsPortPlacementMode => _pendingPortCamp != null;
@@ -37,6 +27,9 @@ public partial class TerritoryManager : Node2D
 	private Image _tintImage;
 	private ImageTexture _tintTexture;
 	private Sprite2D _tintSprite;
+
+	private bool _territoryRefreshInProgress;
+	private const int TerritoryTilesPerFrame = 5000;
 
 	private static readonly Color[] TeamColors = new Color[]
 	{
@@ -88,9 +81,85 @@ public partial class TerritoryManager : Node2D
 	private const float BorderAlpha = 0.5f;
 	private const float BorderWidth = 4f;
 
+	private int[,] _territoryGrid;
+
 	public void SetSolLayer(TileMapLayer solLayer)
 	{
 		_solLayer = solLayer;
+	}
+
+	/// <summary>
+	/// Retourne l'équipe propriétaire d'une tuile à une position monde donnée.
+	/// Retourne -1 si la tuile n'appartient à aucune équipe (wilderness ou eau).
+	/// </summary>
+	public int GetTeamAtWorldPos(Vector2 worldPos)
+	{
+		if (_solLayer == null) return -1;
+		Vector2I tile = _solLayer.LocalToMap(_solLayer.ToLocal(worldPos));
+		int tx = tile.X + HalfWidth;
+		int ty = tile.Y + HalfHeight;
+		if (tx < 0 || tx >= MapWidth || ty < 0 || ty >= MapHeight) return -1;
+		return _territoryMap[tx, ty];
+	}
+
+	/// <summary>
+	/// Tuiles côtières du territoire d'une équipe (terre adjacente à l'eau), triées par qualité d'accès maritime.
+	/// Utilisé par l'IA pour placer un port n'importe où sur son territoire, pas seulement près d'un camp.
+	/// </summary>
+	public IEnumerable<Vector2> EnumerateShorelinePositionsForTeam(int teamId)
+	{
+		if (_solLayer == null || teamId <= 0)
+			yield break;
+
+		Vector2I[] directions = { new Vector2I(0, -1), new Vector2I(0, 1), new Vector2I(1, 0), new Vector2I(-1, 0) };
+		var scored = new List<(Vector2 worldPos, int score)>();
+
+		for (int tx = 0; tx < MapWidth; tx++)
+		{
+			for (int ty = 0; ty < MapHeight; ty++)
+			{
+				if (_territoryMap[tx, ty] != teamId)
+					continue;
+
+				Vector2I tile = new Vector2I(tx - HalfWidth, ty - HalfHeight);
+				if (_solLayer.GetCellSourceId(tile) == 6)
+					continue;
+
+				bool hasAdjacentWater = false;
+				int waterScore = 0;
+				foreach (var dir in directions)
+				{
+					if (_solLayer.GetCellSourceId(tile + dir) != 6)
+						continue;
+
+					hasAdjacentWater = true;
+					for (int dist = 1; dist <= 8; dist++)
+						for (int offset = -2; offset <= 2; offset++)
+						{
+							Vector2I tilePos = dir.X == 0
+								? tile + new Vector2I(offset, dir.Y * dist)
+								: tile + new Vector2I(dir.X * dist, offset);
+							if (_solLayer.GetCellSourceId(tilePos) == 6)
+								waterScore++;
+						}
+				}
+
+				if (!hasAdjacentWater || waterScore < 1)
+					continue;
+
+				Vector2 worldPos = _solLayer.ToGlobal(_solLayer.MapToLocal(tile));
+				scored.Add((worldPos, waterScore));
+			}
+		}
+
+		scored.Sort((a, b) => b.score.CompareTo(a.score));
+		foreach (var entry in scored)
+			yield return entry.worldPos;
+	}
+
+	public void SetTerritoryGrid(int[,] grid)
+	{
+		_territoryGrid = grid;
 	}
 
 	public override void _ExitTree()
@@ -98,19 +167,10 @@ public partial class TerritoryManager : Node2D
 		if (Instance == this) Instance = null;
 	}
 
-	public void SetBuyMode(bool active)
-	{
-		_buyMode = active;
-		_isPainting = false;
-	}
-
-	public void SetBrushSize(int size) => BrushSize = size;
-
 	public void StartPortPlacement(CampSimple camp)
 	{
 		_pendingPortCamp = camp;
-		_buyMode = false;
-		GD.Print("[PORT] Cliquez sur la carte pour placer le port.");
+		GD.Print("[PORT] Click on the map to place the port.");
 	}
 
 	public void CancelPortPlacement()
@@ -118,7 +178,7 @@ public partial class TerritoryManager : Node2D
 		if (_pendingPortCamp != null)
 		{
 			GameManager.Instance?.AddGold(_pendingPortCamp.GetTeamId(), CampSimple.PortCost);
-			GD.Print("[PORT] Placement annulé, or remboursé.");
+			GD.Print("[PORT] Placement cancelled, gold refunded.");
 		}
 		_pendingPortCamp = null;
 	}
@@ -136,7 +196,6 @@ public partial class TerritoryManager : Node2D
 
 		ConnectCampSignals();
 		ComputeTerritory();
-		ApplyManualTiles();
 		UpdateTintImage();
 		QueueRedraw();
 	}
@@ -154,15 +213,24 @@ public partial class TerritoryManager : Node2D
 				{
 					var gameState = GetNodeOrNull<GameState>("/root/GameState");
 					int localTeamId = gameState?.LocalTeamId ?? 1;
-					int tx = Mathf.RoundToInt(worldPos.X / TileSize) + HalfWidth;
-					int ty = Mathf.RoundToInt(worldPos.Y / TileSize) + HalfHeight;
+
+					// Same conversion as CampSimple.PlacePortAt to avoid land/water offsets.
+					Vector2I clickedTile = _solLayer != null
+						? _solLayer.LocalToMap(_solLayer.ToLocal(worldPos))
+						: new Vector2I(Mathf.RoundToInt(worldPos.X / TileSize), Mathf.RoundToInt(worldPos.Y / TileSize));
+
+					int tx = clickedTile.X + HalfWidth;
+					int ty = clickedTile.Y + HalfHeight;
+					bool isWaterTile = _solLayer != null && _solLayer.GetCellSourceId(clickedTile) == 6;
 					bool tileOwned = tx >= 0 && tx < MapWidth && ty >= 0 && ty < MapHeight
 						&& _territoryMap[tx, ty] == localTeamId;
 
-					if (!tileOwned)
-						GD.Print("[PORT] Cette tuile ne vous appartient pas.");
+					if (isWaterTile)
+						GD.Print("[PORT] Click a territory tile (land) adjacent to water.");
+					else if (!tileOwned)
+						GD.Print("[PORT] This tile is not owned by your team.");
 					else if (!_pendingPortCamp.PlacePortAt(worldPos))
-						GD.Print("[PORT] Aucune eau ici — choisissez un emplacement près de l'eau.");
+						GD.Print("[PORT] No water here - choose a spot near water.");
 					else
 						_pendingPortCamp = null;
 					GetViewport().SetInputAsHandled();
@@ -175,223 +243,12 @@ public partial class TerritoryManager : Node2D
 			}
 			return;
 		}
-
-		if (!_buyMode) return;
-
-		if (@event is InputEventMouseButton btn && btn.ButtonIndex == MouseButton.Left)
-		{
-			_isPainting = btn.Pressed;
-			if (_isPainting)
-			{
-				_lastPaintedTile = (-1, -1);
-				PaintBrushAt(worldPos);
-				GetViewport().SetInputAsHandled();
-			}
-			return;
-		}
-
-		if (@event is InputEventMouseMotion && _isPainting)
-		{
-			PaintBrushAt(worldPos);
-			GetViewport().SetInputAsHandled();
-		}
-	}
-
-	private void PaintBrushAt(Vector2 worldPos)
-	{
-		int cx = Mathf.RoundToInt(worldPos.X / TileSize) + HalfWidth;
-		int cy = Mathf.RoundToInt(worldPos.Y / TileSize) + HalfHeight;
-
-		if (_lastPaintedTile == (cx, cy)) return;
-		_lastPaintedTile = (cx, cy);
-
-		var gameState = GetNodeOrNull<GameState>("/root/GameState");
-		int localTeamId = gameState?.LocalTeamId ?? 1;
-		int half = BrushSize / 2;
-
-		// Collecter les tuiles candidates du pinceau
-		var candidates = new List<(int, int)>();
-		for (int dx = -half; dx <= half; dx++)
-		{
-			for (int dy = -half; dy <= half; dy++)
-			{
-				int tx = cx + dx, ty = cy + dy;
-				if (tx < 0 || tx >= MapWidth || ty < 0 || ty >= MapHeight) continue;
-				if (_territoryMap[tx, ty] == localTeamId) continue;
-				Vector2I tileCoords = new Vector2I(tx - HalfWidth, ty - HalfHeight);
-				if (_solLayer != null && _solLayer.GetCellSourceId(tileCoords) == 6) continue;
-				candidates.Add((tx, ty));
-			}
-		}
-
-		// Propagation par vagues : achète tuile si adjacente au territoire courant
-		bool anyBought = true;
-		while (anyBought && candidates.Count > 0)
-		{
-			anyBought = false;
-			var remaining = new List<(int, int)>();
-			foreach (var (tx, ty) in candidates)
-			{
-				if (IsAdjacentToTerritory(tx, ty, localTeamId)
-					&& GameManager.Instance?.CanAfford(localTeamId, TileCost) == true)
-				{
-					GameManager.Instance.SpendGold(localTeamId, TileCost);
-					_manualTiles[(tx, ty)] = localTeamId;
-					_territoryMap[tx, ty] = localTeamId;
-					anyBought = true;
-				}
-				else
-				{
-					remaining.Add((tx, ty));
-				}
-			}
-			candidates = remaining;
-		}
-
-		UpdateTintImage();
-		QueueRedraw();
-	}
-
-	public bool TryBuyTile(Vector2 worldPos)
-	{
-		var gameState = GetNodeOrNull<GameState>("/root/GameState");
-		int localTeamId = gameState?.LocalTeamId ?? 1;
-
-		int tx = Mathf.RoundToInt(worldPos.X / TileSize) + HalfWidth;
-		int ty = Mathf.RoundToInt(worldPos.Y / TileSize) + HalfHeight;
-
-		if (tx < 0 || tx >= MapWidth || ty < 0 || ty >= MapHeight) return false;
-		if (_territoryMap[tx, ty] == localTeamId) return false;
-
-		Vector2I tileCoords = new Vector2I(tx - HalfWidth, ty - HalfHeight);
-		if (_solLayer != null && _solLayer.GetCellSourceId(tileCoords) == 6) return false;
-
-		if (!IsAdjacentToTerritory(tx, ty, localTeamId))
-		{
-			GD.Print("[TERRITOIRE] La tuile doit être adjacente à votre territoire.");
-			return false;
-		}
-
-		if (GameManager.Instance == null || !GameManager.Instance.CanAfford(localTeamId, TileCost))
-		{
-			GD.Print($"[TERRITOIRE] Pas assez d'or (coût: {TileCost}).");
-			return false;
-		}
-
-		GameManager.Instance.SpendGold(localTeamId, TileCost);
-		_manualTiles[(tx, ty)] = localTeamId;
-		_territoryMap[tx, ty] = localTeamId;
-		UpdateTintImage();
-		QueueRedraw();
-		return true;
-	}
-
-	private bool IsAdjacentToTerritory(int tx, int ty, int teamId)
-	{
-		int[] dx = { 0, 0, 1, -1 };
-		int[] dy = { 1, -1, 0, 0 };
-		for (int i = 0; i < 4; i++)
-		{
-			int nx = tx + dx[i], ny = ty + dy[i];
-			if (nx >= 0 && nx < MapWidth && ny >= 0 && ny < MapHeight)
-				if (_territoryMap[nx, ny] == teamId) return true;
-		}
-		return false;
-	}
-
-	private void ApplyManualTiles(int captorTeamId = -1)
-	{
-		if (_manualTiles.Count == 0) return;
-
-		int[] dx = { 0, 0, 1, -1 };
-		int[] dy = { 1, -1, 0, 0 };
-
-		// Regrouper les tuiles manuelles par équipe
-		var byTeam = new Dictionary<int, HashSet<(int, int)>>();
-		foreach (var ((x, y), teamId) in _manualTiles)
-		{
-			if (!byTeam.TryGetValue(teamId, out var set))
-				byTeam[teamId] = set = new HashSet<(int, int)>();
-			set.Add((x, y));
-		}
-
-		// Pour chaque équipe : BFS depuis le territoire naturel (ComputeTerritory)
-		// → ne conserver que les tuiles encore connectées au territoire naturel du joueur
-		// NOTE : on lit _territoryMap AVANT d'y écrire (que du territoire naturel à ce stade)
-		var reachableByTeam = new Dictionary<int, HashSet<(int, int)>>();
-		foreach (var (teamId, tiles) in byTeam)
-		{
-			var reachable = new HashSet<(int, int)>();
-			var queue = new Queue<(int, int)>();
-
-			// Amorcer le BFS : tuiles manuelles directement adjacentes au territoire naturel de cette équipe
-			foreach (var (tx, ty) in tiles)
-			{
-				for (int i = 0; i < 4; i++)
-				{
-					int nx = tx + dx[i], ny = ty + dy[i];
-					if (nx >= 0 && nx < MapWidth && ny >= 0 && ny < MapHeight
-						&& _territoryMap[nx, ny] == teamId  // territoire naturel uniquement
-						&& reachable.Add((tx, ty)))
-					{
-						queue.Enqueue((tx, ty));
-						break;
-					}
-				}
-			}
-
-			// Propager à travers les tuiles manuelles adjacentes de la même équipe
-			while (queue.Count > 0)
-			{
-				var (cx, cy) = queue.Dequeue();
-				for (int i = 0; i < 4; i++)
-				{
-					var nb = (cx + dx[i], cy + dy[i]);
-					if (tiles.Contains(nb) && reachable.Add(nb))
-						queue.Enqueue(nb);
-				}
-			}
-
-			reachableByTeam[teamId] = reachable;
-		}
-
-		// Appliquer les tuiles connectées ; tuiles orphelines → données au capteur
-		var toRemove = new List<(int, int)>();
-		foreach (var ((x, y), teamId) in _manualTiles)
-		{
-			if (reachableByTeam.TryGetValue(teamId, out var reachable) && reachable.Contains((x, y)))
-				_territoryMap[x, y] = teamId;
-			else
-			{
-				// Donner la tuile au capteur s'il est connu, sinon laisser le territoire naturel
-				if (captorTeamId >= 0)
-					_territoryMap[x, y] = captorTeamId;
-				toRemove.Add((x, y));
-			}
-		}
-
-		int removed = toRemove.Count;
-
-		// Supprimer les entrées de l'ancien proprio
-		foreach (var key in toRemove)
-			_manualTiles.Remove(key);
-
-		// Persister les tuiles orphelines dans _manualTiles pour le capteur
-		// Sans ça, le prochain ComputeTerritory() efface tout car _territoryMap est reset
-		if (captorTeamId >= 0)
-		{
-			foreach (var key in toRemove)
-				_manualTiles[key] = captorTeamId;
-		}
-
-		if (removed > 0)
-			GD.Print($"[TERRITOIRE] {removed} tuile(s) orpheline(s) persistées pour team {captorTeamId}.");
 	}
 
 	private void ConnectCampSignals()
 	{
-		// Les signaux sont gardés pour d'éventuels autres listeners,
-		// mais le territoire est rafraîchi via appel direct depuis CaptureCamp().
+		// Signals are kept for potential listeners,
+		// but territory is refreshed via direct calls from CaptureCamp().
 		int connected = 0;
 		foreach (Node node in GetTree().GetNodesInGroup("camps"))
 		{
@@ -400,7 +257,7 @@ public partial class TerritoryManager : Node2D
 				connected++;
 			}
 		}
-		GD.Print($"[TERRITOIRE] ConnectCampSignals : {connected} camp(s) dans le groupe 'camps'.");
+		GD.Print($"[TERRITOIRE] ConnectCampSignals: {connected} camp(s) in group 'camps'.");
 	}
 
 	private Color GetTeamColor(int teamId)
@@ -476,31 +333,122 @@ public partial class TerritoryManager : Node2D
 				}
 			}
 		}
+
+		ApplyRegionConquest();
 	}
 
-	private void UpdateTintImage()
+	// Si une équipe contrôle tous les camps d'une région, toutes les tuiles de cette région lui appartiennent.
+	private void ApplyRegionConquest()
 	{
-		_tintImage = Image.CreateEmpty(MapWidth, MapHeight, false, Image.Format.Rgba8);
+		if (_territoryGrid == null) return;
+
+		var gameManager = GameManager.Instance;
+		if (gameManager == null) return;
+
+		var allCamps = gameManager.GetAllCamps();
+		if (allCamps == null || allCamps.Count == 0) return;
+
+		// Regrouper les camps par région
+		var campsByRegion = new Dictionary<int, List<CampSimple>>();
+		foreach (var camp in allCamps)
+		{
+			int r = camp.RegionId;
+			if (r <= 0) continue;
+			if (!campsByRegion.ContainsKey(r))
+				campsByRegion[r] = new List<CampSimple>();
+			campsByRegion[r].Add(camp);
+		}
+
+		// Pour chaque région, vérifier si une seule équipe possède tous les camps
+		var conqueredRegions = new Dictionary<int, int>(); // regionId -> teamId
+		foreach (var (regionId, camps) in campsByRegion)
+		{
+			if (camps.Count == 0) continue;
+			int firstTeam = camps[0].GetTeamId();
+			if (firstTeam <= 0) continue;
+			bool allSameTeam = true;
+			foreach (var camp in camps)
+			{
+				if (camp.GetTeamId() != firstTeam) { allSameTeam = false; break; }
+			}
+			if (allSameTeam)
+				conqueredRegions[regionId] = firstTeam;
+		}
+
+		if (conqueredRegions.Count == 0) return;
+
+		// Remplir toutes les tuiles de la région conquise (hors eau)
+		int gridW = _territoryGrid.GetLength(0);
+		int gridH = _territoryGrid.GetLength(1);
 
 		for (int x = 0; x < MapWidth; x++)
 		{
 			for (int y = 0; y < MapHeight; y++)
 			{
-				int teamId = _territoryMap[x, y];
-				if (teamId < 0)
+				int gx = x < gridW ? x : -1;
+				int gy = y < gridH ? y : -1;
+				if (gx < 0 || gy < 0) continue;
+
+				int regionId = _territoryGrid[gx, gy];
+				if (!conqueredRegions.TryGetValue(regionId, out int teamId)) continue;
+
+				Vector2I tileCoords = new Vector2I(x - HalfWidth, y - HalfHeight);
+				if (_solLayer != null && _solLayer.GetCellSourceId(tileCoords) == 6) continue;
+
+				_territoryMap[x, y] = teamId;
+			}
+		}
+	}
+
+	private void UpdateTintImage()
+	{
+		_tintImage = Image.CreateEmpty(MapWidth, MapHeight, false, Image.Format.Rgba8);
+		FillTintImagePixels();
+		_tintTexture = ImageTexture.CreateFromImage(_tintImage);
+		_tintSprite.Texture = _tintTexture;
+	}
+
+	private async Task UpdateTintImageAsync()
+	{
+		_tintImage = Image.CreateEmpty(MapWidth, MapHeight, false, Image.Format.Rgba8);
+
+		int processed = 0;
+		for (int x = 0; x < MapWidth; x++)
+		{
+			for (int y = 0; y < MapHeight; y++)
+			{
+				WriteTintPixel(x, y);
+				processed++;
+				if (processed >= TerritoryTilesPerFrame)
 				{
-					_tintImage.SetPixel(x, y, new Color(0, 0, 0, 0));
-				}
-				else
-				{
-					Color teamColor = GetTeamColor(teamId);
-					_tintImage.SetPixel(x, y, new Color(teamColor.R, teamColor.G, teamColor.B, TintAlpha));
+					processed = 0;
+					await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
 				}
 			}
 		}
 
 		_tintTexture = ImageTexture.CreateFromImage(_tintImage);
 		_tintSprite.Texture = _tintTexture;
+	}
+
+	private void FillTintImagePixels()
+	{
+		for (int x = 0; x < MapWidth; x++)
+			for (int y = 0; y < MapHeight; y++)
+				WriteTintPixel(x, y);
+	}
+
+	private void WriteTintPixel(int x, int y)
+	{
+		int teamId = _territoryMap[x, y];
+		if (teamId < 0)
+		{
+			_tintImage.SetPixel(x, y, new Color(0, 0, 0, 0));
+			return;
+		}
+
+		Color teamColor = GetTeamColor(teamId);
+		_tintImage.SetPixel(x, y, new Color(teamColor.R, teamColor.G, teamColor.B, TintAlpha));
 	}
 
 	public override void _Draw()
@@ -558,10 +506,19 @@ public partial class TerritoryManager : Node2D
 	// Appelé directement depuis CampSimple.CaptureCamp() et ApplyRemoteCapture()
 	public void RefreshTerritory(int captorTeamId = -1)
 	{
-		GD.Print($"[TERRITOIRE] RefreshTerritory() — capteur : team {captorTeamId}");
+		if (_territoryRefreshInProgress)
+			return;
+
+		_ = RefreshTerritoryAsync(captorTeamId);
+	}
+
+	private async Task RefreshTerritoryAsync(int captorTeamId)
+	{
+		_territoryRefreshInProgress = true;
+		GD.Print($"[TERRITOIRE] RefreshTerritoryAsync() - captor: team {captorTeamId}");
 		ComputeTerritory();
-		ApplyManualTiles(captorTeamId);
-		UpdateTintImage();
+		await UpdateTintImageAsync();
 		QueueRedraw();
+		_territoryRefreshInProgress = false;
 	}
 }

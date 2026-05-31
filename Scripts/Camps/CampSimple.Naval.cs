@@ -1,20 +1,27 @@
 using Godot;
+using System.Collections.Generic;
 
 public partial class CampSimple
 {
+	private static readonly PackedScene PortScene = GD.Load<PackedScene>("res://Scenes/Port.tscn");
+
+	private Sprite2D CreatePortVisual()
+	{
+		var port = PortScene?.Instantiate<Sprite2D>() ?? new Sprite2D();
+		if (port.Texture == null)
+			port.Texture = GD.Load<Texture2D>("res://Assets/Objects/Port.png");
+		return port;
+	}
+
 	public void SetTileMapSol(TileMapLayer tileMapSol)
 	{
 		_tileMapSol = tileMapSol;
 	}
 
-	public void SetTileMapObjets(TileMapLayer tileMapObjets)
-	{
-		_tileMapObjets = tileMapObjets;
-	}
-
 	private void ProcessShipProductionQueue(double delta)
 	{
 		if (!HasPort) return;
+		// Relay mode: only the camp owner advances the queue (spawn is relayed via SpawnShip opcode).
 		if (!IsLocallyOwned()) return;
 
 		if (_currentShipProduction == null && _shipProductionQueue.Count > 0)
@@ -38,6 +45,7 @@ public partial class CampSimple
 	public bool BuyShip(string shipType)
 	{
 		if (!HasPort) return false;
+		if (ShipStats.IsFleetAtCapacity(TeamId, GetTree())) return false;
 
 		var stats = ShipStats.GetStats(shipType);
 		int price = stats.Price;
@@ -68,6 +76,7 @@ public partial class CampSimple
 	{
 		if (!HasPort) return false;
 		if (GameManager.Instance == null) return false;
+		if (ShipStats.IsFleetAtCapacity(TeamId, GetTree())) return false;
 
 		int totalInQueue = _shipProductionQueue.Count + (_currentShipProduction != null ? 1 : 0);
 		if (totalInQueue >= MaxShipQueueSize) return false;
@@ -78,12 +87,18 @@ public partial class CampSimple
 		return GameManager.Instance.CanAfford(TeamId, stats.Price);
 	}
 
+	public bool ApplyRelayBuyShip(string shipType)
+	{
+		// Remote peers do not simulate the queue: the owner sends SpawnShip when production ends.
+		return HasPort;
+	}
+
 	private void SpawnShip(string shipType)
 	{
 		var shipScene = GD.Load<PackedScene>("res://Scenes/Ship.tscn");
 		if (shipScene == null)
 		{
-			GD.PrintErr("Impossible de charger Ship.tscn");
+			GD.PrintErr("Failed to load Ship.tscn");
 			return;
 		}
 
@@ -91,11 +106,11 @@ public partial class CampSimple
 		ship.ShipType = shipType;
 		ship.TeamId = TeamId;
 
-		// Positionner le bateau sur l'eau pres du port avec decalage
+		// Place the ship on water near the port with an offset
 		Vector2 portGlobalPos = GetPortGlobalPosition();
 		Vector2 spawnPos = FindWaterSpawnPosition(portGlobalPos);
 
-		// Decaler les bateaux pour eviter l'empilement
+		// Offset ships to avoid stacking
 		_spawnedShips.RemoveAll(s => s == null || !IsInstanceValid(s));
 		if (_spawnedShips.Count > 0)
 		{
@@ -113,16 +128,51 @@ public partial class CampSimple
 			ship.SetTileMapSol(_tileMapSol);
 		}
 
-		// Reseau : assigner un NetworkId et broadcaster le spawn
-		string networkId = NetworkEntityRegistry.GenerateId();
+		int spawnSequence = ++_dynamicShipSpawnSequence;
+		string networkId = BuildDynamicShipNetworkId(spawnSequence);
 		ship.NetworkId = networkId;
 		ship.IsLocalAuthority = true;
 
 		GetParent().AddChild(ship);
 		_spawnedShips.Add(ship);
 
-		NetworkSync.Instance?.SendSpawnShip(networkId, shipType, TeamId,
-			ship.GlobalPosition.X, ship.GlobalPosition.Y, ship.GetCurrentHealth());
+		if (IsOnlineMultiplayer())
+		{
+			NetworkCommandRouter.SendSpawnShip(networkId, shipType, TeamId,
+				ship.GlobalPosition.X, ship.GlobalPosition.Y, ship.GetCurrentHealth());
+		}
+	}
+
+	public void ApplyRemotePortPlacement(float posX, float posY, float rotation, bool flipH)
+	{
+		if (HasPort) return;
+
+		const float PortScale = 0.07f;
+		HasPort = true;
+		_portSprite = CreatePortVisual();
+		_portSprite.Scale = new Vector2(PortScale, PortScale);
+		_portSprite.Rotation = rotation;
+		_portSprite.FlipH = flipH;
+		AddChild(_portSprite);
+		_portSprite.GlobalPosition = new Vector2(posX, posY);
+	}
+
+	private string BuildDynamicShipNetworkId(int spawnSequence)
+	{
+		return $"camp_{CampId}_ship_{spawnSequence}";
+	}
+
+	/// <summary>Navigable water point near a world position (naval offense AI usage).</summary>
+	public Vector2 FindWaterApproachNear(Vector2 nearWorldPos)
+	{
+		return FindWaterSpawnPosition(nearWorldPos);
+	}
+
+	public bool IsWaterAtWorldPos(Vector2 worldPos)
+	{
+		if (_tileMapSol == null) return false;
+		Vector2I tileCoords = _tileMapSol.LocalToMap(_tileMapSol.ToLocal(worldPos));
+		return _tileMapSol.GetCellSourceId(tileCoords) == 6;
 	}
 
 	private Vector2 FindWaterSpawnPosition(Vector2 portPos)
@@ -131,8 +181,8 @@ public partial class CampSimple
 
 		Vector2I portTile = _tileMapSol.LocalToMap(_tileMapSol.ToLocal(portPos));
 
-		// Passe 1: chercher eau profonde (entouree d'eau) a partir de radius 2
-		// pour eviter de spawner au bord de la cote
+		// Pass 1: search for deep water (surrounded by water) from radius 2
+		// to avoid spawning at the coastline edge
 		for (int radius = 2; radius <= 8; radius++)
 		{
 			for (int dx = -radius; dx <= radius; dx++)
@@ -150,7 +200,7 @@ public partial class CampSimple
 			}
 		}
 
-		// Passe 2: fallback sur simple tuile d'eau (radius 2+)
+		// Pass 2: fallback to any water tile (radius 2+)
 		for (int radius = 2; radius <= 8; radius++)
 		{
 			for (int dx = -radius; dx <= radius; dx++)
@@ -173,7 +223,7 @@ public partial class CampSimple
 
 	private bool IsDeepWaterTile(Vector2I tile)
 	{
-		// Verifier que la tuile ET ses 8 voisins sont de l'eau
+		// Ensure the tile and all 8 neighbors are water
 		for (int dx = -1; dx <= 1; dx++)
 		{
 			for (int dy = -1; dy <= 1; dy++)
@@ -238,25 +288,84 @@ public partial class CampSimple
 		return true;
 	}
 
+	/// <summary>
+	/// Returns the number of reachable water tiles in the best direction (AI camp ranking usage).
+	/// </summary>
+	public int GetNearbyWaterCount()
+	{
+		if (_tileMapSol == null) return 0;
+		Vector2I campTile = _tileMapSol.LocalToMap(_tileMapSol.ToLocal(GlobalPosition));
+		Vector2I[] directions = { new Vector2I(0,-1), new Vector2I(0,1), new Vector2I(1,0), new Vector2I(-1,0) };
+		int best = 0;
+		foreach (var dir in directions)
+		{
+			int waterCount = 0;
+			for (int dist = 1; dist <= 8; dist++)
+				for (int offset = -2; offset <= 2; offset++)
+				{
+					Vector2I tilePos = dir.X == 0
+						? campTile + new Vector2I(offset, dir.Y * dist)
+						: campTile + new Vector2I(dir.X * dist, offset);
+					if (_tileMapSol.GetCellSourceId(tilePos) == 6)
+						waterCount++;
+				}
+			if (waterCount > best) best = waterCount;
+		}
+		return best;
+	}
+
+	/// <summary>
+	/// AI port placement: same validation as the player (PlacePortAt + coastal territory across map).
+	/// </summary>
+	public bool TryAIPlacePort()
+	{
+		if (!CanBuyPort()) return false;
+		if (_tileMapSol == null) return false;
+		if (!BuyPort()) return false;
+
+		var shoreline = TerritoryManager.Instance?.EnumerateShorelinePositionsForTeam(TeamId);
+		if (shoreline != null)
+		{
+			foreach (Vector2 worldPos in shoreline)
+			{
+				if (PlacePortAt(worldPos))
+					return true;
+			}
+		}
+
+		GameManager.Instance?.AddGold(TeamId, PortCost);
+		return false;
+	}
+
 	public bool PlacePortAt(Vector2 worldPos)
 	{
 		if (_tileMapSol == null) return false;
 
 		Vector2I clickedTile = _tileMapSol.LocalToMap(_tileMapSol.ToLocal(worldPos));
+		if (_tileMapSol.GetCellSourceId(clickedTile) == 6)
+			return false;
 
-		// Compter les tuiles d'eau dans chaque direction cardinale
+		// Count water tiles in each cardinal direction
 		Vector2I[] directions = { new Vector2I(0, -1), new Vector2I(0, 1), new Vector2I(1, 0), new Vector2I(-1, 0) };
-		string[] dirNames   = { "Nord", "Sud", "Est", "Ouest" };
 		float[]  rotations  = { -Mathf.Pi / 2f, Mathf.Pi / 2f, 0f, 0f };
 		bool[]   flips      = { false, false, false, true };
 
 		int bestWaterCount = 0;
 		int bestDir = -1;
+		bool hasAdjacentWater = false;
 
 		for (int d = 0; d < directions.Length; d++)
 		{
-			int waterCount = 0;
 			Vector2I dir = directions[d];
+
+			// Manual port placement requires a coastal land tile with immediate adjacent water.
+			Vector2I immediateWaterTile = clickedTile + dir;
+			if (_tileMapSol.GetCellSourceId(immediateWaterTile) != 6)
+				continue;
+
+			hasAdjacentWater = true;
+
+			int waterCount = 0;
 
 			for (int dist = 1; dist <= 8; dist++)
 				for (int offset = -2; offset <= 2; offset++)
@@ -276,25 +385,34 @@ public partial class CampSimple
 			}
 		}
 
-		if (bestWaterCount < 1 || bestDir < 0)
+		if (!hasAdjacentWater || bestWaterCount < 1 || bestDir < 0)
 			return false;
 
-		// Le clic est le bout terrestre du port : décaler le centre du sprite vers l'eau
-		// halfLen en world space = longueur_texture * scale_sprite * scale_camp / 2
+		// Interpret the click as the coastal land tile and anchor from tile center
+		// to avoid erratic placements when clicking inside a camp.
+		Vector2 shorelineTileCenter = _tileMapSol.ToGlobal(_tileMapSol.MapToLocal(clickedTile));
+
+		// Shift sprite center toward water.
+		// halfLen in world space = texture_length * sprite_scale * camp_scale / 2
 		const float PortLongAxis = 1256f;
 		const float PortScale    = 0.07f;
 		float halfLen = PortLongAxis * PortScale * Scale.X / 2f;
 		Vector2 waterDir2D = new Vector2(directions[bestDir].X, directions[bestDir].Y);
-		Vector2 spriteCenter = worldPos + waterDir2D * halfLen;
+		Vector2 spriteCenter = shorelineTileCenter + waterDir2D * halfLen;
 
 		HasPort = true;
-		_portSprite = new Sprite2D();
-		_portSprite.Texture  = GD.Load<Texture2D>("res://Assets/Objects/Port.png");
+		_portSprite = CreatePortVisual();
 		_portSprite.Scale = new Vector2(PortScale, PortScale);
 		_portSprite.Rotation = rotations[bestDir];
 		_portSprite.FlipH    = flips[bestDir];
 		AddChild(_portSprite);
 		_portSprite.GlobalPosition = spriteCenter;
+
+		if (IsOnlineMultiplayer())
+		{
+			NetworkCommandRouter.SendBuildPort(this, spriteCenter.X, spriteCenter.Y, rotations[bestDir], flips[bestDir]);
+		}
+
 		return true;
 	}
 
@@ -306,7 +424,7 @@ public partial class CampSimple
 
 		int totalRefund = 0;
 
-		// Rembourser le bateau en cours de production
+		// Refund currently produced ship
 		if (_currentShipProduction != null)
 		{
 			int price = ShipStats.GetStats(_currentShipProduction).Price;
@@ -315,7 +433,7 @@ public partial class CampSimple
 			_shipProductionTimer = 0f;
 		}
 
-		// Rembourser tous les bateaux dans la file
+		// Refund all queued ships
 		while (_shipProductionQueue.Count > 0)
 		{
 			string shipType = _shipProductionQueue.Dequeue();
@@ -327,129 +445,4 @@ public partial class CampSimple
 			GameManager.Instance.AddGold(refundTeamId, totalRefund);
 	}
 
-	public void TrySpawnPort(TileMapLayer tileMapSol)
-	{
-		_tileMapSol = tileMapSol;
-		if (tileMapSol == null)
-			return;
-
-		const int TileSize = 128;
-		const float CampScale = 4.5f;
-		const float PortScale = 0.15f;
-		const float LandOverlap = 0.2f; // 20% du port sur terre, 80% dans l'eau
-		const float PortLongAxis = 1256f; // longueur en pixels des deux textures
-
-		Vector2I campTile = tileMapSol.LocalToMap(GlobalPosition);
-
-		Vector2I[] directions = new Vector2I[]
-		{
-			new Vector2I(0, -1), // Nord
-			new Vector2I(0, 1),  // Sud
-			new Vector2I(1, 0),  // Est
-			new Vector2I(-1, 0), // Ouest
-		};
-
-		// 1) Trouver la meilleure direction (plus d'eau)
-		int bestWaterCount = 0;
-		int bestDirectionIndex = -1;
-
-		for (int d = 0; d < directions.Length; d++)
-		{
-			int waterCount = 0;
-			Vector2I dir = directions[d];
-
-			for (int dist = 1; dist <= 8; dist++)
-			{
-				for (int offset = -2; offset <= 2; offset++)
-				{
-					Vector2I tilePos;
-					if (dir.X == 0)
-						tilePos = campTile + new Vector2I(offset, dir.Y * dist);
-					else
-						tilePos = campTile + new Vector2I(dir.X * dist, offset);
-
-					if (tileMapSol.GetCellSourceId(tilePos) == 6)
-						waterCount++;
-				}
-			}
-
-			if (waterCount > bestWaterCount)
-			{
-				bestWaterCount = waterCount;
-				bestDirectionIndex = d;
-			}
-		}
-
-		if (bestWaterCount < 3 || bestDirectionIndex < 0)
-			return;
-
-		// 2) Trouver la distance de la première tuile d'eau (ligne centrale, offset=0)
-		Vector2I bestDir = directions[bestDirectionIndex];
-		int waterDist = -1;
-		for (int dist = 1; dist <= 8; dist++)
-		{
-			Vector2I tilePos;
-			if (bestDir.X == 0)
-				tilePos = campTile + new Vector2I(0, bestDir.Y * dist);
-			else
-				tilePos = campTile + new Vector2I(bestDir.X * dist, 0);
-
-			if (tileMapSol.GetCellSourceId(tilePos) == 6)
-			{
-				waterDist = dist;
-				break;
-			}
-		}
-
-		if (waterDist < 0)
-			waterDist = 3;
-
-		HasPort = true;
-		_portSprite = new Sprite2D();
-
-		// 3) Calculer la position du port
-		// Côte = bord entre dernière tuile terre et première tuile eau
-		// En monde : (waterDist - 0.5) * TileSize depuis le centre du camp
-		// En local camp (scale 3) : diviser par CampScale
-		float coastLocalDist = (waterDist - 0.5f) * TileSize / CampScale;
-
-		// Demi-longueur du port en coordonnées locales du camp
-		float halfLen = PortLongAxis * PortScale / 2f;
-		// Décalage du centre vers l'eau pour avoir 20% terre / 80% eau
-		float shift = (1f - 2f * LandOverlap) * halfLen;
-
-		string texturePath;
-		Vector2 portPosition;
-
-		switch (bestDirectionIndex)
-		{
-			case 0: // Nord - eau vers Y négatif
-				texturePath = "res://Assets/Objects/Port.png";
-				_portSprite.Rotation = -Mathf.Pi / 2f;
-				portPosition = new Vector2(0, -(coastLocalDist + shift));
-				break;
-			case 1: // Sud - eau vers Y positif
-				texturePath = "res://Assets/Objects/Port.png";
-				_portSprite.Rotation = Mathf.Pi / 2f;
-				portPosition = new Vector2(0, coastLocalDist + shift);
-				break;
-			case 2: // Est - eau vers X positif
-				texturePath = "res://Assets/Objects/Port.png";
-				portPosition = new Vector2(coastLocalDist + shift, 0);
-				break;
-			case 3: // Ouest - eau vers X négatif
-				texturePath = "res://Assets/Objects/Port.png";
-				_portSprite.FlipH = true;
-				portPosition = new Vector2(-(coastLocalDist + shift), 0);
-				break;
-			default:
-				return;
-		}
-
-		_portSprite.Texture = GD.Load<Texture2D>(texturePath);
-		_portSprite.Position = portPosition;
-		_portSprite.Scale = new Vector2(PortScale, PortScale);
-		AddChild(_portSprite);
-
-	}
 }

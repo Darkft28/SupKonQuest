@@ -7,40 +7,54 @@ public partial class Ship
 		var currentScene = GetTree().CurrentScene;
 		if (currentScene == null) return;
 
-		var mapGenerator = currentScene.FindChild("MapGenerator", true, false);
-		if (mapGenerator != null)
-		{
-			_tileMapSol = mapGenerator.GetNodeOrNull<TileMapLayer>("Sol");
-		}
+		_tileMapSol = currentScene.GetNodeOrNull<TileMapLayer>("Sol");
+		if (_tileMapSol != null) return;
+
+		var mapRoot = currentScene.FindChild("MapGenerator", true, false) ?? currentScene;
+		_tileMapSol = mapRoot.GetNodeOrNull<TileMapLayer>("Sol");
 	}
 
 	private void CreateCollision()
 	{
-		var collision = new CollisionShape2D();
-		var shape = new CircleShape2D();
-		shape.Radius = 60f;
+		var collision = GetNodeOrNull<CollisionShape2D>("CollisionShape2D");
+		if (collision == null)
+		{
+			collision = new CollisionShape2D();
+			collision.Name = "CollisionShape2D";
+			AddChild(collision);
+		}
+
+		var shape = collision.Shape as CapsuleShape2D ?? new CapsuleShape2D();
+		shape.Radius = 42f;
+		shape.Height = 100f;
 		collision.Shape = shape;
-		AddChild(collision);
 
 		// Bateaux sur leur propre layer pour eviter collisions avec unites terrestres
 		SetCollisionLayerValue(1, false);
 		SetCollisionLayerValue(2, true);
+		SetCollisionLayerValue(3, false);
 		SetCollisionMaskValue(1, false);
 		SetCollisionMaskValue(2, true);
+		SetCollisionMaskValue(3, false);
 	}
 
 	private void CreateSprite()
 	{
-		_sprite = new Sprite2D();
+		_sprite = GetNodeOrNull<Sprite2D>("Sprite2D");
+		if (_sprite == null)
+		{
+			_sprite = new Sprite2D();
+			_sprite.Name = "Sprite2D";
+			AddChild(_sprite);
+		}
 
 		string texturePath = GetTexturePath(SpriteDirection.Front);
-		var texture = GD.Load<Texture2D>(texturePath);
+		var texture = LoadShipTexture(texturePath);
 
 		if (texture != null)
 		{
 			_sprite.Texture = texture;
 			_sprite.Scale = new Vector2(0.525f, 0.525f);
-			AddChild(_sprite);
 		}
 		else
 		{
@@ -56,16 +70,32 @@ public partial class Ship
 			SpriteDirection.Back => "Back",
 			SpriteDirection.Left => "Left",
 			SpriteDirection.Right => "Right",
-			_ => "Front"
-		};
+			_ => "Front"};
 
 		return ShipType switch
 		{
-			"Destroyer" => $"res://Assets/Units/Ships/Destroyer/Destroyers_{dirSuffix}.png",
-			"Fregate" => $"res://Assets/Units/Ships/Frégate/frégate_{dirSuffix}.png",
-			"Transport" => $"res://Assets/Units/Ships/Transport/Transport_{dirSuffix}.png",
-			_ => $"res://Assets/Units/Ships/Transport/Transport_{dirSuffix}.png"
-		};
+			"Destroyer"=> $"res://Assets/Units/Ships/Destroyer/Destroyers_{dirSuffix}.png",
+			"Fregate"=> $"res://Assets/Units/Ships/Frégate/frégate_{dirSuffix}.png",
+			"Transport"=> $"res://Assets/Units/Ships/Transport/Transport_{dirSuffix}.png",
+			_ => $"res://Assets/Units/Ships/Transport/Transport_{dirSuffix}.png"};
+	}
+
+	private static Texture2D LoadShipTexture(string path)
+	{
+		var texture = GD.Load<Texture2D>(path);
+		if (texture != null)
+			return texture;
+
+		// Secours si le chemin accentué échoue (export / FS) - noms ASCII alternatifs.
+		if (path.Contains("Frégate"))
+		{
+			string ascii = path
+				.Replace("Frégate", "Fregate")
+				.Replace("frégate_", "Fregate_");
+			texture = GD.Load<Texture2D>(ascii);
+		}
+
+		return texture;
 	}
 
 	private void UpdateSpriteDirection(Vector2 velocity)
@@ -86,7 +116,7 @@ public partial class Ship
 		{
 			_currentDirection = newDir;
 			string texturePath = GetTexturePath(newDir);
-			var texture = GD.Load<Texture2D>(texturePath);
+			var texture = LoadShipTexture(texturePath);
 			if (texture != null && _sprite != null)
 			{
 				_sprite.Texture = texture;
@@ -96,23 +126,36 @@ public partial class Ship
 
 	private void CreateDetectionZone()
 	{
-		_detectionZone = new Area2D();
-		_detectionZone.Name = "DetectionZone";
+		_detectionZone = GetNodeOrNull<Area2D>("DetectionZone");
+		if (_detectionZone == null)
+		{
+			_detectionZone = new Area2D();
+			_detectionZone.Name = "DetectionZone";
+			AddChild(_detectionZone);
+		}
 
-		var collisionShape = new CollisionShape2D();
-		var circleShape = new CircleShape2D();
+		var collisionShape = _detectionZone.GetNodeOrNull<CollisionShape2D>("CollisionShape2D");
+		if (collisionShape == null)
+		{
+			collisionShape = new CollisionShape2D();
+			collisionShape.Name = "CollisionShape2D";
+			_detectionZone.AddChild(collisionShape);
+		}
+
+		var circleShape = collisionShape.Shape as CircleShape2D ?? new CircleShape2D();
 		circleShape.Radius = DetectionRange;
 		collisionShape.Shape = circleShape;
 
-		_detectionZone.AddChild(collisionShape);
-		AddChild(_detectionZone);
+		// Layer 0 = invisible ; Mask 2 = détecte les navires (layer 2)
+		_detectionZone.CollisionLayer = 0u;
+		_detectionZone.CollisionMask = 2u;
 
 		_detectionZone.BodyEntered += OnBodyEnteredDetectionZone;
 	}
 
 	public override void _Draw()
 	{
-		if (ShipType == "Transport" && _loadedUnits.Count > 0)
+		if (ShipType == "Transport"&& _loadedUnits.Count > 0)
 		{
 			var font = ThemeDB.FallbackFont;
 			DrawString(font, new Vector2(-10, -215), $"{_loadedUnits.Count}/{_stats.Capacity}",

@@ -7,14 +7,21 @@ public partial class Unit
 		// Healer : chercher des alliés blessés, jamais d'ennemis
 		if (UnitType == "Heal")
 		{
-			Unit woundedAlly = FindWoundedAllyInRange();
-			if (woundedAlly != null)
+			_healSearchTimer += (float)delta;
+			if (_healSearchTimer >= HealSearchInterval)
 			{
-				_healTarget = woundedAlly;
-				_healTimer = 0f;
-				ChangeState(UnitState.Healing);
+				_healSearchTimer = 0f;
+				Unit woundedAlly = FindWoundedAllyInRange();
+				if (woundedAlly != null)
+				{
+					_healTarget = woundedAlly;
+					_healTimer = 0f;
+					ChangeState(UnitState.Healing);
+					return;
+				}
 			}
-			else if (_savedTargetPosition.HasValue)
+
+			if (_savedTargetPosition.HasValue)
 			{
 				_targetPosition = _savedTargetPosition;
 				_savedTargetPosition = null;
@@ -26,7 +33,7 @@ public partial class Unit
 			return;
 		}
 
-		// Camp cible encore valide → reprendre l'attaque directement (vérif cheap)
+		// Camp cible encore valide -> reprendre l'attaque directement (vérif cheap)
 		if (_campTarget != null && IsInstanceValid(_campTarget) && _campTarget.IsInsideTree()
 			&& _campTarget.GetTeamId() != TeamId)
 		{
@@ -112,14 +119,19 @@ public partial class Unit
 		// Healer en déplacement : chercher des alliés blessés, jamais d'ennemis
 		if (UnitType == "Heal")
 		{
-			Unit woundedAlly = FindWoundedAllyInRange();
-			if (woundedAlly != null)
+			_healSearchTimer += (float)delta;
+			if (_healSearchTimer >= HealSearchInterval)
 			{
-				_savedTargetPosition = _targetPosition;
-				_healTarget = woundedAlly;
-				_healTimer = 0f;
-				ChangeState(UnitState.Healing);
-				return;
+				_healSearchTimer = 0f;
+				Unit woundedAlly = FindWoundedAllyInRange();
+				if (woundedAlly != null)
+				{
+					_savedTargetPosition = _targetPosition;
+					_healTarget = woundedAlly;
+					_healTimer = 0f;
+					ChangeState(UnitState.Healing);
+					return;
+				}
 			}
 		}
 		else
@@ -174,30 +186,41 @@ public partial class Unit
 			return;
 		}
 
-		float speedMult = GameManager.Instance?.GetSpeedMultiplier(TeamId) ?? 1f;
-		// Plancher 0.5px pour éviter les faux positifs sur les unités lentes (ex: Tank Speed=50 → ~0.83px/frame)
-		float expectedMovement = Mathf.Max((_stats.Speed * speedMult) / 60f * 0.1f, 0.5f);
-		float actualMovement = GlobalPosition.DistanceTo(_lastPosition);
+		// Vérifie la progression vers la cible (pas juste le mouvement total)
+		// Une unité poussée par d'autres bouge mais ne progresse pas -> doit quand même s'arrêter
+		Vector2 goal = _currentTarget?.GlobalPosition
+			?? _campTarget?.GlobalPosition
+			?? _targetPosition
+			?? GlobalPosition;
 
-		if (actualMovement < expectedMovement)
+		float distNow = GlobalPosition.DistanceTo(goal);
+		float distPrev = _lastPosition.DistanceTo(goal);
+
+		// Si on ne se rapproche pas du goal depuis 2 secondes -> abandon
+		if (distNow >= distPrev - 0.5f)
 		{
 			_stuckFrames++;
 			if (_stuckFrames > MaxStuckFrames)
 			{
-				// Bloqué près de la cible (collision physique) → passer en Attacking (marge 120px)
-				if (_currentTarget != null && IsTargetValid())
+				// Bloqué près de la cible -> tenter d'attaquer si applicable
+				if (_currentTarget != null && IsTargetValid() && distNow <= _stats.Range + 80f)
 				{
-					float distanceToTarget = GlobalPosition.DistanceTo(_currentTarget.GlobalPosition);
-					if (distanceToTarget <= 120f)
-					{
-						ChangeState(UnitState.Attacking);
-						_stuckFrames = 0;
-						return;
-					}
+					ChangeState(UnitState.Attacking);
+					_stuckFrames = 0;
+					return;
+				}
+
+				if (_currentState == UnitState.AttackingCamp)
+				{
+					_campTarget = null;
+					ChangeState(UnitState.Idle);
+					_stuckFrames = 0;
+					return;
 				}
 
 				_targetPosition = null;
 				ChangeState(UnitState.Idle);
+				_stuckFrames = 0;
 			}
 		}
 		else
@@ -209,6 +232,9 @@ public partial class Unit
 
 	public void MoveTo(Vector2 target)
 	{
+		if (MapGenerator.LandNavigationMap.IsValid)
+			target = MapGenerator.SnapToLandNavNear(GlobalPosition, target);
+
 		_targetPosition = target;
 		_savedTargetPosition = null;
 		_campTarget = null;
@@ -257,37 +283,196 @@ public partial class Unit
 		}
 	}
 
-	// Déplacement avec pathfinding.
+	// Déplacement avec pathfinding + RVO (velocity_computed).
 	// Le chemin n'est recalculé que si la cible a bougé de plus de NavUpdateDistance
 	// ou si un nouvel ordre vient d'être donné (_navTargetDirty).
 	private void MoveWithNav(Vector2 targetPos)
 	{
+		float speedMult = GameManager.Instance?.GetSpeedMultiplier(TeamId) ?? 1f;
+		float moveSpeed = _stats.Speed * speedMult;
+
 		if (_navAgent == null || !_navAgent.IsInsideTree())
 		{
-			// Agent pas encore prêt : mouvement direct pour ce frame
 			Vector2 dir = (targetPos - GlobalPosition).Normalized();
-			Velocity = dir * _stats.Speed;
-			MoveAndSlide();
+			if (IsAiControlledUnit())
+			{
+				if (dir.LengthSquared() < 0.01f
+					|| IsWaterTileAt(GlobalPosition + dir * 128f)
+					|| !MapGenerator.HasClearLandLine(GlobalPosition, targetPos))
+				{
+					_targetPosition = null;
+					_campTarget = null;
+					_currentTarget = null;
+					ChangeState(UnitState.Idle);
+					return;
+				}
+			}
+
+			_intendedDirection = dir;
+			ApplyMovementVelocity(dir * moveSpeed);
 			return;
 		}
+
+		if (NavigationServer2D.MapGetIterationId(_navAgent.GetNavigationMap()) == 0)
+			return;
 
 		if (_navTargetDirty || targetPos.DistanceTo(_lastNavTargetPos) > NavUpdateDistance)
 		{
 			_navAgent.TargetPosition = targetPos;
 			_lastNavTargetPos = targetPos;
 			_navTargetDirty = false;
+			_navPathCooldown = 3;
 		}
 
-		if (!_navAgent.IsTargetReachable() || _navAgent.IsNavigationFinished())
+		if (_navPathCooldown > 0)
 		{
+			_navPathCooldown--;
+			return;
+		}
+
+		if (_navAgent.IsNavigationFinished())
+		{
+			if (GlobalPosition.DistanceTo(targetPos) > ArrivalDistance)
+			{
+				_targetPosition = null;
+				_campTarget = null;
+				_currentTarget = null;
+				ChangeState(UnitState.Idle);
+				return;
+			}
+
+			_navPathCooldown = 60;
 			Velocity = Vector2.Zero;
 			return;
 		}
 
 		Vector2 nextPos = _navAgent.GetNextPathPosition();
+		if (nextPos.DistanceTo(GlobalPosition) > 1800f)
+		{
+			_targetPosition = null;
+			_campTarget = null;
+			_currentTarget = null;
+			ChangeState(UnitState.Idle);
+			return;
+		}
+
 		Vector2 direction = (nextPos - GlobalPosition).Normalized();
-		float speedMult = GameManager.Instance?.GetSpeedMultiplier(TeamId) ?? 1f;
-		Velocity = direction * _stats.Speed * speedMult;
+		_intendedDirection = direction;
+
+		if (IsAiControlledUnit())
+		{
+			if (TryAbortAiWaterMovement(direction, 128f))
+				return;
+		}
+
+		ApplyMovementVelocity(direction * moveSpeed);
+	}
+
+	private bool TryAbortAiWaterMovement(Vector2 direction, float probeDistance)
+	{
+		if (!IsAiControlledUnit())
+			return false;
+
+		if (TryRecoverAiFromWater())
+			return true;
+
+		if (direction.LengthSquared() < 0.01f)
+			return false;
+
+		Vector2 probe = GlobalPosition + direction.Normalized() * probeDistance;
+		if (!IsWaterTileAt(probe))
+			return false;
+
+		_targetPosition = null;
+		_campTarget = null;
+		_currentTarget = null;
+		ChangeState(UnitState.Idle);
+		return true;
+	}
+
+	private bool TryRecoverAiFromWater()
+	{
+		if (!IsAiControlledUnit() || !IsWaterTileAt(GlobalPosition))
+			return false;
+
+		GlobalPosition = MapGenerator.SnapToLandNavNear(GlobalPosition, GlobalPosition);
+		Velocity = Vector2.Zero;
+		_targetPosition = null;
+		_campTarget = null;
+		_currentTarget = null;
+		ChangeState(UnitState.Idle);
+		return true;
+	}
+
+	private bool IsAiControlledUnit()
+	{
+		var gameState = GetNodeOrNull<GameState>("/root/GameState");
+		return gameState != null && gameState.IsAIMode && TeamId != gameState.LocalTeamId;
+	}
+
+	private void OnNavVelocityComputed(Vector2 safeVelocity)
+	{
+		if (IsAiControlledUnit())
+		{
+			if (TryRecoverAiFromWater())
+				return;
+
+			if (safeVelocity.LengthSquared() > 0.01f)
+			{
+				Vector2 dir = safeVelocity.Normalized();
+				if (IsWaterTileAt(GlobalPosition + dir * 96f))
+				{
+					Velocity = Vector2.Zero;
+					MoveAndSlide();
+					return;
+				}
+			}
+		}
+
+		Velocity = safeVelocity;
 		MoveAndSlide();
+		TryRecoverAiFromWater();
+	}
+
+	private void UpdateSelectiveRvo(float delta)
+	{
+		// RVO sélectif : joueur local uniquement — l'IA garde l'évitement activé (évite dérives vers l'eau).
+		if (IsAiControlledUnit())
+			return;
+
+		if (_navAgent == null || !_navAgent.IsInsideTree())
+			return;
+
+		_rvoCheckTimer += delta;
+		if (_rvoCheckTimer < RvoCheckInterval)
+			return;
+
+		_rvoCheckTimer = 0f;
+
+		bool nearAlly = false;
+		const float neighborRadiusSq = 120f * 120f;
+		foreach (var node in GetTree().GetNodesInGroup("units"))
+		{
+			if (node is not Unit ally || ally == this || ally.GetTeamId() != TeamId || ally.GetCurrentHealth() <= 0)
+				continue;
+
+			if (GlobalPosition.DistanceSquaredTo(ally.GlobalPosition) <= neighborRadiusSq)
+			{
+				nearAlly = true;
+				break;
+			}
+		}
+
+		_navAgent.AvoidanceEnabled = nearAlly;
+	}
+
+	private void ApplyMovementVelocity(Vector2 desiredVelocity)
+	{
+		UpdateSelectiveRvo((float)GetPhysicsProcessDeltaTime());
+
+		if (_navAgent != null && _navAgent.IsInsideTree() && _navAgent.AvoidanceEnabled)
+			_navAgent.Velocity = desiredVelocity;
+		else
+			OnNavVelocityComputed(desiredVelocity);
 	}
 }

@@ -1,8 +1,9 @@
 using Godot;
+using System.Threading.Tasks;
 
 public partial class LobbyUI : Control
 {
-		private Label _titleLabel;
+	private Label _titleLabel;
 	private Label _codeLabel;
 	private LineEdit _codeInput;
 	private Label _codeDisplayLabel;
@@ -10,17 +11,21 @@ public partial class LobbyUI : Control
 	private Button _joinButton;
 	private Button _startButton;
 	private Button _backButton;
+	private Button _logoutButton;
 	private Button _langButton;
 	private Label _playersLabel;
 	private ItemList _playerList;
 	private Label _statusLabel;
 
-		private NetworkManager _networkManager;
+	private NakamaService _nakamaService;
 	private GameState _gameState;
+	private bool _isAuthReady;
+	private bool _isMatchmaking;
+	private bool _inMatchLobby;
 
 	public override void _Ready()
 	{
-		_networkManager = GetNode<NetworkManager>("/root/NetworkManager");
+		_nakamaService = GetNode<NakamaService>("/root/NakamaService");
 		_gameState = GetNode<GameState>("/root/GameState");
 
 		_titleLabel = GetNode<Label>("VBoxContainer/Title");
@@ -36,42 +41,116 @@ public partial class LobbyUI : Control
 		_playerList = GetNode<ItemList>("VBoxContainer/LobbyPanel/VBoxContainer/PlayerList");
 		_statusLabel = GetNode<Label>("VBoxContainer/StatusLabel");
 
-		_hostButton.Pressed += OnHostPressed;
-		_joinButton.Pressed += OnJoinPressed;
-		_startButton.Pressed += OnStartPressed;
-		_backButton.Pressed += OnBackPressed;
-		_langButton.Pressed += OnLangPressed;
-
-		_networkManager.PlayerConnected += OnPlayerConnected;
-		_networkManager.PlayerDisconnected += OnPlayerDisconnected;
-		_networkManager.ConnectionSucceeded += OnConnectionSucceeded;
-		_networkManager.ConnectionFailed += OnConnectionFailed;
-		_networkManager.ServerDisconnected += OnServerDisconnected;
-
-		if (LocalizationManager.Instance != null)
+		_logoutButton = new Button();
+		_logoutButton.Text = GetText("auth_logout");
+		_logoutButton.CustomMinimumSize = new Vector2(200, 48);
+		UIStyle.ApplyStone(_logoutButton);
+		var bottomHBox = _backButton.GetParent() as HBoxContainer;
+		if (bottomHBox != null)
 		{
-			LocalizationManager.Instance.LanguageChanged += UpdateTexts;
+			bottomHBox.AddChild(_logoutButton);
+			bottomHBox.MoveChild(_logoutButton, 0);
+		}
+		else
+		{
+			AddChild(_logoutButton);
 		}
 
+		_hostButton.Pressed += OnSaveNicknamePressed;
+		_joinButton.Pressed += OnMatchmakingPressed;
+		_backButton.Pressed += OnBackPressed;
+		_logoutButton.Pressed += OnLogoutPressed;
+		_langButton.Pressed += OnLangPressed;
+
+		_nakamaService.Authenticated += OnAuthenticated;
+		_nakamaService.AuthenticationFailed += OnAuthenticationFailed;
+		_nakamaService.MatchmakingStarted += OnMatchmakingStarted;
+		_nakamaService.MatchmakingFailed += OnMatchmakingFailed;
+		_nakamaService.MatchLobbyEntered += OnMatchLobbyEntered;
+		_nakamaService.MatchLobbyTick += OnMatchLobbyTick;
+		_nakamaService.MatchStarting += OnMatchStarting;
+		_nakamaService.Disconnected += OnDisconnected;
+
+		if (LocalizationManager.Instance != null)
+			LocalizationManager.Instance.LanguageChanged += UpdateTexts;
+
+		AudioSettings.Instance?.EnsureMenuMusicPlaying();
+
 		_startButton.Visible = false;
+		_codeInput.Editable = true;
+		_codeInput.Text = "";
+		_codeInput.PlaceholderText = "Guest-01";
 		_codeDisplayLabel.Text = "";
 
 		UpdateTexts();
+		SetButtonsEnabled(false);
+
+		if (_nakamaService == null || !_nakamaService.IsAuthenticated)
+		{
+			RedirectToAuth(GetText("auth_not_authenticated"));
+			return;
+		}
+
+		_isAuthReady = true;
+		_hostButton.Visible = _nakamaService.IsGuestAccount;
+		_codeInput.Editable = _nakamaService.IsGuestAccount;
+		_codeLabel.Visible = _nakamaService.IsGuestAccount;
+		OnAuthenticated(_nakamaService.UserId, _nakamaService.DisplayName);
+	}
+
+	public override void _ExitTree()
+	{
+		if (_nakamaService != null)
+		{
+			_nakamaService.Authenticated -= OnAuthenticated;
+			_nakamaService.AuthenticationFailed -= OnAuthenticationFailed;
+			_nakamaService.MatchmakingStarted -= OnMatchmakingStarted;
+			_nakamaService.MatchmakingFailed -= OnMatchmakingFailed;
+			_nakamaService.MatchLobbyEntered -= OnMatchLobbyEntered;
+			_nakamaService.MatchLobbyTick -= OnMatchLobbyTick;
+			_nakamaService.MatchStarting -= OnMatchStarting;
+			_nakamaService.Disconnected -= OnDisconnected;
+		}
+
+		if (LocalizationManager.Instance != null)
+			LocalizationManager.Instance.LanguageChanged -= UpdateTexts;
+	}
+
+	private void RedirectToAuth(string message)
+	{
+		AuthSessionStore.Clear();
+		_nakamaService?.Disconnect();
+		if (!string.IsNullOrWhiteSpace(message))
+			_gameState?.SetPendingAuthMessage(message);
+		GetTree().ChangeSceneToFile("res://Scenes/Auth.tscn");
 	}
 
 	private void UpdateTexts()
 	{
-		if (LocalizationManager.Instance == null) return;
+		if (LocalizationManager.Instance == null)
+			return;
 
 		_titleLabel.Text = LocalizationManager.Instance.GetText("lobby_title");
-		_codeLabel.Text = LocalizationManager.Instance.GetText("room_code");
-		_hostButton.Text = LocalizationManager.Instance.GetText("host");
-		_joinButton.Text = LocalizationManager.Instance.GetText("join");
+		_codeLabel.Text = LocalizationManager.Instance.GetText("nickname");
+		_hostButton.Text = LocalizationManager.Instance.GetText("save_nickname");
+		_joinButton.Text = LocalizationManager.Instance.GetText("find_match");
 		_playersLabel.Text = LocalizationManager.Instance.GetText("players_connected");
-		_startButton.Text = LocalizationManager.Instance.GetText("start_game");
 		_backButton.Text = LocalizationManager.Instance.GetText("back");
+		_logoutButton.Text = LocalizationManager.Instance.GetText("auth_logout");
 		_langButton.Text = LocalizationManager.Instance.GetLanguageCode();
-		_statusLabel.Text = LocalizationManager.Instance.GetText("waiting");
+		_startButton.Visible = false;
+	}
+
+	private string GetText(string key)
+	{
+		return LocalizationManager.Instance?.GetText(key) ?? key;
+	}
+
+	private void SetButtonsEnabled(bool enabled)
+	{
+		_hostButton.Disabled = !enabled || _inMatchLobby || !_nakamaService.IsGuestAccount;
+		_joinButton.Disabled = !enabled || _isMatchmaking || !_isAuthReady || _inMatchLobby;
+		_logoutButton.Disabled = !enabled || _inMatchLobby;
 	}
 
 	private void OnLangPressed()
@@ -79,127 +158,183 @@ public partial class LobbyUI : Control
 		LocalizationManager.Instance?.CycleLanguage();
 	}
 
-	public override void _ExitTree()
+	private async void OnSaveNicknamePressed()
 	{
-		if (_networkManager != null)
+		if (_nakamaService == null || !_nakamaService.IsGuestAccount)
+			return;
+
+		string desiredName = _codeInput.Text.Trim();
+		if (string.IsNullOrWhiteSpace(desiredName))
 		{
-			_networkManager.PlayerConnected -= OnPlayerConnected;
-			_networkManager.PlayerDisconnected -= OnPlayerDisconnected;
-			_networkManager.ConnectionSucceeded -= OnConnectionSucceeded;
-			_networkManager.ConnectionFailed -= OnConnectionFailed;
-			_networkManager.ServerDisconnected -= OnServerDisconnected;
+			UpdateStatus(GetText("error_enter_code"));
+			return;
 		}
 
-		if (LocalizationManager.Instance != null)
+		SetButtonsEnabled(false);
+		UpdateStatus(GetText("authenticating"));
+		bool updated = await _nakamaService.UpdateUniqueUsernameAsync(desiredName);
+		if (updated)
 		{
-			LocalizationManager.Instance.LanguageChanged -= UpdateTexts;
-		}
-	}
-
-	private void OnHostPressed()
-	{
-		var error = _networkManager.HostGame();
-		if (error == Error.Ok)
-		{
-				_codeDisplayLabel.Text = _networkManager.RoomCode;
-			_codeInput.Editable = false;
-			_codeInput.Text = _networkManager.RoomCode;
-
-			UpdateStatus($"{LocalizationManager.Instance.GetText("room_created")} {_networkManager.RoomCode}");
-			_hostButton.Disabled = true;
-			_joinButton.Disabled = true;
-			_startButton.Visible = true;
+			_codeInput.Text = _nakamaService.DisplayName;
 			UpdatePlayerList();
+			UpdateStatus($"{GetText("guest_connected")} : {_nakamaService.DisplayName}");
+			SetButtonsEnabled(true);
 		}
 		else
 		{
-			UpdateStatus($"{LocalizationManager.Instance.GetText("error_start_server")} ({error})");
+			SetButtonsEnabled(true);
 		}
 	}
 
-	private void OnJoinPressed()
+	private async void OnMatchmakingPressed()
 	{
-		string code = _codeInput.Text.ToUpper().Trim();
+		if (_nakamaService == null)
+			return;
 
-		if (string.IsNullOrWhiteSpace(code) || code.Length < 6)
+		if (!_nakamaService.IsAuthenticated)
 		{
-			UpdateStatus(LocalizationManager.Instance.GetText("error_enter_code"));
+			RedirectToAuth(GetText("auth_not_authenticated"));
 			return;
 		}
 
-		UpdateStatus($"{LocalizationManager.Instance.GetText("searching_room")} {code}...");
-		_hostButton.Disabled = true;
-		_joinButton.Disabled = true;
-
-		_networkManager.JoinWithCode(code);
+		_isMatchmaking = true;
+		SetButtonsEnabled(false);
+		UpdateStatus(GetText("matchmaking_started"));
+		await _nakamaService.StartMatchmakingAsync();
 	}
 
-	private void OnStartPressed()
+	private async void OnBackPressed()
 	{
-		if (!_networkManager.IsServer)
+		if (_nakamaService != null)
 		{
-			UpdateStatus(LocalizationManager.Instance.GetText("only_host_start"));
-			return;
+			await _nakamaService.CancelMatchmakingAsync();
+			_nakamaService.Disconnect();
 		}
 
-		UpdateStatus(LocalizationManager.Instance.GetText("starting_game"));
-		_gameState.StartGame();
-	}
-
-	private void OnBackPressed()
-	{
-		_networkManager.Disconnect();
+		_inMatchLobby = false;
+		_gameState?.ClearOnlineSession();
 		GetTree().ChangeSceneToFile("res://Scenes/GameModeMenu.tscn");
 	}
 
-		private void OnPlayerConnected(long id)
+	private async void OnLogoutPressed()
 	{
-		UpdatePlayerList();
-		UpdateStatus($"{LocalizationManager.Instance.GetText("player_connected")} {id}");
+		if (_nakamaService == null)
+			return;
 
-		if (_networkManager.IsServer)
+		await _nakamaService.CancelMatchmakingAsync();
+		await _nakamaService.LogoutAsync();
+		_gameState?.ClearOnlineSession();
+		GetTree().ChangeSceneToFile("res://Scenes/Auth.tscn");
+	}
+
+	private void OnAuthenticated(string userId, string displayName)
+	{
+		_isAuthReady = true;
+		string shortId = userId.Length > 8 ? userId.Substring(0, 8) : userId;
+		_codeDisplayLabel.Text = $"{displayName} • {shortId}";
+		UpdatePlayerList();
+		SetButtonsEnabled(true);
+		string prefix = _nakamaService.IsGuestAccount ? GetText("guest_connected") : GetText("connected_to_server");
+		UpdateStatus($"{prefix} : {displayName}");
+	}
+
+	private void OnAuthenticationFailed(string reason)
+	{
+		_isAuthReady = false;
+		_isMatchmaking = false;
+		_inMatchLobby = false;
+		SetButtonsEnabled(true);
+
+		if (reason == "auth_session_expired"|| reason == "auth_not_authenticated")
 		{
-			_networkManager.BroadcastPlayerList();
+			RedirectToAuth(GetText(reason));
+			return;
 		}
+
+		string hint = "";
+		string lower = reason?.ToLowerInvariant() ?? "";
+		if (lower.Contains("connection") || lower.Contains("refused") || lower.Contains("timeout") || lower.Contains("host"))
+			hint = "| Verifie nakama/host dans project.godot et que le serveur est joignable.";
+
+		string display = reason.StartsWith("auth_") ? GetText(reason) : reason;
+		UpdateStatus($"{GetText("connection_failed")} : {display}{hint}");
 	}
 
-	private void OnPlayerDisconnected(long id)
+	private void OnMatchmakingStarted(string ticket)
+	{
+		_isMatchmaking = true;
+		UpdateStatus($"{GetText("matchmaking_started")} #{ticket}");
+	}
+
+	private void OnMatchmakingFailed(string reason)
+	{
+		_isMatchmaking = false;
+		_inMatchLobby = false;
+		SetButtonsEnabled(true);
+		UpdateStatus($"{GetText("connection_failed")} : {reason}");
+	}
+
+	private void OnMatchLobbyEntered(string matchId, int pendingSeed)
+	{
+		_isMatchmaking = false;
+		_inMatchLobby = true;
+		SetButtonsEnabled(false);
+		UpdatePlayerList();
+		UpdateStatus($"{GetText("match_found")} - {GetText("waiting_players")}");
+		GD.Print($"[LOBBY] In-match lobby matchId={matchId} seed={pendingSeed}");
+	}
+
+	private void OnMatchLobbyTick(int secondsRemaining, int playerCount)
 	{
 		UpdatePlayerList();
-		UpdateStatus($"{LocalizationManager.Instance.GetText("player_disconnected")} {id}");
+		string countdown = secondsRemaining < 0
+			? GetText("waiting_server")
+			: secondsRemaining > 0
+				? $"{GetText("starting_in")} {secondsRemaining}s": GetText("starting_soon");
+		UpdateStatus($"{playerCount}/{NakamaService.MaxMatchPlayers} {GetText("players_connected").ToLower()} - {countdown}");
 	}
 
-	private void OnConnectionSucceeded()
+	private void OnMatchStarting(string matchId, int localTeamId, int seed, int playerCount, int mapType)
 	{
-		UpdateStatus(LocalizationManager.Instance.GetText("connected_to_server"));
-		UpdatePlayerList();
+		_isMatchmaking = false;
+		_inMatchLobby = false;
+		SetButtonsEnabled(true);
+		var mapName = GameState.GetMapTypeDisplayName(GameState.MapTypeFromIndex(mapType));
+		UpdateStatus($"{GetText("starting_soon")} - {mapName}");
+		_gameState?.StartOnlineGameFromMatch(
+			matchId,
+			localTeamId,
+			seed,
+			playerCount,
+			_nakamaService.UserId,
+			_nakamaService.DisplayName,
+			mapType);
 	}
 
-	private void OnConnectionFailed()
+	private void OnDisconnected()
 	{
-		UpdateStatus(LocalizationManager.Instance.GetText("room_not_found"));
-		_hostButton.Disabled = false;
-		_joinButton.Disabled = false;
-	}
-
-	private void OnServerDisconnected()
-	{
-		UpdateStatus(LocalizationManager.Instance.GetText("disconnected_from_server"));
-		_hostButton.Disabled = false;
-		_joinButton.Disabled = false;
-		_startButton.Visible = false;
+		_isAuthReady = false;
+		_isMatchmaking = false;
+		_inMatchLobby = false;
 		_codeDisplayLabel.Text = "";
-		_codeInput.Editable = true;
-		_codeInput.Text = "";
 		_playerList.Clear();
+		SetButtonsEnabled(true);
+		UpdateStatus(GetText("disconnected_from_server"));
 	}
 
 	private void UpdatePlayerList()
 	{
 		_playerList.Clear();
-		foreach (var player in _networkManager.Players)
+
+		if (_nakamaService == null || _nakamaService.MatchPlayers.Count == 0)
 		{
-			string suffix = player.Key == 1 ? LocalizationManager.Instance.GetText("host_suffix") : "";
+			_playerList.AddItem(_nakamaService?.DisplayName ?? "Guest");
+			return;
+		}
+
+		foreach (var player in _nakamaService.MatchPlayers)
+		{
+			string suffix = player.Key == _nakamaService.UserId ? "(Vous)": "";
 			_playerList.AddItem($"{player.Value}{suffix}");
 		}
 	}

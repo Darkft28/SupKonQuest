@@ -2,40 +2,100 @@ using Godot;
 
 public partial class CampSimple
 {
+	private Node2D _campUiRoot;
+
+	private void EnsureCampUi()
+	{
+		_campUiRoot = GetNodeOrNull<Node2D>("CampUI");
+		if (_campUiRoot == null)
+			return;
+
+		_campIdLabel = _campUiRoot.GetNodeOrNull<Label>("CampIdLabel");
+		_healthBar = _campUiRoot.GetNodeOrNull<ProgressBar>("HealthBar");
+	}
+
 	private void CreateCampIdLabel()
 	{
-		_campIdLabel = new Label();
-		_campIdLabel.Text = $"#{CampId}";
+		EnsureCampUi();
+		if (_campUiRoot == null)
+			return;
+
+		if (_campIdLabel == null)
+		{
+			_campIdLabel = new Label();
+			_campIdLabel.Name = "CampIdLabel";
+			_campUiRoot.AddChild(_campIdLabel);
+		}
+
+		_campIdLabel.Text = GetCampLabel();
 		_campIdLabel.Position = new Vector2(-20, -130);
 		_campIdLabel.AddThemeFontSizeOverride("font_size", 20);
 		_campIdLabel.AddThemeColorOverride("font_color", GetTeamColor());
 		_campIdLabel.AddThemeColorOverride("font_outline_color", new Color(0, 0, 0, 1));
 		_campIdLabel.AddThemeConstantOverride("outline_size", 3);
-		AddChild(_campIdLabel);
 	}
 
 	private void CreateHealthBar()
 	{
-		_healthBarBackground = new ColorRect();
-		_healthBarBackground.Size = new Vector2(HealthBarWidth, HealthBarHeight);
-		_healthBarBackground.Position = new Vector2(-HealthBarWidth / 2, -100);
-		_healthBarBackground.Color = new Color(0, 0, 0, 0.8f);
-		AddChild(_healthBarBackground);
+		EnsureCampUi();
+		if (_campUiRoot == null)
+			return;
 
-		_healthBarForeground = new ColorRect();
-		_healthBarForeground.Size = new Vector2(HealthBarWidth, HealthBarHeight);
-		_healthBarForeground.Position = new Vector2(-HealthBarWidth / 2, -100);
-		_healthBarForeground.Color = GetTeamColor();
-		AddChild(_healthBarForeground);
+		if (_healthBar == null)
+		{
+			_healthBar = new ProgressBar();
+			_healthBar.Name = "HealthBar";
+			_campUiRoot.AddChild(_healthBar);
+		}
+
+		_healthBar.Position = new Vector2(-HealthBarWidth / 2, -100);
+		_healthBar.Size = new Vector2(HealthBarWidth, HealthBarHeight);
+		_healthBar.CustomMinimumSize = new Vector2(HealthBarWidth, HealthBarHeight);
+		_healthBar.ShowPercentage = false;
+		_healthBar.FillMode = 0;
+		_healthBar.MinValue = 0;
+		_healthBar.MaxValue = MaxHealth;
+		_healthBar.Value = GetCurrentHealth();
+
+		_healthBarBackgroundStyle ??= new StyleBoxFlat();
+		_healthBarBackgroundStyle.BgColor = new Color(0, 0, 0, 0.8f);
+		_healthBarBackgroundStyle.CornerRadiusTopLeft = 2;
+		_healthBarBackgroundStyle.CornerRadiusTopRight = 2;
+		_healthBarBackgroundStyle.CornerRadiusBottomLeft = 2;
+		_healthBarBackgroundStyle.CornerRadiusBottomRight = 2;
+
+		_healthBarFillStyle ??= new StyleBoxFlat();
+		_healthBarFillStyle.BgColor = GetTeamColor();
+		_healthBarFillStyle.CornerRadiusTopLeft = 2;
+		_healthBarFillStyle.CornerRadiusTopRight = 2;
+		_healthBarFillStyle.CornerRadiusBottomLeft = 2;
+		_healthBarFillStyle.CornerRadiusBottomRight = 2;
+
+		_healthBar.AddThemeStyleboxOverride("background", _healthBarBackgroundStyle);
+		_healthBar.AddThemeStyleboxOverride("fill", _healthBarFillStyle);
 	}
 
 	private void UpdateHealthBar()
 	{
-		if (_healthBarForeground == null)
+		if (_healthBar == null)
 			return;
 
-		float healthPercent = GetCurrentHealth() / MaxHealth;
-		_healthBarForeground.Size = new Vector2(HealthBarWidth * healthPercent, HealthBarHeight);
+		_healthBar.MaxValue = MaxHealth;
+		_healthBar.Value = GetCurrentHealth();
+	}
+
+	private void UpdateCampVisualTheme()
+	{
+		if (_campIdLabel != null)
+		{
+			_campIdLabel.AddThemeColorOverride("font_color", GetTeamColor());
+			_campIdLabel.AddThemeColorOverride("font_outline_color", new Color(0, 0, 0, 1));
+		}
+
+		if (_healthBarFillStyle != null)
+		{
+			_healthBarFillStyle.BgColor = GetTeamColor();
+		}
 	}
 
 	private static readonly Color[] _teamColors = new Color[]
@@ -84,12 +144,25 @@ public partial class CampSimple
 		new Color(0.8f, 0.4f, 0.6f, 1f), // Mauve
 	};
 
-	private Color GetTeamColor()
+	public void RefreshCampLabel()
 	{
-		if (TeamId <= 0)
+		if (_campIdLabel != null)
+			_campIdLabel.Text = GetCampLabel();
+	}
+
+	private string GetCampLabel()
+	{
+		bool isBoss = AIController.BossTeamIds.Contains(TeamId);
+		return isBoss ? $"#{CampId} boss": $"#{CampId}";
+	}
+
+	public static Color GetTeamColor(int teamId)
+	{
+		if (teamId <= 0)
 			return new Color(0.5f, 0.5f, 0.5f, 1f);
 
-		int colorIndex = (TeamId - 1) % _teamColors.Length;
-		return _teamColors[colorIndex];
+		return _teamColors[(teamId - 1) % _teamColors.Length];
 	}
+
+	private Color GetTeamColor() => GetTeamColor(TeamId);
 }

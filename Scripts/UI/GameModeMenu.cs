@@ -4,41 +4,47 @@ public partial class GameModeMenu : Control
 {
 	private Button _soloButton;
 	private Button _multiButton;
-	private Button _iaButton;
 	private Button _backButton;
 	private Button _langButton;
 
 	// Popup paramètres
 	private ColorRect _overlay;
-	private Label _popupTitle;
 	private GameState.MapType _selectedMapType = GameState.MapType.Irridium;
 	private CheckBox _fastModeCheckBox;
-	private bool _isIAMode = false;
-	private string _selectedAILevel = "Medium";
+	private AIController.Difficulty _selectedDifficulty = AIController.Difficulty.Medium;
+	private Label _soloPopupTitle;
+	private Label _mapLabel;
+	private Label _diffLabel;
+	private Button[] _mapButtons;
+	private Button[] _diffButtons;
+	private Button _soloCancelBtn;
+	private Button _soloLaunchBtn;
+
+	private static string L(string key) =>
+		LocalizationManager.Instance?.GetText(key) ?? key;
 
 	public override void _Ready()
 	{
 		_soloButton = GetNode<Button>("Background/MarginContainer/VBoxContainer/SoloButton");
 		_multiButton = GetNode<Button>("Background/MarginContainer/VBoxContainer/MultiButton");
-		_iaButton = GetNode<Button>("Background/MarginContainer/VBoxContainer/IAButton");
 		_backButton = GetNode<Button>("Background/MarginContainer/VBoxContainer/BackButton");
 		_langButton = GetNode<Button>("LangButton");
 
-		_soloButton.Pressed += () => { _isIAMode = false; if (_popupTitle != null) _popupTitle.Text = "Paramètres — Solo"; ShowSettingsPopup(); };
+		_soloButton.Pressed += ShowSettingsPopup;
 		_multiButton.Pressed += OnMultiPressed;
-		_iaButton.Visible = true;
-		_iaButton.Pressed += OnIAPressed;
 		_backButton.Pressed += OnBackPressed;
 		_langButton.Pressed += OnLangPressed;
 
 		if (LocalizationManager.Instance != null)
 			LocalizationManager.Instance.LanguageChanged += UpdateTexts;
 
+		AudioSettings.Instance?.EnsureMenuMusicPlaying();
+
 		CreateSettingsPopup();
 		UpdateTexts();
 	}
 
-	// ── Popup ────────────────────────────────────────────────────────────────
+	// Popup
 
 	private void CreateSettingsPopup()
 	{
@@ -49,7 +55,7 @@ public partial class GameModeMenu : Control
 		_overlay.Visible = false;
 		AddChild(_overlay);
 
-		// Panneau central — PanelContainer s'adapte à la hauteur du contenu
+		// Panneau central - PanelContainer s'adapte à la hauteur du contenu
 		var panel = new PanelContainer();
 		panel.SetAnchorsPreset(Control.LayoutPreset.Center);
 		panel.GrowHorizontal = Control.GrowDirection.Both;
@@ -69,30 +75,28 @@ public partial class GameModeMenu : Control
 		margin.AddChild(vbox);
 
 		// Titre
-		_popupTitle = new Label();
-		_popupTitle.Text = "Paramètres — Solo";
-		_popupTitle.HorizontalAlignment = HorizontalAlignment.Center;
-		_popupTitle.AddThemeFontSizeOverride("font_size", 22);
-		vbox.AddChild(_popupTitle);
+		_soloPopupTitle = new Label();
+		_soloPopupTitle.HorizontalAlignment = HorizontalAlignment.Center;
+		_soloPopupTitle.AddThemeFontSizeOverride("font_size", 22);
+		vbox.AddChild(_soloPopupTitle);
 
 		vbox.AddChild(new HSeparator());
 
 		// Sélection de la carte
-		var mapLabel = new Label();
-		mapLabel.Text = "Carte";
-		vbox.AddChild(mapLabel);
+		_mapLabel = new Label();
+		vbox.AddChild(_mapLabel);
 
 		var mapHBox = new HBoxContainer();
 		mapHBox.AddThemeConstantOverride("separation", 8);
 		vbox.AddChild(mapHBox);
 
 		var mapGroup = new ButtonGroup();
-		var mapNames = new[] { "Irridium", "Alabasta" };
-		var mapValues = new[] { GameState.MapType.Irridium, GameState.MapType.Alabasta };
-		for (int i = 0; i < 2; i++)
+		var mapKeys = new[] { "map_irridium", "map_alabasta", "map_torskey" };
+		var mapValues = new[] { GameState.MapType.Irridium, GameState.MapType.Alabasta, GameState.MapType.Torskey };
+		_mapButtons = new Button[3];
+		for (int i = 0; i < 3; i++)
 		{
 			var btn = new Button();
-			btn.Text = mapNames[i];
 			btn.ToggleMode = true;
 			btn.ButtonGroup = mapGroup;
 			btn.ButtonPressed = (mapValues[i] == _selectedMapType);
@@ -101,41 +105,42 @@ public partial class GameModeMenu : Control
 			var captured = mapValues[i];
 			btn.Pressed += () => { _selectedMapType = captured; };
 			mapHBox.AddChild(btn);
+			_mapButtons[i] = btn;
+		}
+
+		vbox.AddChild(new HSeparator());
+
+		// Difficulté IA
+		_diffLabel = new Label();
+		vbox.AddChild(_diffLabel);
+
+		var diffHBox = new HBoxContainer();
+		diffHBox.AddThemeConstantOverride("separation", 8);
+		vbox.AddChild(diffHBox);
+
+		var diffGroup = new ButtonGroup();
+		var diffKeys = new[] { "ai_easy", "ai_medium", "ai_hard" };
+		var diffValues = new[] { AIController.Difficulty.Easy, AIController.Difficulty.Medium, AIController.Difficulty.Hard };
+		_diffButtons = new Button[3];
+		for (int i = 0; i < 3; i++)
+		{
+			var btn = new Button();
+			btn.ToggleMode = true;
+			btn.ButtonGroup = diffGroup;
+			btn.ButtonPressed = (diffValues[i] == _selectedDifficulty);
+			btn.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+			UIStyle.ApplyStone(btn);
+			var captured = diffValues[i];
+			btn.Pressed += () => { _selectedDifficulty = captured; };
+			diffHBox.AddChild(btn);
+			_diffButtons[i] = btn;
 		}
 
 		vbox.AddChild(new HSeparator());
 
 		// Mode test : vitesse x3
 		_fastModeCheckBox = new CheckBox();
-		_fastModeCheckBox.Text = "⚡ Vitesse x3 (test)";
 		vbox.AddChild(_fastModeCheckBox);
-
-		vbox.AddChild(new HSeparator());
-
-		// Niveau de difficulté IA (affiché conditionnellement - on le crée mais on le rendra visible/invisible)
-		var iaLevelLabel = new Label();
-		iaLevelLabel.Text = "Niveau IA";
-		vbox.AddChild(iaLevelLabel);
-
-		var iaHBox = new HBoxContainer();
-		iaHBox.AddThemeConstantOverride("separation", 8);
-		vbox.AddChild(iaHBox);
-
-		var iaGroup = new ButtonGroup();
-		var levels = new[] { "Easy", "Medium", "Hard" };
-		foreach (var level in levels)
-		{
-			var btn = new Button();
-			btn.Text = level;
-			btn.ToggleMode = true;
-			btn.ButtonGroup = iaGroup;
-			btn.ButtonPressed = (level == _selectedAILevel);
-			btn.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-			UIStyle.ApplyStone(btn);
-			var captured = level;
-			btn.Pressed += () => { _selectedAILevel = captured; };
-			iaHBox.AddChild(btn);
-		}
 
 		vbox.AddChild(new HSeparator());
 
@@ -144,19 +149,17 @@ public partial class GameModeMenu : Control
 		actionsHBox.AddThemeConstantOverride("separation", 12);
 		vbox.AddChild(actionsHBox);
 
-		var cancelBtn = new Button();
-		cancelBtn.Text = "Annuler";
-		cancelBtn.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-		UIStyle.ApplyStone(cancelBtn);
-		cancelBtn.Pressed += () => _overlay.Visible = false;
-		actionsHBox.AddChild(cancelBtn);
+		_soloCancelBtn = new Button();
+		_soloCancelBtn.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+		UIStyle.ApplyStone(_soloCancelBtn);
+		_soloCancelBtn.Pressed += () => _overlay.Visible = false;
+		actionsHBox.AddChild(_soloCancelBtn);
 
-		var launchBtn = new Button();
-		launchBtn.Text = "Lancer";
-		launchBtn.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-		UIStyle.ApplyStone(launchBtn);
-		launchBtn.Pressed += OnLaunchPressed;
-		actionsHBox.AddChild(launchBtn);
+		_soloLaunchBtn = new Button();
+		_soloLaunchBtn.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+		UIStyle.ApplyStone(_soloLaunchBtn);
+		_soloLaunchBtn.Pressed += OnLaunchPressed;
+		actionsHBox.AddChild(_soloLaunchBtn);
 	}
 
 	private void ShowSettingsPopup()
@@ -168,34 +171,22 @@ public partial class GameModeMenu : Control
 	{
 		_overlay.Visible = false;
 		var gameState = GetNodeOrNull<GameState>("/root/GameState");
-		if (gameState != null)
-		{
-			gameState.LocalTeamId = 1;
-			gameState.IsFreeForAll = true;
-			gameState.SelectedMapType = _selectedMapType;
-			gameState.FastMode = _fastModeCheckBox.ButtonPressed;
-			gameState.IsAIMode = _isIAMode;
-			gameState.AILevel = _selectedAILevel;
-			// En mode IA : IsFreeForAll doit être false (solo vs IA team 2)
-			if (_isIAMode)
-				gameState.IsFreeForAll = false;
-		}
 		Engine.TimeScale = _fastModeCheckBox.ButtonPressed ? 3.0 : 1.0;
-		GetTree().ChangeSceneToFile("res://Scenes/Game.tscn");
+		gameState?.StartSoloGame(_selectedMapType, _fastModeCheckBox.ButtonPressed, _selectedDifficulty);
 	}
 
-	// ── Navigation ───────────────────────────────────────────────────────────
-
-	private void OnIAPressed()
-	{
-		_isIAMode = true;
-		if (_popupTitle != null) _popupTitle.Text = "Paramètres — Contre IA";
-		ShowSettingsPopup();
-	}
+	// Navigation
 
 	private void OnMultiPressed()
 	{
-		GetTree().ChangeSceneToFile("res://Scenes/Lobby.tscn");
+		NavigateToLobby();
+	}
+
+	private void NavigateToLobby()
+	{
+		var gameState = GetNodeOrNull<GameState>("/root/GameState");
+		gameState?.ConfigureOnlineLobby();
+		GetTree().ChangeSceneToFile("res://Scenes/Auth.tscn");
 	}
 
 	private void OnBackPressed()
@@ -214,9 +205,33 @@ public partial class GameModeMenu : Control
 
 		_soloButton.Text = LocalizationManager.Instance.GetText("solo");
 		_multiButton.Text = LocalizationManager.Instance.GetText("multi");
-		_iaButton.Text = LocalizationManager.Instance.GetText("ia");
 		_backButton.Text = LocalizationManager.Instance.GetText("back");
 		_langButton.Text = LocalizationManager.Instance.GetLanguageCode();
+
+		if (_soloPopupTitle != null)
+			_soloPopupTitle.Text = L("solo_settings_title");
+		if (_mapLabel != null)
+			_mapLabel.Text = L("solo_map_label");
+		if (_diffLabel != null)
+			_diffLabel.Text = L("solo_ai_difficulty");
+		if (_mapButtons != null)
+		{
+			string[] mapKeys = { "map_irridium", "map_alabasta", "map_torskey" };
+			for (int i = 0; i < _mapButtons.Length && i < mapKeys.Length; i++)
+				_mapButtons[i].Text = L(mapKeys[i]);
+		}
+		if (_diffButtons != null)
+		{
+			string[] diffKeys = { "ai_easy", "ai_medium", "ai_hard" };
+			for (int i = 0; i < _diffButtons.Length && i < diffKeys.Length; i++)
+				_diffButtons[i].Text = L(diffKeys[i]);
+		}
+		if (_fastModeCheckBox != null)
+			_fastModeCheckBox.Text = L("solo_fast_mode");
+		if (_soloCancelBtn != null)
+			_soloCancelBtn.Text = L("cancel");
+		if (_soloLaunchBtn != null)
+			_soloLaunchBtn.Text = L("launch");
 	}
 
 	public override void _ExitTree()

@@ -40,7 +40,13 @@ public partial class Projectile : Node2D
 
 	private void CreateSprite()
 	{
-		_sprite = new Sprite2D();
+		_sprite = GetNodeOrNull<Sprite2D>("Sprite2D");
+		if (_sprite == null)
+		{
+			_sprite = new Sprite2D();
+			_sprite.Name = "Sprite2D";
+			AddChild(_sprite);
+		}
 
 		string texturePath;
 		if (_type == ProjectileType.Cannonball)
@@ -52,8 +58,7 @@ public partial class Projectile : Node2D
 		{
 			bool goingRight = _targetPos.X >= _startPos.X;
 			texturePath = goingRight
-				? "res://Assets/Units/Characters/Range/Ammo_Range_Right.png"
-				: "res://Assets/Units/Characters/Range/Ammo_Range_Left.png";
+				? "res://Assets/Units/Characters/Range/Ammo_Range_Right.png": "res://Assets/Units/Characters/Range/Ammo_Range_Left.png";
 			_sprite.Scale = new Vector2(0.15f, 0.15f);
 		}
 
@@ -62,8 +67,6 @@ public partial class Projectile : Node2D
 		{
 			_sprite.Texture = texture;
 		}
-
-		AddChild(_sprite);
 	}
 
 	public override void _Process(double delta)
@@ -117,7 +120,7 @@ public partial class Projectile : Node2D
 		{
 			// Réseau : si la cible est un puppet, envoyer via RPC
 			bool isMulti = NetworkSync.Instance?.IsMultiplayer() == true;
-			if (isMulti && !_targetUnit.IsLocalAuthority && !string.IsNullOrEmpty(_targetUnit.NetworkId))
+			if (isMulti && !string.IsNullOrEmpty(_targetUnit.NetworkId))
 			{
 				NetworkSync.Instance?.SendUnitDamage(_targetUnit.NetworkId, _damage, _attackerTeamId);
 			}
@@ -136,7 +139,7 @@ public partial class Projectile : Node2D
 	private void ApplyMortarSplash()
 	{
 		const float SplashRadius = 200f;
-		const float SplashDamage = 20f;
+		const float SplashMaxDamage = 40f;
 
 		var allUnits = GetTree().GetNodesInGroup("units");
 		foreach (var node in allUnits)
@@ -147,13 +150,23 @@ public partial class Projectile : Node2D
 			if (unit.GetCurrentHealth() <= 0) continue;
 
 			float dist = _targetPos.DistanceTo(unit.GlobalPosition);
-			if (dist > SplashRadius) continue;
+			float splashDamage = ComputeSplashDamage(dist, SplashRadius, SplashMaxDamage);
+			if (splashDamage <= 0f) continue;
 
 			bool isMultiSplash = NetworkSync.Instance?.IsMultiplayer() == true;
 			if (isMultiSplash && !unit.IsLocalAuthority && !string.IsNullOrEmpty(unit.NetworkId))
-				NetworkSync.Instance?.SendUnitDamage(unit.NetworkId, SplashDamage, _attackerTeamId);
+				NetworkSync.Instance?.SendUnitDamage(unit.NetworkId, splashDamage, _attackerTeamId);
 			else
-				unit.TakeDamageFrom(SplashDamage, _attackerTeamId);
+				unit.TakeDamageFrom(splashDamage, _attackerTeamId);
 		}
+	}
+
+	/// <summary>Dégâts = Dégâts Max × (1 - Distance / Rayon Splash)</summary>
+	private static float ComputeSplashDamage(float distance, float splashRadius, float maxDamage)
+	{
+		if (distance >= splashRadius || splashRadius <= 0f)
+			return 0f;
+
+		return maxDamage * (1f - distance / splashRadius);
 	}
 }

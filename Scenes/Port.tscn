@@ -1,0 +1,7 @@
+[gd_scene load_steps=2 format=3 uid="uid://b6enry4v2ounq"]
+
+[ext_resource type="Texture2D" path="res://Assets/Objects/Port.png" id="1_port"]
+
+[node name="Port" type="Sprite2D"]
+texture = ExtResource("1_port")
+scale = Vector2(0.07, 0.07)

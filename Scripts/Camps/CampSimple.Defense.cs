@@ -2,37 +2,97 @@ using Godot;
 
 public partial class CampSimple
 {
-	private float _alertTimer = 0f;
-	private float _alertCooldownTimer = 0f;
-	private const float AlertCheckInterval = 1.5f;
-	private const float AlertCooldown = 8f;
-	private const float TerritoryRadius = 600f; // réduit pour laisser des failles au joueur
+	private const float TerritoryRadius = 600f; 
 
-	private void ProcessTerritoryAlert(double delta)
+	private void SetupCampTimers()
+	{
+		if (_campTimersSetup)
+			return;
+
+		_turretTimerNode = GetNodeOrNull<Timer>("TurretTimer");
+		_territoryAlertTimerNode = GetNodeOrNull<Timer>("TerritoryAlertTimer");
+		_territoryAlertCooldownTimerNode = GetNodeOrNull<Timer>("TerritoryAlertCooldownTimer");
+
+		if (_turretTimerNode != null)
+			_turretTimerNode.Timeout += ProcessTurret;
+
+		if (_territoryAlertTimerNode != null)
+			_territoryAlertTimerNode.Timeout += ProcessTerritoryAlert;
+
+		if (_turretTimerNode != null)
+		{
+			_turretTimerNode.WaitTime = 1.0f;
+			_turretTimerNode.OneShot = false;
+		}
+
+		if (_territoryAlertTimerNode != null)
+		{
+			_territoryAlertTimerNode.WaitTime = 1.5f;
+			_territoryAlertTimerNode.OneShot = false;
+		}
+
+		if (_territoryAlertCooldownTimerNode != null)
+		{
+			_territoryAlertCooldownTimerNode.WaitTime = 8.0f;
+			_territoryAlertCooldownTimerNode.OneShot = true;
+		}
+
+		_campTimersSetup = true;
+	}
+
+	private void UpdateCampTimers()
+	{
+		bool shouldRunTimers = !IsNeutralCamp && (IsOnlineMultiplayer() || IsLocallyOwned());
+
+		if (_turretTimerNode != null)
+		{
+			if (shouldRunTimers)
+			{
+				if (_turretTimerNode.IsStopped())
+					_turretTimerNode.Start();
+			}
+			else
+			{
+				_turretTimerNode.Stop();
+			}
+		}
+
+		if (_territoryAlertTimerNode != null)
+		{
+			if (shouldRunTimers)
+			{
+				if (_territoryAlertTimerNode.IsStopped())
+					_territoryAlertTimerNode.Start();
+			}
+			else
+			{
+				_territoryAlertTimerNode.Stop();
+			}
+		}
+
+		if (_territoryAlertCooldownTimerNode != null && !shouldRunTimers)
+			_territoryAlertCooldownTimerNode.Stop();
+	}
+
+	private void ProcessTerritoryAlert()
 	{
 		if (IsNeutralCamp) return;
-		if (!IsLocallyOwned()) return;
+		if (IsOnlineMultiplayer() && !IsLocallyOwned()) return;
 
-		_alertCooldownTimer -= (float)delta;
-		_alertTimer += (float)delta;
-
-		if (_alertTimer < AlertCheckInterval) return;
-		_alertTimer = 0f;
-
-		if (_alertCooldownTimer > 0f) return;
+		if (_territoryAlertCooldownTimerNode != null && !_territoryAlertCooldownTimerNode.IsStopped())
+			return;
 
 		Vector2? intruderPos = FindIntruderInTerritory();
 		if (intruderPos.HasValue)
 		{
 			AlertDefenders(intruderPos.Value);
-			_alertCooldownTimer = AlertCooldown;
+			_territoryAlertCooldownTimerNode?.Start();
 		}
 	}
 
 	private Vector2? FindIntruderInTerritory()
 	{
-		var allUnits = GetTree().GetNodesInGroup("units");
-		foreach (var node in allUnits)
+		foreach (var node in GetTree().GetNodesInGroup("units"))
 		{
 			if (node is Unit unit && unit.GetTeamId() != TeamId
 				&& unit.GetCurrentHealth() > 0
@@ -46,11 +106,9 @@ public partial class CampSimple
 
 	private void AlertDefenders(Vector2 intruderPos)
 	{
-		var allUnits = GetTree().GetNodesInGroup("units");
-		foreach (var node in allUnits)
+		foreach (var unit in GetLiveDefenders())
 		{
-			if (node is Unit unit && unit.GetTeamId() == TeamId
-				&& unit.IsIdleState() && unit.GetCurrentHealth() > 0
+			if (unit.IsIdleState()
 				&& GlobalPosition.DistanceTo(unit.GlobalPosition) <= TerritoryRadius)
 			{
 				unit.MoveTo(intruderPos);
@@ -58,15 +116,9 @@ public partial class CampSimple
 		}
 	}
 
-	private void ProcessTurret(double delta)
+	private void ProcessTurret()
 	{
-		_turretTimer += (float)delta;
-
-		if (_turretTimer >= TurretAttackInterval)
-		{
-			_turretTimer = 0f;
-			AttackEnemiesInRange();
-		}
+		AttackEnemiesInRange();
 	}
 
 	private void AttackEnemiesInRange()
@@ -74,11 +126,7 @@ public partial class CampSimple
 		if (IsNeutralCamp)
 			return;
 
-		// La tourelle ne tire que quand tous les défenseurs sont morts
-		if (!AreAllUnitsDefeated())
-			return;
-
-		if (!IsLocallyOwned())
+		if (IsOnlineMultiplayer() && !IsLocallyOwned())
 			return;
 
 		var allUnits = GetTree().GetNodesInGroup("units");
@@ -120,25 +168,39 @@ public partial class CampSimple
 
 	public bool TakeDamage(float damage, int attackerTeamId)
 	{
-		// Attaquable seulement si toutes les unités défendantes sont mortes
-		if (!AreAllUnitsDefeated())
-			return false;
-
-		if (!IsLocallyOwned())
+		if (IsOnlineMultiplayer() && !IsLocallyOwned())
 		{
-			NetworkSync.Instance?.SendCampDamage(CampId, damage, attackerTeamId);
+			NetworkCommandRouter.SendCampDamage(CampId, damage, attackerTeamId);
 			return true;
 		}
 
-		_lastAttackerTeamId = attackerTeamId;
+		return ApplyCampDamageLocal(damage, attackerTeamId);
+	}
 
+	public bool ApplyRelayCampDamage(float damage, int attackerTeamId)
+	{
+		return ApplyCampDamageLocal(damage, attackerTeamId);
+	}
+
+	private bool ApplyCampDamageLocal(float damage, int attackerTeamId)
+	{
+		if (GetCurrentHealth() <= 0)
+			return true;
+
+		_lastAttackerTeamId = attackerTeamId;
 		SetCurrentHealth(GetCurrentHealth() - damage);
 
-		if (GetCurrentHealth() <= 0)
+		if (GetCurrentHealth() > 0)
+			return true;
+
+		if (IsOnlineMultiplayer())
 		{
-			CaptureCamp(attackerTeamId);
+			var gameState = GetNodeOrNull<GameState>("/root/GameState");
+			if (attackerTeamId != (gameState?.LocalTeamId ?? 0))
+				return true;
 		}
 
+		CaptureCamp(attackerTeamId);
 		return true;
 	}
 
@@ -160,16 +222,9 @@ public partial class CampSimple
 		IsNeutralCamp = false;
 
 		SetCurrentHealth(MaxHealth);
-
-		if (_healthBarForeground != null)
-		{
-			_healthBarForeground.Color = GetTeamColor();
-		}
-
-		if (_campIdLabel != null)
-		{
-			_campIdLabel.AddThemeColorOverride("font_color", GetTeamColor());
-		}
+		UpdateCampVisualTheme();
+		UpdateCampTimers();
+		RefreshCampLabel(); // texte boss/normal selon la nouvelle équipe
 
 		if (GameManager.Instance != null)
 		{
@@ -185,11 +240,32 @@ public partial class CampSimple
 		SpawnBonusUnits();
 
 		EmitSignal(SignalName.CampCaptured, newTeamId);
-		NetworkSync.Instance?.SendCampCaptured(CampId, newTeamId);
+		if (IsOnlineMultiplayer())
+			NetworkCommandRouter.SendCampCaptured(CampId, newTeamId);
 
-		// Appel direct garanti — ne dépend pas de la connexion signal
+		// Appel direct garanti - ne dépend pas de la connexion signal
 		TerritoryManager.Instance?.RefreshTerritory(newTeamId);
-		GD.Print($"[TERRITOIRE] Camp #{CampId} capturé : Team {oldTeamId} → {newTeamId}");
+		GD.Print($"[TERRITOIRE] Camp #{CampId} capturé : Team {oldTeamId} -> {newTeamId}");
+
+		// Si l'ancienne équipe n'a plus aucun camp -> toutes ses unités meurent
+		if (oldTeamId > 0)
+		{
+			bool hasAnyCamp = false;
+			foreach (var camp in GameManager.Instance?.GetAllCamps() ?? new System.Collections.Generic.List<CampSimple>())
+			{
+				if (camp.GetTeamId() == oldTeamId) { hasAnyCamp = true; break; }
+			}
+
+			if (!hasAnyCamp)
+			{
+				GD.Print($"[ELIMINATION] Team {oldTeamId} n'a plus de camp -> toutes ses unités meurent");
+				foreach (var node in GetTree().GetNodesInGroup("units"))
+				{
+					if (node is Unit unit && unit.GetTeamId() == oldTeamId && IsInstanceValid(unit))
+						unit.TakeDamage(999999f);
+				}
+			}
+		}
 	}
 
 	private void SpawnBonusUnits()
@@ -199,7 +275,7 @@ public partial class CampSimple
 			return;
 
 		Vector2 campPos = GlobalPosition;
-		string[] bonusUnits = new[] { "Infantry", "Range", "Infantry" };
+		string[] bonusUnits = new[] { "Infantry", "Range", "Infantry"};
 
 		for (int i = 0; i < bonusUnits.Length; i++)
 		{
@@ -215,7 +291,8 @@ public partial class CampSimple
 			unit.OwnerCamp = this;
 
 			// Reseau : assigner un NetworkId et broadcaster
-			string networkId = NetworkEntityRegistry.GenerateId();
+			int spawnSequence = ++_dynamicUnitSpawnSequence;
+			string networkId = BuildDynamicUnitNetworkId(spawnSequence);
 			unit.NetworkId = networkId;
 			unit.IsLocalAuthority = true;
 			unit.OwnerCamp = this;
@@ -224,8 +301,6 @@ public partial class CampSimple
 			_spawnedUnits.Add(unit);
 			_defenders.Add(unit); // les bonus units défendent le camp nouvellement capturé
 
-			NetworkSync.Instance?.SendSpawnUnit(networkId, bonusUnits[i], TeamId,
-				unit.GlobalPosition.X, unit.GlobalPosition.Y, unit.GetCurrentHealth(), false);
 		}
 	}
 }

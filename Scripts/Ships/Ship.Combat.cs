@@ -2,6 +2,8 @@ using Godot;
 
 public partial class Ship
 {
+	private static readonly PackedScene ShipProjectileScene = GD.Load<PackedScene>("res://Scenes/ShipProjectile.tscn");
+
 	private void ProcessAttackingState(double delta)
 	{
 		if (!IsTargetValid())
@@ -28,19 +30,27 @@ public partial class Ship
 		}
 	}
 
+	private bool IsEnemyShipTarget(Ship ship) =>
+		ship != null && ship.GetTeamId() != TeamId && ship.GetCurrentHealth() > 0;
+
 	private void AttackTarget(Ship target)
 	{
-		if (target == null || !IsInstanceValid(target) || !target.IsInsideTree()) return;
-		if (target.GetCurrentHealth() <= 0) return;
+		if (!IsEnemyShipTarget(target)) return;
+		if (!IsInstanceValid(target) || !target.IsInsideTree()) return;
 
 		SpawnProjectile(target);
 	}
 
 	private void SpawnProjectile(Ship target)
 	{
-		var projectile = new ShipProjectile();
+		var projectile = ShipProjectileScene?.Instantiate<ShipProjectile>() ?? new ShipProjectile();
 		GetTree().CurrentScene.AddChild(projectile);
-		projectile.Initialize(GlobalPosition, target, _stats.Attack, TeamId, 300f);
+
+		bool isDestroyer = ShipType == "Destroyer";
+		var type = isDestroyer ? ShipProjectile.ShipProjectileType.Cannonball : ShipProjectile.ShipProjectileType.Arrow;
+		float speed = isDestroyer ? 300f : 500f;
+
+		projectile.Initialize(GlobalPosition, target, _stats.Attack, TeamId, type, speed, isDestroyer);
 	}
 
 	public void TakeDamage(float damage)
@@ -67,33 +77,30 @@ public partial class Ship
 		if (_loadedUnits.Count > 0)
 			_loadedUnits.Clear();
 
-		if (IsLocalAuthority && !string.IsNullOrEmpty(NetworkId))
-		{
+		if (NetworkSync.Instance?.IsMultiplayer() == true && !string.IsNullOrEmpty(NetworkId))
 			NetworkSync.Instance?.SendEntityDied(NetworkId);
-		}
 
 		QueueFree();
 	}
 
 	private void OnBodyEnteredDetectionZone(Node2D body)
 	{
-		// Transport ne combat pas
 		if (ShipType == "Transport") return;
+		if (body is Unit) return;
 
 		if (body is Ship otherShip)
 		{
-			if (otherShip.GetTeamId() != TeamId && otherShip.GetCurrentHealth() > 0)
-			{
-				if (_currentTarget == null && _currentState == ShipState.Idle)
-				{
-					SetNewTarget(otherShip);
-				}
-			}
+			if (!IsEnemyShipTarget(otherShip)) return;
+
+			if (_currentTarget == null && _currentState == ShipState.Idle)
+				SetNewTarget(otherShip);
 		}
 	}
 
 	private void SetNewTarget(Ship target)
 	{
+		if (!IsEnemyShipTarget(target)) return;
+
 		_currentTarget = target;
 		float distanceToTarget = GlobalPosition.DistanceTo(target.GlobalPosition);
 
@@ -112,8 +119,7 @@ public partial class Ship
 		if (_currentTarget == null) return false;
 		if (!IsInstanceValid(_currentTarget)) return false;
 		if (!_currentTarget.IsInsideTree()) return false;
-		if (_currentTarget.GetCurrentHealth() <= 0) return false;
-		return true;
+		return IsEnemyShipTarget(_currentTarget);
 	}
 
 	private Ship FindEnemyShipInRange()
@@ -127,8 +133,7 @@ public partial class Ship
 		{
 			if (node is Ship otherShip)
 			{
-				if (otherShip.GetTeamId() == TeamId) continue;
-				if (otherShip.GetCurrentHealth() <= 0) continue;
+				if (!IsEnemyShipTarget(otherShip)) continue;
 
 				float distance = GlobalPosition.DistanceTo(otherShip.GlobalPosition);
 				if (distance <= DetectionRange && distance < closestDistance)

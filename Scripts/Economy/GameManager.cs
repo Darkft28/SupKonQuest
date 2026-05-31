@@ -1,8 +1,15 @@
 using Godot;
+using System;
 using System.Collections.Generic;
 
 public partial class GameManager : Node
 {
+	[Signal] public delegate void OnlinePlayerLeftEventHandler(int teamId);
+	[Signal] public delegate void LocalPlayerEliminatedEventHandler();
+	[Signal] public delegate void GameWonEventHandler(int winningTeamId);
+
+	public const int MaxGold = 9999;
+
 	private static GameManager _instance;
 
 	public static GameManager Instance
@@ -11,24 +18,39 @@ public partial class GameManager : Node
 	}
 
 	private Dictionary<int, int> _teamGold = new Dictionary<int, int>();
+	private Dictionary<int, int> _teamGoldVersion = new Dictionary<int, int>();
 	private Dictionary<int, int> _homeRegions = new Dictionary<int, int>();
 
 	private const int StartingGold = 100;
 	private const int CaptureBonus = 50;
-	private const int PassiveGoldPerSecond = 500;
+	private const int PassiveGoldPerSecond = 20;
 	private const int RegionBonusGold = 30;
 
 	private float _passiveGoldTimer = 0f;
 
-	// Bonus de vitesse par région contrôlée
+	// Speed bonus per controlled region
 	private Dictionary<int, float> _speedMultipliers = new Dictionary<int, float>();
 	private const float RegionSpeedBonusPerRegion = 0.20f;
+	private readonly Dictionary<string, float> _teamUltimateCooldowns = new();
+	private const string HealUltimateId = "heal_ultimate";
+	private const string SupportUltimateId = "support_ultimate";
+	private const float HealUltimateCooldownSeconds = 20f;
+	private const float SupportUltimateCooldownSeconds = 25f;
+	private const float TeamHealUltimateRadius = 300f;
+	private const float TeamHealUltimateAmount = 70f;
+	private const float TeamSupportUltimateRadius = 320f;
+	private const float TeamSupportUltimateDefenseBonus = 20f;
+	private const float TeamSupportUltimateDuration = 8f;
 
 	private List<CampSimple> _allCamps = new List<CampSimple>();
 
-	private const int NumberOfPlayers = 2;
+	// Teams that purchased tier 2
+	private HashSet<int> _tier2Unlocked = new HashSet<int>();
+
+	private const int MaxHumanPlayers = 8;
 
 	private VictoryManager _victoryManager;
+	private bool _localEliminationNotified;
 
 	public override void _Ready()
 	{
@@ -43,10 +65,15 @@ public partial class GameManager : Node
 
 	private void InitializeCamps()
 	{
-		// Reset de l'or entre les parties (GameManager est un autoload persistant)
+		// Reset gold between matches (GameManager is a persistent autoload)
 		_teamGold.Clear();
+		_teamGoldVersion.Clear();
 		_homeRegions.Clear();
 		_allCamps.Clear();
+		_tier2Unlocked.Clear();
+		_teamUltimateCooldowns.Clear();
+		_localEliminationNotified = false;
+		_teamUnitCounts.Clear();
 
 		var campNodes = GetTree().GetNodesInGroup("camps");
 		foreach (var node in campNodes)
@@ -56,6 +83,7 @@ public partial class GameManager : Node
 		}
 
 		AssignCampsToPlayers();
+		ResyncAndNotifyTeamUnitCounts();
 	}
 
 	private void AssignCampsToPlayers()
@@ -63,14 +91,37 @@ public partial class GameManager : Node
 		if (_allCamps.Count == 0)
 			return;
 
-		// Shuffle deterministe : meme resultat sur les 2 peers grace a la seed partagee
+		// Deterministic shuffle: same result on all peers thanks to shared seed
 		var gameState = GetNodeOrNull<GameState>("/root/GameState");
-		int seed = gameState?.MapSeed ?? (int)GD.Randi();
+		int seed = gameState != null ? gameState.GetEffectiveMapSeed() : (int)GD.Randi();
 
 		List<CampSimple> shuffledCamps = new List<CampSimple>(_allCamps);
 		ShuffleList(shuffledCamps, seed);
 
-		if (gameState?.IsFreeForAll == true)
+		if (gameState?.IsOnline == true)
+		{
+			int playerCount = Math.Max(2, Math.Min(MaxHumanPlayers, gameState.ActivePlayerCount));
+			playerCount = Math.Min(playerCount, shuffledCamps.Count);
+			int campIndex = 0;
+
+			for (int playerId = 1; playerId <= playerCount; playerId++)
+			{
+				if (campIndex >= shuffledCamps.Count)
+					break;
+
+				shuffledCamps[campIndex].SetTeam(playerId, false);
+				_homeRegions[playerId] = shuffledCamps[campIndex].RegionId;
+				InitializeTeam(playerId);
+				campIndex++;
+			}
+
+			while (campIndex < shuffledCamps.Count)
+			{
+				shuffledCamps[campIndex].SetTeam(0, true);
+				campIndex++;
+			}
+		}
+		else if (gameState?.IsFreeForAll == true)
 		{
 			shuffledCamps[0].SetTeam(1, false);
 			_homeRegions[1] = shuffledCamps[0].RegionId;
@@ -86,10 +137,12 @@ public partial class GameManager : Node
 		}
 		else
 		{
-			int campsPerPlayer = shuffledCamps.Count / NumberOfPlayers;
+			int playerCount = 2;
+			playerCount = Math.Min(playerCount, shuffledCamps.Count);
+			const int campsPerPlayer = 1;
 			int campIndex = 0;
 
-			for (int playerId = 1; playerId <= NumberOfPlayers; playerId++)
+			for (int playerId = 1; playerId <= playerCount; playerId++)
 			{
 				bool firstCamp = true;
 				for (int i = 0; i < campsPerPlayer; i++)
@@ -113,8 +166,6 @@ public partial class GameManager : Node
 
 		foreach (var camp in _allCamps)
 			camp.UpdateDefendersAuthority();
-
-		BroadcastCampAssignments();
 	}
 
 	public List<int> GetBotTeamIds()
@@ -127,25 +178,6 @@ public partial class GameManager : Node
 				botTeams.Add(teamId);
 		}
 		return botTeams;
-	}
-
-	private void BroadcastCampAssignments()
-	{
-		if (NetworkSync.Instance == null || !NetworkSync.Instance.IsMultiplayer()) return;
-		if (!NetworkSync.Instance.IsServer()) return;
-
-		var campIds = new List<int>();
-		var teamIds = new List<int>();
-		var isNeutral = new List<bool>();
-
-		foreach (var camp in _allCamps)
-		{
-			campIds.Add(camp.GetCampId());
-			teamIds.Add(camp.GetTeamId());
-			isNeutral.Add(camp.IsNeutralCamp);
-		}
-
-		NetworkSync.Instance.SendSyncCampAssignments(campIds.ToArray(), teamIds.ToArray(), isNeutral.ToArray());
 	}
 
 	private void ShuffleList(List<CampSimple> list, int seed)
@@ -161,15 +193,32 @@ public partial class GameManager : Node
 		}
 	}
 
-	private bool IsMultiplayerActive()
+	private static bool IsMultiplayerActive() => GameState.IsOnlineMultiplayer;
+
+	private int GetLocalTeamId()
 	{
-		return NetworkSync.Instance != null
-			&& GodotObject.IsInstanceValid(NetworkSync.Instance)
-			&& NetworkSync.Instance.IsMultiplayer();
+		var gameState = GetNodeOrNull<GameState>("/root/GameState");
+		return gameState?.LocalTeamId ?? 1;
+	}
+
+	private bool IsLocalTeam(int teamId)
+	{
+		return teamId > 0 && teamId == GetLocalTeamId();
+	}
+
+	private int IncrementGoldVersion(int teamId)
+	{
+		if (!_teamGoldVersion.ContainsKey(teamId))
+			_teamGoldVersion[teamId] = 0;
+
+		_teamGoldVersion[teamId] += 1;
+		return _teamGoldVersion[teamId];
 	}
 
 	public override void _Process(double delta)
 	{
+		TickTeamUltimateCooldowns((float)delta);
+
 		_passiveGoldTimer += (float)delta;
 		if (_passiveGoldTimer >= 1.0f)
 		{
@@ -177,28 +226,155 @@ public partial class GameManager : Node
 
 			if (IsMultiplayerActive())
 			{
-				// Multi : chaque peer gere uniquement l'or de sa propre equipe (pas de sync or)
+				// Multiplayer: each peer manages only its own team gold (no gold sync)
 				var gameState = GetNodeOrNull<GameState>("/root/GameState");
 				int localTeamId = gameState?.LocalTeamId ?? 1;
 
-				if (_teamGold.ContainsKey(localTeamId))
-					_teamGold[localTeamId] += PassiveGoldPerSecond;
+				if (_teamGold.ContainsKey(localTeamId) && ShouldAccrueGold(localTeamId))
+					_teamGold[localTeamId] = Mathf.Min(MaxGold, _teamGold[localTeamId] + PassiveGoldPerSecond);
 
 				CheckRegionBonuses(localTeamId);
 			}
 			else
 			{
-				// Solo / IA : toutes les equipes recoivent l'or passif
+				// Solo / IA : même PassiveGoldPerSecond (75) pour toutes les équipes (joueur + bots)
 				foreach (var teamId in new List<int>(_teamGold.Keys))
-					_teamGold[teamId] += PassiveGoldPerSecond;
+				{
+					if (!ShouldAccrueGold(teamId))
+						continue;
+					_teamGold[teamId] = Mathf.Min(MaxGold, _teamGold[teamId] + PassiveGoldPerSecond);
+				}
 
-				CheckRegionBonuses(-1); // -1 = toutes les equipes
+				CheckRegionBonuses(-1); // -1 = all teams
+				CheckLocalPlayerElimination();
 			}
 
 			UpdateSpeedMultipliers();
 		}
 
 		_victoryManager.Update(delta);
+	}
+
+	private static string BuildTeamUltimateKey(int teamId, string abilityId)
+	{
+		return $"{teamId}:{abilityId}";
+	}
+
+	private static float GetUltimateCooldownDuration(string abilityId)
+	{
+		return abilityId switch
+		{
+			HealUltimateId => HealUltimateCooldownSeconds,
+			SupportUltimateId => SupportUltimateCooldownSeconds,
+			_ => 0f,
+		};
+	}
+
+	private void TickTeamUltimateCooldowns(float delta)
+	{
+		if (_teamUltimateCooldowns.Count == 0 || delta <= 0f)
+			return;
+
+		var keys = new List<string>(_teamUltimateCooldowns.Keys);
+		foreach (string key in keys)
+		{
+			float next = _teamUltimateCooldowns[key] - delta;
+			if (next <= 0f)
+				_teamUltimateCooldowns.Remove(key);
+			else
+				_teamUltimateCooldowns[key] = next;
+		}
+	}
+
+	public float GetTeamUltimateCooldownRemaining(int teamId, string abilityId)
+	{
+		if (teamId <= 0 || string.IsNullOrWhiteSpace(abilityId))
+			return 0f;
+
+		string key = BuildTeamUltimateKey(teamId, abilityId);
+		return _teamUltimateCooldowns.TryGetValue(key, out float remaining) ? remaining : 0f;
+	}
+
+	public bool CanUseTeamUltimate(int teamId, string abilityId)
+	{
+		return teamId > 0
+			&& !string.IsNullOrWhiteSpace(abilityId)
+			&& GetUltimateCooldownDuration(abilityId) > 0f
+			&& GetTeamUltimateCooldownRemaining(teamId, abilityId) <= 0f;
+	}
+
+	public bool TryStartTeamUltimateCooldown(int teamId, string abilityId)
+	{
+		if (!CanUseTeamUltimate(teamId, abilityId))
+			return false;
+
+		float duration = GetUltimateCooldownDuration(abilityId);
+		if (duration <= 0f)
+			return false;
+
+		_teamUltimateCooldowns[BuildTeamUltimateKey(teamId, abilityId)] = duration;
+		return true;
+	}
+
+	public bool TryCastTeamUltimate(int teamId, string abilityId, Vector2 targetPosition)
+	{
+		if (!TryStartTeamUltimateCooldown(teamId, abilityId))
+			return false;
+
+		ApplyTeamUltimateEffect(teamId, abilityId, targetPosition, emitVfx: true);
+		return true;
+	}
+
+	public void ApplyRemoteTeamUltimateCast(int teamId, string abilityId, Vector2 targetPosition)
+	{
+		if (teamId <= 0 || string.IsNullOrWhiteSpace(abilityId))
+			return;
+
+		float duration = GetUltimateCooldownDuration(abilityId);
+		if (duration > 0f)
+		{
+			string key = BuildTeamUltimateKey(teamId, abilityId);
+			float current = GetTeamUltimateCooldownRemaining(teamId, abilityId);
+			_teamUltimateCooldowns[key] = Mathf.Max(current, duration);
+		}
+
+		// Remote peers rely on relay cast for gameplay and VFX.
+		ApplyTeamUltimateEffect(teamId, abilityId, targetPosition, emitVfx: true);
+	}
+
+	private void ApplyTeamUltimateEffect(int teamId, string abilityId, Vector2 targetPosition, bool emitVfx = true)
+	{
+		if (teamId <= 0 || string.IsNullOrWhiteSpace(abilityId))
+			return;
+
+		var allUnits = GetTree().GetNodesInGroup("units");
+		Unit firstAffectedUnit = null;
+
+		foreach (var node in allUnits)
+		{
+			if (node is not Unit ally || ally.GetTeamId() != teamId || ally.GetCurrentHealth() <= 0)
+				continue;
+
+			if (abilityId == HealUltimateId)
+			{
+				if (ally.GlobalPosition.DistanceTo(targetPosition) <= TeamHealUltimateRadius)
+				{
+					ally.Heal(TeamHealUltimateAmount);
+					firstAffectedUnit ??= ally;
+				}
+			}
+			else if (abilityId == SupportUltimateId)
+			{
+				if (ally.GlobalPosition.DistanceTo(targetPosition) <= TeamSupportUltimateRadius)
+				{
+					ally.ApplyTeamSupportUltimateBonus(TeamSupportUltimateDefenseBonus, TeamSupportUltimateDuration);
+					firstAffectedUnit ??= ally;
+				}
+			}
+		}
+
+		if (emitVfx)
+			Unit.EmitUltimateCastVfx(firstAffectedUnit, abilityId, targetPosition);
 	}
 
 	private void CheckRegionBonuses(int localTeamId)
@@ -220,7 +396,7 @@ public partial class GameManager : Node
 			if (camps.Count < 2) continue;
 
 			int firstTeam = camps[0].GetTeamId();
-			if (firstTeam <= 0) continue; // neutre
+			if (firstTeam <= 0) continue; // neutral
 
 			bool allSameTeam = true;
 			foreach (var camp in camps)
@@ -235,14 +411,130 @@ public partial class GameManager : Node
 			if (!allSameTeam) continue;
 
 			bool shouldGive = localTeamId == -1 || firstTeam == localTeamId;
-			if (shouldGive && _teamGold.ContainsKey(firstTeam))
-				_teamGold[firstTeam] += RegionBonusGold;
+			if (shouldGive && _teamGold.ContainsKey(firstTeam) && ShouldAccrueGold(firstTeam))
+				_teamGold[firstTeam] = Mathf.Min(MaxGold, _teamGold[firstTeam] + RegionBonusGold);
 		}
+	}
+
+	private void CheckLocalPlayerElimination()
+	{
+		if (GameState.IsOnlineMultiplayer || _localEliminationNotified)
+			return;
+
+		if (!IsLocalPlayerEliminated())
+			return;
+
+		_localEliminationNotified = true;
+		EmitSignal(SignalName.LocalPlayerEliminated);
+	}
+
+	public void NotifyGameWon(int winningTeamId)
+	{
+		EmitSignal(SignalName.GameWon, winningTeamId);
+	}
+
+	public bool TeamOwnsAnyCamp(int teamId)
+	{
+		if (teamId <= 0)
+			return false;
+
+		foreach (var camp in _allCamps)
+		{
+			if (camp == null || !IsInstanceValid(camp) || camp.IsNeutralCamp)
+				continue;
+			if (camp.GetTeamId() == teamId)
+				return true;
+		}
+		return false;
+	}
+
+	public bool IsTeamEliminated(int teamId) => teamId > 0 && !TeamOwnsAnyCamp(teamId);
+
+	public bool IsLocalPlayerEliminated() =>
+		!GameState.IsOnlineMultiplayer && IsTeamEliminated(GetLocalTeamId());
+
+	public bool ShouldAccrueGold(int teamId)
+	{
+		if (teamId <= 0)
+			return false;
+		if (!GameState.IsOnlineMultiplayer && IsTeamEliminated(teamId))
+			return false;
+		return true;
 	}
 
 	public List<CampSimple> GetAllCamps()
 	{
 		return _allCamps;
+	}
+
+	// -- Global per-team unit limit -----------------------------------------------
+	// 10 units per controlled camp. All team units count,
+	// regardless of which camp produced them.
+	public const int MaxUnitsPerCamp = 10;
+
+	public event Action<int, int> OnTeamUnitCountChanged;
+
+	private readonly Dictionary<int, int> _teamUnitCounts = new Dictionary<int, int>();
+
+	public int GetTeamUnitCount(int teamId)
+	{
+		return _teamUnitCounts.TryGetValue(teamId, out int count) ? count : 0;
+	}
+
+	public void RegisterTeamUnit(int teamId)
+	{
+		if (teamId <= 0)
+			return;
+
+		if (!_teamUnitCounts.ContainsKey(teamId))
+			_teamUnitCounts[teamId] = 0;
+
+		_teamUnitCounts[teamId]++;
+		OnTeamUnitCountChanged?.Invoke(teamId, _teamUnitCounts[teamId]);
+	}
+
+	public void UnregisterTeamUnit(int teamId)
+	{
+		if (teamId <= 0 || !_teamUnitCounts.ContainsKey(teamId))
+			return;
+
+		_teamUnitCounts[teamId] = Math.Max(0, _teamUnitCounts[teamId] - 1);
+		OnTeamUnitCountChanged?.Invoke(teamId, _teamUnitCounts[teamId]);
+	}
+
+	public void ResyncTeamUnitCounts()
+	{
+		_teamUnitCounts.Clear();
+		foreach (var node in GetTree().GetNodesInGroup("units"))
+		{
+			if (node is Unit unit && unit.GetTeamId() > 0 && unit.GetCurrentHealth() > 0)
+			{
+				int teamId = unit.GetTeamId();
+				if (!_teamUnitCounts.ContainsKey(teamId))
+					_teamUnitCounts[teamId] = 0;
+				_teamUnitCounts[teamId]++;
+			}
+		}
+	}
+
+	public void ResyncAndNotifyTeamUnitCounts()
+	{
+		var previous = new Dictionary<int, int>(_teamUnitCounts);
+		ResyncTeamUnitCounts();
+
+		foreach (var (teamId, count) in _teamUnitCounts)
+		{
+			if (!previous.TryGetValue(teamId, out int oldCount) || oldCount != count)
+				OnTeamUnitCountChanged?.Invoke(teamId, count);
+		}
+	}
+
+	public int GetMaxUnitsForTeam(int teamId)
+	{
+		int camps = 0;
+		foreach (var c in _allCamps)
+			if (c.GetTeamId() == teamId) camps++;
+		return Mathf.Max(1, camps) * MaxUnitsPerCamp;
 	}
 
 	public void InitializeTeam(int teamId)
@@ -251,12 +543,17 @@ public partial class GameManager : Node
 			return;
 
 		if (!_teamGold.ContainsKey(teamId))
-			_teamGold[teamId] = StartingGold;
+			_teamGold[teamId] = Mathf.Min(MaxGold, StartingGold);
+
+		if (!_teamGoldVersion.ContainsKey(teamId))
+			_teamGoldVersion[teamId] = 0;
 	}
 
 	public int GetGold(int teamId)
 	{
-		return _teamGold.TryGetValue(teamId, out int gold) ? gold : 0;
+		if (!_teamGold.TryGetValue(teamId, out int gold))
+			return 0;
+		return Mathf.Min(MaxGold, gold);
 	}
 
 	public bool CanAfford(int teamId, int cost)
@@ -270,16 +567,22 @@ public partial class GameManager : Node
 			return false;
 
 		_teamGold[teamId] -= amount;
+		int version = IncrementGoldVersion(teamId);
 		return true;
 	}
 
-	public void AddGold(int teamId, int amount)
+	public void AddGold(int teamId, int amount) => CreditGold(teamId, amount);
+
+	private void CreditGold(int teamId, int amount)
 	{
+		if (amount <= 0 || !ShouldAccrueGold(teamId))
+			return;
+
 		if (!_teamGold.ContainsKey(teamId))
-		{
 			_teamGold[teamId] = 0;
-		}
-		_teamGold[teamId] += amount;
+
+		_teamGold[teamId] = Mathf.Min(MaxGold, _teamGold[teamId] + amount);
+		IncrementGoldVersion(teamId);
 	}
 
 	public void GiveCaptureBonus(int teamId)
@@ -296,7 +599,7 @@ public partial class GameManager : Node
 	{
 		_speedMultipliers.Clear();
 
-		// Détection dynamique des RegionIds présents (variable selon la map : 3 pour Irridium, 4 pour Alabasta)
+		// Dynamic detection of present RegionIds (map-dependent: 3 for Irridium, 4 for Alabasta)
 		var regionCamps = new Dictionary<int, List<CampSimple>>();
 		foreach (var camp in _allCamps)
 		{
@@ -313,7 +616,7 @@ public partial class GameManager : Node
 			if (camps.Count == 0) continue;
 
 			int firstTeam = camps[0].TeamId;
-			if (firstTeam <= 0) continue; // région neutre
+			if (firstTeam <= 0) continue; // neutral region
 
 			bool allSameTeam = true;
 			foreach (var camp in camps)
@@ -335,20 +638,20 @@ public partial class GameManager : Node
 		}
 	}
 
-	// ── Système de tiers de déverrouillage ───────────────────────────────────
+	// -- Tier unlock system --------------------------------------------------------
 
 	public static int GetUnitTier(string unitType) => unitType switch
 	{
-		"Infantry" or "Support" or "Range" => 1,
-		"Heal" or "AntiArmor" => 2,
-		"Mortar" or "Heavy" or "Tank" => 3,
+		"Infantry"or "Support"or "Range"=> 1,
+		"Heal"or "AntiArmor"=> 2,
+		"Mortar"or "Heavy"or "Tank"=> 3,
 		_ => 1
 	};
 
 	public static int GetShipTier(string shipType) => shipType switch
 	{
-		"Transport" => 1,
-		"Fregate" or "Destroyer" => 3,
+		"Transport"=> 3,
+		"Fregate"or "Destroyer"=> 3,
 		_ => 1
 	};
 
@@ -357,30 +660,73 @@ public partial class GameManager : Node
 		return _homeRegions.TryGetValue(teamId, out int r) ? r : -1;
 	}
 
+	public const int Tier2Cost = 1500;
+
+	/// <summary>
+	/// Attempts to purchase tier 2 for a team (costs Tier2Cost gold).
+	/// Returns true if purchase succeeds.
+	/// </summary>
+	public bool UnlockTier2(int teamId)
+	{
+		if (_tier2Unlocked.Contains(teamId)) return false; // already purchased
+		if (!CanAfford(teamId, Tier2Cost)) return false;
+
+		SpendGold(teamId, Tier2Cost);
+		_tier2Unlocked.Add(teamId);
+		GD.Print($"[TIER] Team {teamId} unlocked tier 2!");
+		return true;
+	}
+
 	public int GetUnlockedTier(int teamId)
 	{
-		var ownedCamps = _allCamps.FindAll(c => c.GetTeamId() == teamId);
+		// Tier 2: manual purchase
+		if (!_tier2Unlocked.Contains(teamId)) return 1;
 
-		if (ownedCamps.Count < 2) return 1;
-
-		// Tier 3 : contrôle tous les camps de sa home region (≥2 camps dans la région)
+		// Tier 3: controls all camps in home region (count computed dynamically)
 		if (!_homeRegions.TryGetValue(teamId, out int homeRegion)) return 2;
 
 		var homeCamps = _allCamps.FindAll(c => c.RegionId == homeRegion);
-		if (homeCamps.Count < 2) return 2;
+		if (homeCamps.Count == 0) return 2;
 
 		if (homeCamps.TrueForAll(c => c.GetTeamId() == teamId)) return 3;
 
 		return 2;
 	}
 
-	// Correction légère de l'or en multijoueur (évite micro-corrections sous 5 or d'écart)
-	public void SyncGold(int teamId, int authorativeGold)
+	public void ApplyPlayerLeaveCleanup(int leavingTeamId)
 	{
-		if (!_teamGold.ContainsKey(teamId)) return;
+		if (leavingTeamId <= 0)
+			return;
 
-		int diff = Mathf.Abs(_teamGold[teamId] - authorativeGold);
-		if (diff > 5)
-			_teamGold[teamId] = authorativeGold;
+		foreach (var node in GetTree().GetNodesInGroup("units"))
+		{
+			if (node is Unit unit && unit.GetTeamId() == leavingTeamId && IsInstanceValid(unit))
+				unit.QueueFree();
+		}
+
+		foreach (var node in GetTree().GetNodesInGroup("ships"))
+		{
+			if (node is Ship ship && ship.GetTeamId() == leavingTeamId && IsInstanceValid(ship))
+				ship.QueueFree();
+		}
+
+		foreach (var camp in _allCamps)
+		{
+			if (camp == null || !IsInstanceValid(camp) || camp.GetTeamId() != leavingTeamId)
+				continue;
+
+			camp.NeutralizeCampAfterPlayerLeave();
+			camp.RespawnNeutralDefenders();
+		}
+
+		_teamGold.Remove(leavingTeamId);
+		_teamGoldVersion.Remove(leavingTeamId);
+		_homeRegions.Remove(leavingTeamId);
+		_tier2Unlocked.Remove(leavingTeamId);
+		_teamUnitCounts.Remove(leavingTeamId);
+
+		if (GameState.IsOnlineMultiplayer)
+			EmitSignal(SignalName.OnlinePlayerLeft, leavingTeamId);
 	}
+
 }

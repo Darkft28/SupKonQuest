@@ -1,6 +1,6 @@
 namespace SupKonQuest.Map.Presets;
 
-// Carte prédéfinie 256x256 — données RLE en paires {count, tileId}
+// Carte prédéfinie 256x256 - données RLE en paires {count, tileId}
 public static class AlabastaMap
 {
     public static readonly int[] SolRle = {
@@ -326,7 +326,7 @@ public static class AlabastaMap
         247, -1, 1, 100, 36, -1, 1, 102, 222, -1, 1, 100, 5096, -1
     };
 
-    public static readonly string[] TerritoireNoms = { "Skjoldøy", "Hrafnsholm", "Vindheim", "Isafjörðøy" };
+    public static readonly string[] TerritoireNoms = { "Skjoldøy", "Hrafnsholm", "Vindheim", "Isafjörðøy"};
 
     public static readonly int[] TerritoiresRle = {
         1461, 0, 7, 2, 247, 0, 15, 2, 241, 0, 20, 2, 22, 0, 6, 2,

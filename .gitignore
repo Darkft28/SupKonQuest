@@ -1,14 +1,23 @@
 # Godot 4+ specific ignores
 .godot/
 /android/
+/addons/
 
 # Documentation et fichiers de configuration personnels
 .claude/
-
+.copilot/
+.cursorrules
+/project_info__1.md
+/project_info_1.md
+/docs/markdown-pdf.css
+/docs/user_manual.md
+/docs/tech_doc.md
 # Godot UID files
 *.cs.uid
 *.tscn.uid
+*export_presets.cfg
 
 # IDE
 .idea/
 *.sln.DotSettings.user
+.vscode/

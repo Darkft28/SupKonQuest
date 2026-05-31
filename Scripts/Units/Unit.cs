@@ -29,7 +29,7 @@ public partial class Unit : CharacterBody2D
 	private Sprite2D _sprite;
 
 	private Vector2? _targetPosition = null;
-	private const float ArrivalDistance = 20f;
+	private const float ArrivalDistance = 80f;
 	private Vector2 _lastPosition;
 	private int _stuckFrames = 0;
 	private int _moveStartDelay = 0;
@@ -60,16 +60,25 @@ public partial class Unit : CharacterBody2D
 	private NavigationAgent2D _navAgent = null;
 	private Vector2 _lastNavTargetPos = Vector2.Zero;
 	private bool _navTargetDirty = true;
+	private int _navPathCooldown = 0; // frames avant de relire le chemin nav (calcul asynchrone)
 	private const float NavUpdateDistance = 64f; // recalcule le chemin si la cible bouge > 64px
+	private Vector2 _intendedDirection = Vector2.Zero; // direction voulue avant MoveAndSlide
 
-	// Throttle recherche ennemis/camps — évite O(n²) chaque frame
+	// Throttle recherche ennemis/camps - évite O(n²) chaque frame
 	private float _aiSearchTimer = 0f;
 	private const float EnemySearchInterval = 0.5f;
+	private const float HealSearchInterval = 0.5f;
 
-	// Throttle vérification défenseurs camp — évite LINQ chaque frame
+	// Throttle vérification défenseurs camp - évite LINQ chaque frame
 	private float _campDefeatCheckTimer = 0f;
 	private bool _campDefeatCached = false;
 	private const float CampDefeatCheckInterval = 0.3f;
+
+	private float _healSearchTimer = 0f;
+	private bool _countedInTeamUnits;
+	private float _rvoCheckTimer = 0f;
+	private const float RvoCheckInterval = 0.2f;
+
 
 	// Ennemi croisé en chemin vers un camp (combat opportuniste)
 	private Unit _opportunisticTarget = null;
@@ -85,6 +94,8 @@ public partial class Unit : CharacterBody2D
 	// Aura de defense (Support)
 	private const float SupportAuraRadius = 200f;
 	private const float SupportDefenseBonus = 10f;
+	private float _activeSupportAuraBonus;
+	private Area2D _supportAuraArea;
 	private static readonly Color AuraColor = new Color(0.3f, 0.5f, 1f, 0.12f);
 	private static readonly Color AuraBorderColor = new Color(0.3f, 0.5f, 1f, 0.35f);
 
@@ -198,20 +209,103 @@ public partial class Unit : CharacterBody2D
 		// Stagger la recherche ennemis : offset aléatoire pour éviter les pics CPU
 		_aiSearchTimer = GD.Randf() * EnemySearchInterval;
 
-		// NavigationAgent2D pour le pathfinding (couche 1 = terrestre)
-		_navAgent = new NavigationAgent2D();
+		// NavigationAgent2D pré-instancié dans la scène (fallback runtime si manquant)
+		_navAgent = GetNodeOrNull<NavigationAgent2D>("NavigationAgent2D");
+		if (_navAgent == null)
+		{
+			_navAgent = new NavigationAgent2D();
+			_navAgent.Name = "NavigationAgent2D";
+			AddChild(_navAgent);
+		}
+
 		_navAgent.PathDesiredDistance = 10f;
 		_navAgent.TargetDesiredDistance = ArrivalDistance;
+		_navAgent.PathMaxDistance = 512f;
 		_navAgent.AvoidanceEnabled = true;
 		_navAgent.NavigationLayers = 1u;
-		_navAgent.Radius = 40f; // rayon collision unité
-		AddChild(_navAgent);
+		_navAgent.MaxSpeed = _stats.Speed;
+		_navAgent.VelocityComputed += OnNavVelocityComputed;
 
 		_currentState = UnitState.Idle;
+
+		if (TeamId > 0 && _currentHealth > 0)
+		{
+			GameManager.Instance?.RegisterTeamUnit(TeamId);
+			_countedInTeamUnits = true;
+		}
+
+		if (UnitType == "Support")
+			_ = SetupSupportAuraAsync();
+	}
+
+	private void UnregisterFromTeamCount()
+	{
+		if (!_countedInTeamUnits)
+			return;
+
+		_countedInTeamUnits = false;
+		GameManager.Instance?.UnregisterTeamUnit(TeamId);
+	}
+
+	public void AddSupportAuraBonus(float amount)
+	{
+		_activeSupportAuraBonus = Mathf.Min(_activeSupportAuraBonus + amount, 40f);
+	}
+
+	public void RemoveSupportAuraBonus(float amount)
+	{
+		_activeSupportAuraBonus = Mathf.Max(0f, _activeSupportAuraBonus - amount);
+	}
+
+	private async System.Threading.Tasks.Task SetupSupportAuraAsync()
+	{
+		_supportAuraArea = new Area2D
+		{
+			Name = "SupportAura",
+			CollisionLayer = 0,
+			CollisionMask = 1,
+			Monitoring = true,
+		};
+
+		var shapeNode = new CollisionShape2D();
+		var circle = new CircleShape2D { Radius = SupportAuraRadius };
+		shapeNode.Shape = circle;
+		_supportAuraArea.AddChild(shapeNode);
+		_supportAuraArea.BodyEntered += OnSupportAuraBodyEntered;
+		_supportAuraArea.BodyExited += OnSupportAuraBodyExited;
+		AddChild(_supportAuraArea);
+
+		await ToSignal(GetTree(), SceneTree.SignalName.PhysicsFrame);
+
+		if (!IsInstanceValid(_supportAuraArea))
+			return;
+
+		foreach (Node body in _supportAuraArea.GetOverlappingBodies())
+			OnSupportAuraBodyEntered(body);
+	}
+
+	private void OnSupportAuraBodyEntered(Node body)
+	{
+		if (body is Unit ally && ally != this && ally.GetTeamId() == TeamId && ally.GetCurrentHealth() > 0)
+			ally.AddSupportAuraBonus(SupportDefenseBonus);
+	}
+
+	private void OnSupportAuraBodyExited(Node body)
+	{
+		if (body is Unit ally && ally != this)
+			ally.RemoveSupportAuraBonus(SupportDefenseBonus);
 	}
 
 	public override void _ExitTree()
 	{
+		UnregisterFromTeamCount();
+
+		if (_supportAuraArea != null && IsInstanceValid(_supportAuraArea))
+		{
+			_supportAuraArea.BodyEntered -= OnSupportAuraBodyEntered;
+			_supportAuraArea.BodyExited -= OnSupportAuraBodyExited;
+		}
+
 		if (!string.IsNullOrEmpty(NetworkId))
 		{
 			NetworkEntityRegistry.Unregister(NetworkId);
@@ -243,6 +337,7 @@ public partial class Unit : CharacterBody2D
 				_currentTarget = null;
 				_healTarget = null;
 				Velocity = Vector2.Zero;
+				_intendedDirection = Vector2.Zero;
 				QueueRedraw();
 				break;
 
@@ -283,20 +378,6 @@ public partial class Unit : CharacterBody2D
 
 	public override void _PhysicsProcess(double delta)
 	{
-		// Puppet réseau : interpoler vers la position distante, pas d'IA locale
-		bool isMulti = NetworkSync.Instance?.IsMultiplayer() == true;
-		if (isMulti && !IsLocalAuthority)
-		{
-			if (_networkTargetPosition.HasValue)
-			{
-				Vector2 moveDir = _networkTargetPosition.Value - GlobalPosition;
-				if (moveDir.Length() > 2f)
-					UpdateSpriteDirection(moveDir);
-				GlobalPosition = GlobalPosition.Lerp(_networkTargetPosition.Value, 10f * (float)delta);
-			}
-			return;
-		}
-
 		switch (_currentState)
 		{
 			case UnitState.Idle:
@@ -328,6 +409,10 @@ public partial class Unit : CharacterBody2D
 				break;
 		}
 
-		UpdateSpriteDirection(Velocity);
+		ProcessSupportBattleHorn(delta);
+		TickUltimateState(delta);
+
+		if (_intendedDirection != Vector2.Zero)
+			UpdateSpriteDirection(_intendedDirection);
 	}
 }

@@ -76,11 +76,17 @@ namespace SupKonQuest
 
 			if (Zoom.DistanceTo(_targetZoom) > 0.001f)
 			{
-				Vector2 mousePosBefore = GetGlobalMousePosition();
-				Zoom = Zoom.Lerp(_targetZoom, (float)delta * ZoomSpeed);
-				Vector2 mousePosAfter = GetGlobalMousePosition();
+				Vector2 zoomBefore = Zoom;
+				Vector2 mouseWorld = GetGlobalMousePosition();
+				float t = Mathf.Clamp((float)delta * ZoomSpeed, 0f, 1f);
+				Zoom = zoomBefore.Lerp(_targetZoom, t);
+				Zoom = Zoom.Clamp(new Vector2(MinZoom, MinZoom), new Vector2(MaxZoom, MaxZoom));
 
-				Position += mousePosBefore - mousePosAfter;
+				if (!Mathf.IsEqualApprox(zoomBefore.X, Zoom.X))
+				{
+					float ratio = zoomBefore.X / Zoom.X;
+					Position = mouseWorld - (mouseWorld - Position) * ratio;
+				}
 			}
 
 			ClampPosition();
@@ -189,7 +195,7 @@ namespace SupKonQuest
 
 		private void AdjustZoom(float factor)
 		{
-			_targetZoom = (Zoom * factor).Clamp(new Vector2(MinZoom, MinZoom), new Vector2(MaxZoom, MaxZoom));
+			_targetZoom = (_targetZoom * factor).Clamp(new Vector2(MinZoom, MinZoom), new Vector2(MaxZoom, MaxZoom));
 		}
 	}
 }

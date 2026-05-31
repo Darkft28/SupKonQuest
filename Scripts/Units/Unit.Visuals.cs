@@ -10,7 +10,13 @@ public partial class Unit
 
 	private void CreateSprite()
 	{
-		_sprite = new Sprite2D();
+		_sprite = GetNodeOrNull<Sprite2D>("Sprite2D");
+		if (_sprite == null)
+		{
+			_sprite = new Sprite2D();
+			_sprite.Name = "Sprite2D";
+			AddChild(_sprite);
+		}
 
 		_texFront = LoadUnitTexture("Front");
 		_texBack  = LoadUnitTexture("Back");
@@ -28,7 +34,6 @@ public partial class Unit
 		{
 			_sprite.Texture = _texFront;
 			_sprite.Scale = new Vector2(0.255f, 0.255f);
-			AddChild(_sprite);
 		}
 		else
 		{
@@ -40,12 +45,10 @@ public partial class Unit
 	{
 		string path = UnitType switch
 		{
-			"Heal"      => $"res://Assets/Units/Characters/Healer/healer_{direction}.png",
-			"AntiArmor" => direction == "Left"
-				? null
+			"Heal"=> $"res://Assets/Units/Characters/Healer/healer_{direction}.png",
+			"AntiArmor"=> direction == "Left"? null
 				: $"res://Assets/Units/Characters/Anti-armor/Anti-armor_{direction.ToLower()}.png",
-			_ => $"res://Assets/Units/Characters/{UnitType}/{UnitType}_{direction}.png"
-		};
+			_ => $"res://Assets/Units/Characters/{UnitType}/{UnitType}_{direction}.png"};
 
 		if (path == null) return null;
 		return GD.Load<Texture2D>(path);
@@ -88,31 +91,54 @@ public partial class Unit
 
 	private void CreateCollision()
 	{
-		var collision = new CollisionShape2D();
-		var shape = new CircleShape2D();
-		shape.Radius = 40f;
-		collision.Shape = shape;
-		AddChild(collision);
+		var collision = GetNodeOrNull<CollisionShape2D>("CollisionShape2D");
+		if (collision == null)
+		{
+			collision = new CollisionShape2D();
+			collision.Name = "CollisionShape2D";
+			AddChild(collision);
+		}
 
-		CollisionLayer = 1u;
-		CollisionMask = 0u;
+		var shape = collision.Shape as CapsuleShape2D ?? new CapsuleShape2D();
+		shape.Radius = 34f;
+		shape.Height = 50f;
+		collision.Shape = shape;
+
+		SetCollisionLayerValue(1, true);
+		SetCollisionLayerValue(2, false);
+		SetCollisionLayerValue(3, false);
+		SetCollisionMaskValue(1, true);
+		SetCollisionMaskValue(2, false);
+		SetCollisionMaskValue(3, true);
 	}
 
 	private void CreateDetectionZone()
 	{
-		_detectionZone = new Area2D();
-		_detectionZone.Name = "DetectionZone";
+		_detectionZone = GetNodeOrNull<Area2D>("DetectionZone");
+		if (_detectionZone == null)
+		{
+			_detectionZone = new Area2D();
+			_detectionZone.Name = "DetectionZone";
+			AddChild(_detectionZone);
+		}
 
-		var collisionShape = new CollisionShape2D();
-		var circleShape = new CircleShape2D();
+		var collisionShape = _detectionZone.GetNodeOrNull<CollisionShape2D>("CollisionShape2D");
+		if (collisionShape == null)
+		{
+			collisionShape = new CollisionShape2D();
+			collisionShape.Name = "CollisionShape2D";
+			_detectionZone.AddChild(collisionShape);
+		}
+
+		var circleShape = collisionShape.Shape as CircleShape2D ?? new CircleShape2D();
 		circleShape.Radius = DetectionRange;
 		collisionShape.Shape = circleShape;
 
-		_detectionZone.AddChild(collisionShape);
-		AddChild(_detectionZone);
+		// Layer 0 = invisible ; Mask 1 = détecte les unités terrestres (layer 1)
+		_detectionZone.CollisionLayer = 0u;
+		_detectionZone.CollisionMask = 1u;
 
 		_detectionZone.BodyEntered += OnBodyEnteredDetectionZone;
-		_detectionZone.BodyExited += OnBodyExitedDetectionZone;
 	}
 
 	public override void _Draw()
@@ -123,7 +149,7 @@ public partial class Unit
 			DrawArc(Vector2.Zero, SupportAuraRadius, 0, Mathf.Tau, 64, AuraBorderColor, 2f);
 		}
 
-		if (UnitType == "Heal" && _currentState == UnitState.Healing
+		if (UnitType == "Heal"&& _currentState == UnitState.Healing
 			&& _healTarget != null && IsInstanceValid(_healTarget) && _healTarget.IsInsideTree())
 		{
 			Vector2 targetLocal = _healTarget.GlobalPosition - GlobalPosition;
