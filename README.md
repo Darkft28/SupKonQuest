@@ -6,7 +6,16 @@ Jeu de strategie et de conquete en temps reel developpe avec Godot 4.5 et C# (.N
 
 SupKonQuest est un RTS (Real-Time Strategy) ou le joueur doit capturer des camps sur une carte predéfinie. On commence avec un camp et un peu d'or, on produit des unites terrestres et navales, et on part a la conquete des camps adverses. Le jeu propose un mode solo contre IA (3 niveaux, 1 camp par faction) et un mode multijoueur en ligne PvP (2 a 8 joueurs, 1 camp de depart par joueur, camps restants neutres).
 
-Le principe : chaque camp genere de l'or passivement, cet or permet d'acheter des unites, et ces unites servent a capturer d'autres camps. Controler une region entiere rapporte un bonus. Le joueur qui controle tous les camps gagne.
+Le principe : chaque camp genere de l'or passivement, cet or permet d'acheter des unites, et ces unites servent a capturer d'autres camps. Controler une region entiere rapporte un bonus. Le joueur qui controle **100 % des camps non neutres** gagne.
+
+## Documentation
+
+
+| Document                | Public       | Fichier dans le depot  |
+| ----------------------- | ------------ | ---------------------- |
+| Manuel utilisateur      | Joueurs      | `docs/user_manual.pdf` |
+| Documentation technique | Developpeurs | `docs/tech_doc.pdf`    |
+
 
 ## Technologies
 
@@ -33,34 +42,51 @@ Ensuite ouvrir le projet dans Godot 4.5 et lancer avec F5.
 
 ## Serveur Nakama local (pour le mode en ligne)
 
-Si vous n'avez pas encore de serveur, le mode solo fonctionne sans Nakama.
-Pour tester le mode en ligne (auth email / invité + matchmaking 2-8 + lobby in-match), lancez un Nakama local **et** le module relay (`supkonquest-server/`, `npm run build` → `build/index.js`) qui pilote le countdown et le demarrage de partie.
+Le mode solo fonctionne sans Nakama. Pour tester le multijoueur (auth email / invite + matchmaking 2-8 + lobby in-match), lancez le stack **CockroachDB + Nakama** avec le module relay TypeScript du depot (`supkonquest-server/`).
 
-Prerequis minimaux:
+**Prerequis :** Docker Desktop, Node.js + npm.
 
-- Docker Desktop
-
-Commandes (PowerShell):
+**1. Compiler le module relay**
 
 ```powershell
-docker network create nakama-net
-docker run --name nakama-postgres --network nakama-net -e POSTGRES_PASSWORD=localdb -e POSTGRES_USER=local -e POSTGRES_DB=nakama -p 5432:5432 -d postgres:15-alpine
-docker run --name nakama --network nakama-net -p 7350:7350 -p 7349:7349 -d heroiclabs/nakama:3.22.0 --database.address root@nakama-postgres:5432
+cd supkonquest-server
+npm install
+npm run build
 ```
 
-Le projet utilise par defaut ces valeurs dans `project.godot`:
+**2. Lancer les conteneurs (depuis `supkonquest-server/`)**
 
-- `nakama/scheme = "http"`
-- `nakama/host = "4.165.28.243"` (serveur Azure ; pour du local, mettre `127.0.0.1`)
-- `nakama/port = 7350`
-- `nakama/server_key = "defaultkey"`
-
-Arret/nettoyage rapide:
+Creez un `docker-compose.local.yml` (voir `docs/tech_doc.pdf` § 9 pour le contenu complet) puis :
 
 ```powershell
-docker stop nakama nakama-postgres
-docker rm nakama nakama-postgres
-docker network rm nakama-net
+docker compose -f docker-compose.local.yml up --build
+```
+
+Le `Dockerfile` embarque `build/index.js`. Recompilez (`npm run build`) puis relancez `docker compose up --build` apres chaque modification du module TS.
+
+**Configuration client** (`project.godot`, section `[nakama]`) :
+
+
+| Parametre    | Local        | Production (Azure)               |
+| ------------ | ------------ | -------------------------------- |
+| `host`       | `127.0.0.1`  | IP ou domaine du serveur Azure   |
+| `port`       | `7350`       | `7350`                           |
+| `server_key` | `defaultkey` | `defaultkey` (ou cle configuree) |
+
+
+**Test multi-instance (2 clients Godot) :**
+
+```powershell
+& "C:\Chemin\Vers\Godot_v4.5.1-stable_mono_win64.exe" --path "C:\Chemin\Vers\SupKonQuest" --nakama-slot=1
+& "C:\Chemin\Vers\Godot_v4.5.1-stable_mono_win64.exe" --path "C:\Chemin\Vers\SupKonQuest" --nakama-slot=2
+```
+
+Chaque slot utilise des fichiers de session distincts (`user://nakama_device_id_1.txt`, etc.).
+
+**Arret :**
+
+```powershell
+docker compose -f docker-compose.local.yml down
 ```
 
 ## Structure du projet
@@ -93,7 +119,14 @@ SupKonQuest/
 │   ├── Economy/                # GameManager, VictoryManager
 │   ├── Network/                # GameState, NetworkSync, NetworkEntityRegistry, NakamaService, AuthSessionStore
 │   ├── AI/                     # AIController (Easy/Medium/Hard)
-│   └── UI/                     # GameHUD, LobbyUI, AuthUI, Minimap, MainMenu, GameModeMenu, LocalizationManager
+│   └── UI/                     # GameHUD, LobbyUI, AuthUI, Minimap, MainMenu, GameModeMenu, LocalizationManager, KeybindingsManager
+├── supkonquest-server/         # Module Nakama relay (TypeScript) + Docker
+│   ├── main.ts, lobby.ts, match_handler.ts, messages.ts
+│   ├── docker-compose.yml      # Deploiement Azure ACI
+│   └── NAKAMA_SERVER_TS.md     # Contrat opcodes (resume en docs/tech_doc.pdf § 5)
+├── docs/
+│   ├── user_manual.pdf         # Manuel joueur (PDF versionne)
+│   └── tech_doc.pdf            # Doc technique (PDF versionne)
 └── project.godot               # Config Godot (autoloads, inputs)
 ```
 
@@ -123,11 +156,11 @@ Root
 
 ### Singletons (AutoLoad)
 
-- **GameManager** : economie or par joueur/slot, bonus region, conditions de victoire via VictoryManager. Accessible via `GameManager.Instance`.
-- **GameState** : seed de carte, identifiant local de joueur (slot d'ownership), IsAIMode, AILevel, IsOnline, `IsOnlineMultiplayer`.
-- **NakamaService** : mode en ligne (email, invité, restauration de session, matchmaking, relay).
-- **AuthSessionStore** : persistance chiffree des tokens Nakama (`user://nakama_auth_session.dat`).
-- **LocalizationManager** : 166 cles traduites en FR/EN/ES, signal `LanguageChanged`.
+- **GameManager** : economie or par equipe, bonus region, tiers de production. Accessible via `GameManager.Instance`.
+- **GameState** : seed de carte, equipe locale, mode solo/en ligne, carte selectionnee, mode rapide.
+- **NakamaService** : mode en ligne (email, invite, restauration de session, matchmaking, relay).
+- **KeybindingsManager** : macros de selection (unites 1-8, navires 9/0/-, ultimes reconfigurables).
+- **LocalizationManager** : traductions FR/EN/ES, signal `LanguageChanged`.
 - **AudioSettings** : preferences de volume.
 
 ### Signaux (Observer Pattern)
@@ -148,7 +181,7 @@ EmitSignal(SignalName.PlayerConnected, id);
 
 ### Maps prédéfinies (presets)
 
-La carte est chargee depuis un preset encode en RLE. Deux maps disponibles : **Irridium** et **Alabasta**.
+La carte est chargee depuis un preset encode en RLE. **Trois cartes** disponibles : **Irridium** (3 regions), **Alabasta** (4 regions), **Torskey** (3 regions).
 
 ```
 RNG placement camps : seed = baseSeed+2000  (System.Random deterministe)
@@ -174,7 +207,7 @@ Carte : 256x256 tuiles de 128px = ~32 000 x 32 000 px.
 ### Placement des camps
 
 - Positions predefinies par la map preset (pas de probabilite ni distance minimale dans le code)
-- Chaque camp reçoit un `RegionId` selon la grille territoire du preset (3 regions sur Irridium, 4 sur Alabasta)
+- Chaque camp recoit un `RegionId` selon la grille territoire du preset
 - Chaque camp neutre spawne 4 defenseurs initiaux (Infantry, Support, Heal, Range) avec HP x1.5
 
 ### Territoire visuel
@@ -244,12 +277,14 @@ Formule scalaire — la defense reduit progressivement (100 defense = 50% reduct
 
 | Type      | Tier | PV  | Attaque | Defense | Vitesse | Portee | Prix | Production | Capacite  |
 | --------- | ---- | --- | ------- | ------- | ------- | ------ | ---- | ---------- | --------- |
-| Transport | 1    | 200 | 0       | 10      | 120     | -      | 150g | 5s         | 10 unites |
+| Transport | 3    | 200 | 0       | 10      | 120     | -      | 150g | 5s         | 10 unites |
 | Fregate   | 3    | 180 | 20      | 15      | 100     | 300    | 200g | 5s         | -         |
 | Destroyer | 3    | 250 | 35      | 20      | 80      | 350    | 300g | 7s         | -         |
 
 
-Un **port** s'achete manuellement depuis le HUD (bouton **⚓ Port — 500g**) puis le joueur clique sur une tuile cotiere pour le poser. L'orientation est auto-detectee selon la direction de l'eau adjacente. Le port dispose de sa propre file de production (max 5 navires). Le Transport peut embarquer jusqu'a 10 unites terrestres et les debarquer sur une cote. Le placement peut etre annule (or rembourse).
+Tous les navires requierent le **tier 3** (region d'origine entierement controlee) et un **port** actif. Maximum **5 navires actifs** par equipe.
+
+Un **port** s'achete manuellement depuis le HUD (bouton **Port — 500g**) sur un camp possede sans port, puis le joueur clique sur une tuile cotiere pour le poser. L'orientation est auto-detectee selon la direction de l'eau adjacente. Le port dispose de sa propre file de production (max 5 navires). Le Transport peut embarquer jusqu'a 10 unites terrestres et les debarquer sur une cote. Le placement peut etre annule (or rembourse).
 
 ## Systeme de camps
 
@@ -273,7 +308,7 @@ Recompenses : +50 or instantane, 3 unites bonus spawnees (Infantry, Range, Infan
 
 | Source                                  | Montant                           |
 | --------------------------------------- | --------------------------------- |
-| Passif joueur                           | +75 or/sec                        |
+| Passif (par equipe, joueur et IA)       | +75 or/sec                        |
 | Par camp possede                        | +50 or/sec                        |
 | Capture d'un camp                       | +50 or instantane                 |
 | Or stocke dans camp neutre              | Transfere au moment de la capture |
@@ -284,25 +319,25 @@ Or de depart : 100 or.
 
 ### Regions economiques
 
-La carte est divisee en regions (3 sur Irridium, 4 sur Alabasta). Si une equipe controle tous les camps d'une region, elle reçoit +30 or/sec. Verifie chaque seconde. Les regions servent aussi a debloquer le Tier 3 (controler sa region d'origine).
+La carte est divisee en regions (3 sur Irridium, 4 sur Alabasta, 3 sur Torskey). Si une equipe controle tous les camps d'une region, elle recoit +30 or/sec. Verifie chaque seconde. Les regions servent aussi a debloquer le Tier 3 (controler sa region d'origine).
 
 ### Systeme de tiers
 
 Chaque equipe progresse sur 3 paliers de production :
 
 
-| Palier | Condition de deblocage                          | Unites disponibles                        |
-| ------ | ----------------------------------------------- | ----------------------------------------- |
-| Tier 1 | Depart                                          | Infantry, Support, Range, Transport       |
-| Tier 2 | Achat 1500 or                                   | + Heal, AntiArmor                         |
-| Tier 3 | Controler tous les camps de sa region d'origine | + Mortar, Heavy, Tank, Fregate, Destroyer |
+| Palier | Condition de deblocage                          | Unites / navires disponibles                         |
+| ------ | ----------------------------------------------- | ---------------------------------------------------- |
+| Tier 1 | Depart                                          | Infantry, Support, Range                             |
+| Tier 2 | Achat 1500 or                                   | + Heal, AntiArmor                                    |
+| Tier 3 | Controler tous les camps de sa region d'origine | + Mortar, Heavy, Tank, Transport, Fregate, Destroyer |
 
 
 Le bouton de deblocage tier 2 est visible dans le HUD quand un camp est selectionne.
 
 ### Victoire
 
-Controler 100% des camps non-neutres. Verifie chaque seconde par `VictoryManager`.
+Controler **100 % des camps non neutres** (`VictoryManager`, verification chaque seconde).
 
 ## Intelligence Artificielle
 
@@ -355,7 +390,7 @@ Un clic droit deplace les unites selectionnees. Clic droit sur un Transport alli
 - **WASD/Fleches** : pan (vitesse adaptee au zoom)
 - **Molette** : zoom smooth via Lerp (0.05x a 2.0x)
 - **Clic droit maintenu** : pan a la souris
-- **C / Home** : recentrer sur la carte
+- **C / Home** : recentrer sur le centre de la carte
 - Limites clampees aux bords de la carte
 
 ## Minimap
@@ -380,47 +415,36 @@ Un clic droit deplace les unites selectionnees. Clic droit sur un Transport alli
 - **Camps** : 1 camp de depart par joueur humain ; les autres camps preset restent **neutres** (defenseurs 1,5x HP).
 - **Equipes** : `LocalTeamId` = index dans la liste triee des `userId` Nakama + 1 ; `ActivePlayerCount` fige au demarrage.
 - **Lobby in-match** : apres `JoinMatch` (>= 2 joueurs), le client affiche la liste des joueurs et attend le **serveur relay** — pas de demarrage automatique cote client.
-- **Test multi-instance** : un `deviceId` / `userId` Nakama distinct par instance via `--nakama-slot` (fichiers `user://nakama_device_id_1.txt`, `user://nakama_auth_session_1.dat`, etc.). Syntaxe recommandee Godot 4 :
+- **Test multi-instance** : voir section [Serveur Nakama local](#serveur-nakama-local-pour-le-mode-en-ligne) (`--nakama-slot=1`, `--nakama-slot=2`).
 
-```powershell
-godot --path . -- --nakama-slot=1
-godot --path . -- --nakama-slot=2
-```
+### Contrat relay (`supkonquest-server/`)
 
-(`--` separe les args moteur des args jeu ; le code lit aussi `OS.GetCmdlineArgs()` si `--nakama-slot=1` est passe sans `--`.)
+Le module `**supkonquest_relay`** est dans ce depot (`supkonquest-server/`). Detail complet : `docs/tech_doc.pdf` § 5 et `supkonquest-server/NAKAMA_SERVER_TS.md`.
 
-### Contrat relay (module serveur externe)
+**Opcodes lobby (serveur → clients) :**
 
-Le module relay Nakama vit dans un **autre depot**. Il doit broadcaster :
 
-| Opcode | Nom | Payload JSON (camelCase) |
-| ------ | --- | ------------------------ |
-| `4001` | LobbyTick | `{ "secondsRemaining": int, "playerCount": int }` — environ chaque seconde pendant l'attente |
-| `4002` | MatchStart | `{ "seed": int, "orderedUserIds": ["userId1", ...], "mapType": 0|1|2 }` — `mapType` : 0=Irridium, 1=Alabasta, 2=Torskey (tire au sort serveur) ; liste triee par `userId` |
+| Opcode | Nom        | Payload JSON (camelCase)                                                                                                 |
+| ------ | ---------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `4001` | LobbyTick  | `{ secondsRemaining, playerCount }`                                                                                      |
+| `4002` | MatchStart | `{ seed, orderedUserIds, matchId?, mapType }` — `mapType` : 0=Irridium, 1=Alabasta, 2=Torskey ; liste triee par `userId` |
 
-Regles serveur attendues :
 
-- Countdown **~20 s** des l'arrivee du 2e joueur.
-- **+5 s** au temps restant a chaque nouveau joueur (jusqu'a 8).
-- Demarrage immediat si **8 joueurs** dans le match.
-- Seul `MatchStart` declenche le chargement de `Game.tscn` sur tous les clients.
+Regles lobby : countdown **20 s** au 2e joueur, **+5 s** par joueur supplementaire, demarrage immediat a **8 joueurs**.
 
-Constantes client : `NetworkCommandRouter.OpcodeLobbyTick` / `OpcodeMatchStart`.
+### Gameplay relay (opcodes 1001–7003)
 
-### Gameplay relay (opcodes 1001-6001)
-
-- `NetworkCommandRouter` : achats, spawns (`1003`/`1005`), deplacements (`2001`/`2004`), transport (`2006`-`2008`), degats camp (`2005`), captures, combat (`7001`-`7003`), ultimates et cleanup de deconnexion.
+- `NetworkCommandRouter` : achats, spawns, deplacements, transport, degats, captures, combat, ultimes (`6001`/`6002`), snapshots or (`3001`).
 - `NetworkEntityRegistry` : dictionnaire statique `NetworkId → Node`
   - IDs dynamiques : `"{peerId}_{counter}"`
   - IDs deterministes des defenseurs initiaux : `"camp_{campId}_unit_{index}"`
 - Camps neutres en relay : simulation locale sur **tous** les peers (`CampSimple.IsLocallyOwned`).
+- Enveloppe obligatoire : `senderUserId` + `sequence` strictement croissante par joueur.
 
-### Deconnexion en partie (autorite serveur)
+### Deconnexion en partie
 
-- Mapping `userId -> teamId` fige au `MatchStart`.
-- Sur leave apres demarrage:
-  - serveur broadcast **une seule fois** `5002 PlayerLeaveCleanup`,
-  - client applique cleanup gameplay (suppression unites/navires, camps neutralises, respawn defenseurs neutres).
+- Mapping `userId → teamId` fige au `MatchStart`.
+- Sur leave apres demarrage : serveur broadcast **une fois** `5002 PlayerLeaveCleanup` ; le client neutralise l'equipe (unites/navires supprimes, camps neutralises).
 
 ### Determinisme
 
@@ -436,26 +460,30 @@ Constantes client : `NetworkCommandRouter.OpcodeLobbyTick` / `OpcodeMatchStart`.
 ## Controles
 
 
-| Action                    | Controle              |
-| ------------------------- | --------------------- |
-| Deplacer la camera        | ZQSD / Fleches        |
-| Zoom                      | Molette souris        |
-| Drag camera               | Clic droit maintenu   |
-| Selectionner              | Clic gauche           |
-| Selection multiple        | Clic gauche + glisser |
-| Deplacer les unites       | Clic droit            |
-| Recentrer camera          | C / Home              |
-| Ultimate Heal (ciblage)   | `1` puis clic gauche  |
-| Ultimate Support (ciblage)| `2` puis clic gauche  |
-| Annuler le ciblage        | `Esc` / clic droit    |
+| Action                    | Controle                   |
+| ------------------------- | -------------------------- |
+| Deplacer la camera        | ZQSD / Fleches             |
+| Zoom                      | Molette souris             |
+| Drag camera               | Clic droit maintenu        |
+| Selectionner              | Clic gauche                |
+| Selection multiple        | Clic gauche + glisser      |
+| Deplacer les unites       | Clic droit                 |
+| Recentrer camera          | C / Home                   |
+| Macro selection (unites)  | `1` a `8` (reconfigurable) |
+| Macro selection (navires) | `9`, `0`, `-`              |
+| Toutes les unites         | `A`                        |
+| Ultime soin (equipe)      | `1` puis clic gauche       |
+| Ultime support (equipe)   | `2` puis clic gauche       |
+| Annuler le ciblage        | `Esc` / clic droit         |
 
+
+Les ultimes sont des capacites **d'equipe** (recharge 20 s / 25 s), independantes des unites Heal/Support sur le terrain. Raccourcis modifiables dans le menu principal via `KeybindingsManager`.
 
 ## Conventions de code
 
 - Classes et methodes : PascalCase
 - Variables privees : _camelCase
 - Variables locales : camelCase
-- Commentaires : francais
 - Commits : `type: description` (feat, fix, refactor, docs)
 
 ## Git
