@@ -139,7 +139,7 @@ public partial class Projectile : Node2D
 	private void ApplyMortarSplash()
 	{
 		const float SplashRadius = 200f;
-		const float SplashMaxDamage = 20f;
+		const float SplashMaxDamage = 40f;
 
 		var allUnits = GetTree().GetNodesInGroup("units");
 		foreach (var node in allUnits)
@@ -154,7 +154,7 @@ public partial class Projectile : Node2D
 			if (splashDamage <= 0f) continue;
 
 			bool isMultiSplash = NetworkSync.Instance?.IsMultiplayer() == true;
-			if (isMultiSplash && !string.IsNullOrEmpty(unit.NetworkId))
+			if (isMultiSplash && !unit.IsLocalAuthority && !string.IsNullOrEmpty(unit.NetworkId))
 				NetworkSync.Instance?.SendUnitDamage(unit.NetworkId, splashDamage, _attackerTeamId);
 			else
 				unit.TakeDamageFrom(splashDamage, _attackerTeamId);

@@ -200,36 +200,26 @@ public partial class GameHUD : Control
 		_leaderboardPanel.AnchorBottom = 0f;
 		_leaderboardPanel.OffsetLeft = 12f;
 		_leaderboardPanel.OffsetTop = 12f;
-		_leaderboardPanel.OffsetRight = 316f;
+		_leaderboardPanel.OffsetRight = 380f;
 		_leaderboardPanel.OffsetBottom = _leaderboardPanel.OffsetTop + LeaderboardCollapsedHeight;
 
-		// Fond sombre chaud + bordure dorée nette (sans texture étirée)
 		var panelStyle = new StyleBoxFlat();
-		panelStyle.BgColor = new Color(0.07f, 0.05f, 0.03f, 0.92f);
-		panelStyle.BorderColor = new Color(1f, 0.88f, 0.42f, 1f);
-		panelStyle.BorderWidthLeft   = 2;
-		panelStyle.BorderWidthTop    = 2;
-		panelStyle.BorderWidthRight  = 2;
-		panelStyle.BorderWidthBottom = 2;
-		panelStyle.CornerRadiusTopLeft     = 6;
-		panelStyle.CornerRadiusTopRight    = 6;
-		panelStyle.CornerRadiusBottomLeft  = 6;
-		panelStyle.CornerRadiusBottomRight = 6;
-		panelStyle.ContentMarginLeft   = 20f;
-		panelStyle.ContentMarginTop    = 8f;
-		panelStyle.ContentMarginRight  = 16f;
-		panelStyle.ContentMarginBottom = 14f;
+		panelStyle.BgColor = new Color(0f, 0f, 0f, 0.45f);
+		panelStyle.SetBorderWidthAll(0);
+		panelStyle.SetCornerRadiusAll(4);
 		_leaderboardPanel.AddThemeStyleboxOverride("panel", panelStyle);
 
 		_leaderboardVBox.AnchorLeft = 0f;
 		_leaderboardVBox.AnchorTop = 0f;
 		_leaderboardVBox.AnchorRight = 1f;
 		_leaderboardVBox.AnchorBottom = 1f;
-		_leaderboardVBox.OffsetLeft = 0f;
-		_leaderboardVBox.OffsetTop = 0f;
-		_leaderboardVBox.OffsetRight = 0f;
-		_leaderboardVBox.OffsetBottom = 0f;
+		_leaderboardVBox.OffsetLeft   =  8f;
+		_leaderboardVBox.OffsetTop    =  4f;
+		_leaderboardVBox.OffsetRight  = -8f;
+		_leaderboardVBox.OffsetBottom = -4f;
 		_leaderboardVBox.AddThemeConstantOverride("separation", 4);
+		_leaderboardPanel.ClipContents = true;
+		_leaderboardVBox.ClipContents = true;
 
 		// Bouton-titre rétractable : transparent, hover gold subtil
 		_leaderboardTitle.Visible = false;
@@ -238,18 +228,7 @@ public partial class GameHUD : Control
 		_leaderboardToggleBtn.AddThemeColorOverride("font_color",         new Color(1f, 0.88f, 0.42f, 1f));
 		_leaderboardToggleBtn.AddThemeColorOverride("font_hover_color",   new Color(1f, 0.97f, 0.75f, 1f));
 		_leaderboardToggleBtn.AddThemeColorOverride("font_pressed_color", new Color(0.88f, 0.62f, 0.18f, 1f));
-		var btnBase    = new StyleBoxFlat(); btnBase.BgColor    = new Color(0f, 0f, 0f, 0f);
-		var btnHover   = new StyleBoxFlat(); btnHover.BgColor   = new Color(1f, 0.88f, 0.42f, 0.10f);
-		var btnPressed = new StyleBoxFlat(); btnPressed.BgColor = new Color(1f, 0.88f, 0.42f, 0.18f);
-		btnBase.ContentMarginLeft   = btnHover.ContentMarginLeft   = btnPressed.ContentMarginLeft   = 4f;
-		btnBase.ContentMarginRight  = btnHover.ContentMarginRight  = btnPressed.ContentMarginRight  = 4f;
-		btnBase.ContentMarginTop    = btnHover.ContentMarginTop    = btnPressed.ContentMarginTop    = 4f;
-		btnBase.ContentMarginBottom = btnHover.ContentMarginBottom = btnPressed.ContentMarginBottom = 4f;
-		_leaderboardToggleBtn.AddThemeStyleboxOverride("normal",   btnBase);
-		_leaderboardToggleBtn.AddThemeStyleboxOverride("hover",    btnHover);
-		_leaderboardToggleBtn.AddThemeStyleboxOverride("pressed",  btnPressed);
-		_leaderboardToggleBtn.AddThemeStyleboxOverride("focus",    btnBase);
-		_leaderboardToggleBtn.AddThemeStyleboxOverride("disabled", btnBase);
+		UIStyle.ApplyStone(_leaderboardToggleBtn);
 		_leaderboardVBox.AddChild(_leaderboardToggleBtn);
 		_leaderboardVBox.MoveChild(_leaderboardToggleBtn, 0);
 		_leaderboardToggleBtn.Pressed += OnLeaderboardTogglePressed;
@@ -826,12 +805,6 @@ public partial class GameHUD : Control
 			return a.teamId.CompareTo(b.teamId);
 		});
 
-		var loc = LocalizationManager.Instance;
-		string campSingular  = loc?.GetText("ranking_camps")         ?? "camp";
-		string campPlural    = loc?.GetText("ranking_camps_plural")  ?? "camps";
-		string regAbbr       = loc?.GetText("ranking_regions_abbr")  ?? "rég.";
-		string goldAbbr      = loc?.GetText("ranking_gold_abbr")     ?? "or";
-
 		// Vider les lignes précédentes
 		foreach (var child in _leaderboardRowsContainer.GetChildren())
 			child.QueueFree();
@@ -839,43 +812,72 @@ public partial class GameHUD : Control
 		int displayCount = Mathf.Min(ranking.Count, 10);
 		for (int i = 0; i < displayCount; i++)
 		{
-			var entry   = ranking[i];
+			var entry = ranking[i];
 			string name = ResolveLeaderboardName(entry.teamId);
-			string campLabel = entry.camps > 1 ? campPlural : campSingular;
 			int gold = GameManager.Instance.GetGold(entry.teamId);
 
-			// Couleur selon le rang
 			Color rowColor = i == 0
-				? new Color(1f,    0.88f, 0.42f, 1f)   // or - 1er
+				? new Color(1f,    0.88f, 0.42f, 1f)
 				: i == 1
-					? new Color(0.88f, 0.88f, 0.88f, 1f) // argent - 2e
-					: new Color(0.94f, 0.91f, 0.80f, 1f); // creme - reste
+					? new Color(0.88f, 0.88f, 0.88f, 1f)
+					: new Color(0.94f, 0.91f, 0.80f, 1f);
+			var dimColor = new Color(rowColor.R, rowColor.G, rowColor.B, 0.65f);
 
 			var hbox = new HBoxContainer();
-			hbox.AddThemeConstantOverride("separation", 0);
+			hbox.AddThemeConstantOverride("separation", 3);
+			hbox.SizeFlagsHorizontal = Control.SizeFlags.Fill;
 
-			// Colonne rang (largeur fixe) : médaille + numéro
+			// Rang (fixe, aligné à droite)
 			var rankLabel = new Label();
-			rankLabel.CustomMinimumSize = new Vector2(30, 0);
+			rankLabel.CustomMinimumSize = new Vector2(22, 0);
 			rankLabel.Text = $"{i + 1}.";
 			rankLabel.HorizontalAlignment = HorizontalAlignment.Right;
-			rankLabel.AddThemeFontSizeOverride("font_size", 13);
+			rankLabel.VerticalAlignment = VerticalAlignment.Center;
+			rankLabel.AddThemeFontSizeOverride("font_size", 14);
 			rankLabel.AddThemeColorOverride("font_color", rowColor);
 			hbox.AddChild(rankLabel);
 
-			// Espace fixe entre rang et nom
-			var gap = new Label();
-			gap.CustomMinimumSize = new Vector2(8, 0);
-			gap.Text = "";
-			hbox.AddChild(gap);
+			// Nom (flexible, ellipsis si trop long)
+			var nameLabel = new Label();
+			nameLabel.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+			nameLabel.CustomMinimumSize = new Vector2(0, 0);
+			nameLabel.AutowrapMode = TextServer.AutowrapMode.Off;
+			nameLabel.TextOverrunBehavior = TextServer.OverrunBehavior.TrimEllipsis;
+			nameLabel.Text = name;
+			nameLabel.VerticalAlignment = VerticalAlignment.Center;
+			nameLabel.AddThemeFontSizeOverride("font_size", 14);
+			nameLabel.AddThemeColorOverride("font_color", rowColor);
+			hbox.AddChild(nameLabel);
 
-			// Colonne nom + stats (flexible)
-			var infoLabel = new Label();
-			infoLabel.Text = $"{name}   {entry.camps} {campLabel}  |  {entry.territories} {regAbbr}  |  {gold} {goldAbbr}";
-			infoLabel.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-			infoLabel.AddThemeFontSizeOverride("font_size", 13);
-			infoLabel.AddThemeColorOverride("font_color", rowColor);
-			hbox.AddChild(infoLabel);
+			// Camps (fixe, aligné à droite)
+			var campsLabel = new Label();
+			campsLabel.CustomMinimumSize = new Vector2(28, 0);
+			campsLabel.HorizontalAlignment = HorizontalAlignment.Right;
+			campsLabel.VerticalAlignment = VerticalAlignment.Center;
+			campsLabel.Text = $"{entry.camps}c";
+			campsLabel.AddThemeFontSizeOverride("font_size", 12);
+			campsLabel.AddThemeColorOverride("font_color", dimColor);
+			hbox.AddChild(campsLabel);
+
+			// Régions (fixe, aligné à droite)
+			var regsLabel = new Label();
+			regsLabel.CustomMinimumSize = new Vector2(22, 0);
+			regsLabel.HorizontalAlignment = HorizontalAlignment.Right;
+			regsLabel.VerticalAlignment = VerticalAlignment.Center;
+			regsLabel.Text = $"{entry.territories}r";
+			regsLabel.AddThemeFontSizeOverride("font_size", 12);
+			regsLabel.AddThemeColorOverride("font_color", dimColor);
+			hbox.AddChild(regsLabel);
+
+			// Or (fixe, aligné à droite, format abrégé)
+			var goldLabel = new Label();
+			goldLabel.CustomMinimumSize = new Vector2(46, 0);
+			goldLabel.HorizontalAlignment = HorizontalAlignment.Right;
+			goldLabel.VerticalAlignment = VerticalAlignment.Center;
+			goldLabel.Text = FormatGoldLeaderboard(gold);
+			goldLabel.AddThemeFontSizeOverride("font_size", 12);
+			goldLabel.AddThemeColorOverride("font_color", dimColor);
+			hbox.AddChild(goldLabel);
 
 			_leaderboardRowsContainer.AddChild(hbox);
 		}
@@ -889,10 +891,17 @@ public partial class GameHUD : Control
 	private void UpdateLeaderboardPanelHeight(int lineCount)
 	{
 		if (_leaderboardPanel == null) return;
-		// bouton ~34px, séparateur ~4px, chaque ligne HBox ~22px (font13 + padding), séparations 4px + 3px
-		float contentHeight = 34f + 4f + 4f + 4f + lineCount * 22f + Mathf.Max(0, lineCount - 1) * 3f;
-		float totalHeight   = contentHeight + 22f; // panel ContentMargin (8 top + 14 bottom)
+		// bouton ~34px, séparateur ~4px, chaque ligne HBox ~24px (font14 + padding), séparations 4px + 3px
+		float contentHeight = 34f + 4f + 4f + 4f + lineCount * 24f + Mathf.Max(0, lineCount - 1) * 3f;
+		float totalHeight   = contentHeight;
 		_leaderboardPanel.OffsetBottom = _leaderboardPanel.OffsetTop + totalHeight;
+	}
+
+	private static string FormatGoldLeaderboard(int gold)
+	{
+		if (gold >= 10000) return $"{gold / 1000}k";
+		if (gold >= 1000)  return $"{gold / 1000f:0.#}k";
+		return gold.ToString();
 	}
 
 	private string ResolveLeaderboardName(int teamId)
