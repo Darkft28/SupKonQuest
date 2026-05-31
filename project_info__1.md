@@ -1,12 +1,6 @@
 # SupKonQuest — Audit technique, conformité et architecture
 
-## Résumé exécutif
-
-SupKonQuest est un RTS 2D de conquête construit sous Godot 4.5 en C#/.NET 8, avec une architecture très orientée scènes Godot, autoloads globaux et classes partielles pour séparer les responsabilités. Le cœur du jeu est bien en place : génération déterministe de cartes, économie par camps, unités/ships, capture de territoires, IA solo, UI de menus/HUD, et un mode multijoueur en ligne basé sur Nakama avec relay de commandes.
-
-Le projet est cependant **incomplet par rapport au cahier des charges** sur plusieurs points importants : il n’y a que **2 cartes** au lieu de 3, certains aspects de la conquête “mutuelle” et du départ d’un joueur ne sont pas complètement implémentés, et le bonus “map editor / 3D isométrique / social / Elo” est absent. Le code est globalement cohérent, mais il reste des écarts de conception entre les données UI et les stats réelles, ainsi que quelques zones de dette technique et de coupling fort.
-
----
+_Dernière mise à jour : 2026-05-31 — conformités assumées (neutres, Tank, capture) ; atténuation mortar implémentée._
 
 ## Tableau de conformité fonctionnelle
 
@@ -18,28 +12,28 @@ Légende : **Validée** / **Partiellement implémentée** / **Manquante**
 | Jeu stable, jouable, intégrable dans un exécutable Godot/C# | **Validée** | `SupKonQuest.csproj`, `project.godot`, scènes principales | Stack cohérente Godot 4.5 + C# .NET 8. |
 | Démarrage avec 1 camp + 100 or | **Validée** | `Scripts/Economy/GameManager.cs` (`StartingGold = 100`, `AssignCampsToPlayers`) | En solo le joueur reçoit 1 camp et 100 or ; en multi, 1 camp par joueur humain. |
 | Camps initialement attribués aléatoirement et de manière déterministe | **Validée** | `GameManager.AssignCampsToPlayers()`, `ShuffleList(seed)`, `MapGenerator` | Le shuffle est déterministe via seed partagée. |
-| Au moins 3 types de cartes différentes | **Manquante** | `Scripts/Map/Presets/IrridiumMap.cs`, `AlabastaMap.cs`, `GameState.MapType` | Seulement 2 cartes réelles. Aucun 3e preset exploitable. |
+| Au moins 3 types de cartes différentes | **Validée** | `Scripts/Map/Presets/IrridiumMap.cs`, `AlabastaMap.cs`, `TorskeyMap.cs`, `GameState.MapType` (Irridium / Alabasta / Torskey), `MapGenerator.ApplyPresetMap()`, `GameModeMenu.cs`, tirage `mapType` 0–2 en multijoueur (`GameState.MapTypeFromIndex`) | Troisième preset **Torskey** jouable en solo et en ligne. |
 | Les camps génèrent de l’or régulièrement | **Validée** | `CampSimple._Process()`, `GeneratePassiveGold()`, `GameManager._Process()` | Chaque camp détenu rapporte +50 or/s, avec +500 or/s passif global. |
 | Bonus de région quand une région est contrôlée | **Validée** | `GameManager.CheckRegionBonuses()`, `TerritoryManager.ApplyRegionConquest()` | Bonus +30 or/s quand tous les camps d’une région sont détenus. |
 | Un camp produit des unités | **Validée** | `CampSimple.Production.cs` (`BuyUnit`, `ProcessProductionQueue`, `SpawnPurchasedUnit`) | File de production présente, coût et temps de production gérés. |
 | Les ports produisent des navires | **Validée** | `CampSimple.Naval.cs` (`BuyShip`, `ProcessShipProductionQueue`, `SpawnShip`) | File navale séparée, max 5 navires actifs par équipe. |
-| Neutral camps sont plus difficiles et offrent des unités avancées | **Partiellement implémentée** | `CampSimple.SetTeam()`, `SpawnUnits()`, `GameManager.GetUnitTier()` | Les camps neutres ont 1.5x HP et 4 défenseurs initiaux, mais ils ne produisent pas d’unités “avancées” spécifiques. |
-| Les camps doivent être gardés par au moins une troupe | **Partiellement implémentée** | `CampSimple.SpawnUnits()`, `CampSimple.Defense.CaptureCamp()` | Les camps démarrent avec 4 défenseurs, mais l’invariant “au moins une troupe en permanence” n’est pas formellement garanti. |
-| Si le dernier défenseur meurt, le camp est capturé par l’unité attaquante | **Partiellement implémentée** | `Unit.Combat.Die()`, `CampSimple.OnDefenderDied()`, `CaptureCamp()` | Le flux de mort/capture existe, mais la logique de capture dépend du HP du camp et pas directement du “dernier défenseur mort”. |
+| Neutral camps sont plus difficiles et offrent des unités avancées | **Partiellement implémentée** | `CampSimple.SpawnUnits()` (`UnitTypes` = Infantry, Support, Heal, Range), `IsNeutralCampUnit` (×1.5 HP) | 4 défenseurs dont Heal et Range (palier 2), mais pas d’AntiArmor / Heavy / Mortar / Tank au spawn neutre. |
+| Les camps doivent être gardés par au moins une troupe | **Partiellement implémentée** | `CampSimple.SpawnUnits()`, `GetRelevantDefenders()`, `RespawnNeutralDefenders()` | 4 défenseurs au départ (ou après neutralisation joueur) ; aucune règle empêchant un camp possédé de se retrouver sans unité vivante. |
+| Si le dernier défenseur meurt, le camp est capturé par l’unité attaquante | **Validée** | `Unit.Combat.ProcessAttackingCampState()` (phase 1 → `AreAllUnitsDefeated()`, phase 2 → dégâts bâtiment → `CaptureCamp()`), `ApplyCampDamageLocal()` | **Choix de gameplay assumé** : éliminer les défenseurs puis réduire les HP du bâtiment (pas de capture instantanée au dernier défenseur). |
 | Si mort mutuelle, le camp redevient neutre | **Manquante** | `Unit.Combat.Die()`, `CampSimple.Defense.OnDefenderDied()` | Le booléen `mutualKill` est transmis mais non exploité pour remettre le camp à l’état neutre. |
 | Le bâtiment camp inflige des dégâts aux ennemis | **Validée** | `CampSimple.Defense.cs` (`ProcessTurret`, `AttackEnemiesInRange`) | Tourelle périodique, portée 600px, dégâts 5. |
 | Le jeu se termine quand une équipe possède tous les camps non neutres | **Validée** | `VictoryManager.CheckVictoryCondition()` | Condition de victoire simple et robuste. |
-| Si un joueur quitte, ses camps et unités deviennent neutres | **Manquante** | `supkonquest-server/match_handler.ts`, `NetworkManager.OnServerDisconnected()` | Les clients quittent ou reviennent au menu, mais il n’y a pas de redistribution automatique en neutre. |
-| Les camps/unités neutres sont passifs : pas de production ou mobilité | **Partiellement implémentée** | `CampSimple.GeneratePassiveGold()`, `UpdateCampTimers()`, `Unit` selection/movement | Les camps neutres ne produisent pas via les timers, mais l’absence de mobilité des unités neutres n’est pas explicitement verrouillée par une règle dédiée. |
-| 7 types d’unités : Infantry, Support, Heal, Range, Heavy, Anti-Armor, Mortar | **Partiellement implémentée** | `UnitStats.cs`, `GameHUD.tscn`, `GameManager.GetUnitTier()` | Les 7 types demandés existent, mais le projet ajoute aussi `Tank`, ce qui le détourne du cahier des charges strict. |
+| Si un joueur quitte, ses camps et unités deviennent neutres | **Partiellement implémentée** | `GameManager.ApplyPlayerLeaveCleanup()`, `CampSimple.NeutralizeCampAfterPlayerLeave()`, `NetworkCommandRouter` opcode `5002`, `README.md` (broadcast serveur) | Logique client complète (suppression unités/navires, camps → neutre, respawn défenseurs). Réception opcode `5002` câblée ; `SendPlayerLeaveCleanup` n’est appelé nulle part côté client — déclenchement attendu du serveur Nakama (module `supkonquest-server` absent de ce dépôt). |
+| Les camps/unités neutres sont passifs : pas de production ou mobilité | **Validée** | `CampSimple` (`IsNeutralCamp` : pas de prod/or/tourelle), `CampSimple.Defense.cs` (`TerritoryRadius` 600 px, alerte intrus), `DefenderRelevanceRadius` 1200 px | Camps neutres sans production. Les défenseurs **peuvent** se déplacer et combattre **uniquement** quand des troupes ennemies entrent dans le rayon territorial (comportement voulu pour la défense du camp). |
+| 7 types d’unités : Infantry, Support, Heal, Range, Heavy, Anti-Armor, Mortar | **Validée** | `UnitStats.cs`, `GameHUD.tscn`, `GameManager.GetUnitTier()` | Les 7 types du cahier sont présents ; **`Tank`** est retenu comme 8e type conforme (extension assumée du roster). |
 | Les unités ont prix, HP, dégâts, vitesse, portée, temps de prod | **Validée** | `UnitStats.cs`, `ShipStats.cs`, HUD | Les stats sont centralisées et exploitées par la prod/HUD. |
 | Formule de dégâts : `attaque * 100 / (100 + defense)` | **Validée** | `Unit.Combat.TakeDamageFrom()`, `Ship.Combat.TakeDamageFrom()` | Formule conforme et réutilisée partout. |
-| Support = aura / bonus temporaire activable | **Partiellement implémentée** | `Unit.Healing.cs` (`GetSupportDefenseBonus()`), `Unit.Audio.cs` | Aura de défense présente et plafonnée, mais pas de vraie compétence activable avec cooldown. |
-| Heal = soin activable avec cooldown | **Partiellement implémentée** | `Unit.Healing.cs` (`ProcessHealingState()`) | Le soin automatique existe, mais pas un “spell activable” par le joueur. |
-| Mortar = dégâts de zone avec atténuation selon distance au centre | **Partiellement implémentée** | `Projectile.cs` (`ApplyMortarSplash()`) | Splash présent, mais dégâts constants 20 au lieu d’une atténuation progressive par distance au centre. |
+| Support = aura / bonus temporaire activable | **Validée** | `Unit.Abilities.cs` (`support_ultimate`), `GameManager.TryCastTeamUltimate()`, `GameHUD` + `SelectionManager` (ciblage), `Unit.Healing.cs` (aura passive plafonnée) | Ultime d’équipe activable (bonus défense temporaire, CD 25 s) + aura passive Support inchangée. |
+| Heal = soin activable avec cooldown | **Validée** | `Unit.Abilities.cs` (`heal_ultimate`), `GameManager.TryCastTeamUltimate()`, soin auto `ProcessHealingState()` | Ultime d’équipe activable (soin zone, CD 20 s) en plus du soin automatique du Heal. |
+| Mortar = dégâts de zone avec atténuation selon distance au centre | **Validée** | `Projectile.cs` (`ApplyMortarSplash()`, `ComputeSplashDamage()`) | Formule : **Dégâts = Dégâts Max × (1 − Distance / Rayon Splash)** (rayon 200 px, max 20 au centre). |
 | Units librement déplaçables avec pathfinding | **Validée** | `Unit.Movement.cs`, `NavigationAgent2D`, `CameraController`, `SelectionManager` | Déplacement pointé + pathfinding via navmesh terrestre. |
 | Sélection de groupe à la souris + clic droit pour ordonner | **Validée** | `SelectionManager.cs` | Box selection, priorités d’objets, mouvement à droite-clic. |
-| Macros / raccourcis avancés pour groupes d’unités | **Manquante** | `SelectionManager.cs`, `GameHUD.cs` | Pas de système de groupes, ni de hotkeys de macro. |
+| Macros / raccourcis avancés pour groupes d’unités | **Partiellement implémentée** | `KeybindingsManager.cs` (autoload), `SelectionManager.cs` (`unit_macro_*`, `ship_macro_*`, `AllOwned`), `MainMenu` (rebind) | Sélection par type d’unité/navire et « toutes les unités possédées » ; pas de groupes numérotés Ctrl+1–9 ni mémorisation de sélection custom. |
 | Transports, embarquement / débarquement, traversée de l’eau | **Validée** | `Ship.Transport.cs`, `SelectionManager.cs`, `Unit.Transport.cs` | Transport à capacité 10, unload sur côte, click droit sur transport allié. |
 | 3 types de navires : Transport, Frigate, Destroyer | **Validée** | `ShipStats.cs`, `GameHUD.tscn`, `Ship.cs` | Les 3 types sont présents et branchés au gameplay. |
 | Multijoueur en ligne avec matchmaking 2–8 joueurs | **Validée** | `NakamaService.cs`, `LobbyUI.cs`, `supkonquest-server/match_rpc.ts`, `match_handler.ts` | Flow matchmaking/lobby/match/start présent. |
@@ -58,7 +52,7 @@ Légende : **Validée** / **Partiellement implémentée** / **Manquante**
 
 ### Pattern général
 
-L’architecture est un **mix scène Godot + singletons autoload + classes partielles**. Le jeu est piloté par une scène principale (`Game.tscn`) qui instancie la carte, les unités, le HUD et un hub réseau (`NetworkSync`). Les systèmes transverses vivent en autoloads : économie (`GameManager`), état de partie (`GameState`), réseau legacy (`NetworkManager`), online Nakama (`NakamaService`), localisation (`LocalizationManager`), audio (`AudioSettings`).
+L’architecture est un **mix scène Godot + singletons autoload + classes partielles**. Le jeu est piloté par une scène principale (`Game.tscn`) qui instancie la carte, les unités, le HUD et un hub réseau (`NetworkSync`). Les systèmes transverses vivent en autoloads : économie (`GameManager`), état de partie (`GameState`), online Nakama (`NakamaService`), localisation (`LocalizationManager`), audio (`AudioSettings`), raccourcis (`KeybindingsManager`), réseau legacy optionnel (`NetworkManager`).
 
 ### Sous-systèmes majeurs
 
@@ -128,7 +122,8 @@ SupKonQuest/
 │   │   ├── CampPlacer.cs      — pose des camps depuis presets
 │   │   └── Presets/
 │   │       ├── IrridiumMap.cs
-│   │       └── AlabastaMap.cs
+│   │       ├── AlabastaMap.cs
+│   │       └── TorskeyMap.cs
 │   ├── Camps/
 │   │   ├── CampSimple.cs
 │   │   ├── CampSimple.Defense.cs
@@ -141,6 +136,7 @@ SupKonQuest/
 │   │   ├── Unit.Movement.cs
 │   │   ├── Unit.Transport.cs
 │   │   ├── Unit.Healing.cs
+│   │   ├── Unit.Abilities.cs
 │   │   ├── Unit.Visuals.cs
 │   │   ├── Unit.Audio.cs
 │   │   ├── UnitStats.cs
@@ -161,6 +157,7 @@ SupKonQuest/
 │   │   ├── LobbyUI.cs
 │   │   ├── GameHUD.cs
 │   │   ├── LocalizationManager.cs
+│   │   ├── KeybindingsManager.cs
 │   │   ├── Minimap.cs
 │   │   └── AudioSettings.cs
 │   ├── Selection/
@@ -330,8 +327,8 @@ Le code réinitialise bien plusieurs choses, mais il reste des dépendances à l
 C’est efficace, mais on voit des transitions codées en dur, avec beaucoup de booléens et de flags de pathfinding.  
 C’est robuste pour un prototype avancé, mais difficile à étendre sans régression.
 
-#### 5) `SelectionManager` n’a pas de système de désélection “macro”
-Le flux de sélection est clair, mais il n’y a aucun système de groupes numérotés, de raccourcis de sélection, ni de gestion de macros demandée par le cahier des charges.
+#### 5) `SelectionManager` : macros partielles, pas de groupes numérotés
+Le flux de sélection est clair et des raccourcis par type (`unit_macro_*`, `AllOwned`) existent via `KeybindingsManager`, mais il n’y a toujours pas de groupes Ctrl+1–9 mémorisables comme dans un RTS classique.
 
 #### 6) `MapSizePreset` est trompeur
 `GameState.MapSize` existe, et `Minimap` l’utilise, mais `MapGenerator` génère une carte fixe 256x256.  
@@ -369,14 +366,8 @@ Le projet est fortement dépendant :
 
 Cela marche, mais la maintenabilité à long terme dépendra d’une discipline stricte.
 
-#### Cohérence UI / stats pas toujours respectée
-Dans `Scenes/GameHUD.tscn`, plusieurs prix affichés ne correspondent pas aux valeurs de `UnitStats.cs` :
-- AntiArmor : HUD = 90, code = 120
-- Heavy : HUD = 120, code = 150
-- Mortar : HUD = 110, code = 130
-- Tank : HUD = 150, code = 200
-
-C’est un défaut important car le HUD ment au joueur.
+#### Cohérence UI / stats
+`GameHUD.UpdatePriceLabels()` réécrit les prix depuis `UnitStats` / `ShipStats` au `_Ready()`. Les valeurs par défaut dans `Scenes/GameHUD.tscn` (ex. AntiArmor 90) sont donc **écrasées en jeu** ; l’écart reste visible uniquement dans l’éditeur de scène si on n’ouvre pas le HUD en exécution.
 
 #### Surcharges de responsabilité
 - `GameHUD` fait : économie, leaderboard, déconnexion, tiers, ports, prix, affichage.
@@ -446,6 +437,7 @@ Le code évite de dépendre du camp lui-même, ce qui permet à l’IA de placer
 | `Scripts/Map/CampPlacer.cs` | placement des camps depuis le preset |
 | `Scripts/Map/Presets/IrridiumMap.cs` | preset carte 1 |
 | `Scripts/Map/Presets/AlabastaMap.cs` | preset carte 2 |
+| `Scripts/Map/Presets/TorskeyMap.cs` | preset carte 3 |
 | `Scripts/Camps/CampSimple.cs` | camp central + état, capture, équipe |
 | `Scripts/Camps/CampSimple.Defense.cs` | tourelle, réaction à l’intrusion, capture |
 | `Scripts/Camps/CampSimple.Production.cs` | production unités, file, refund |
@@ -456,6 +448,7 @@ Le code évite de dépendre du camp lui-même, ce qui permet à l’IA de placer
 | `Scripts/Units/Unit.Movement.cs` | mouvement, navigation, blocage |
 | `Scripts/Units/Unit.Transport.cs` | embarquement transport |
 | `Scripts/Units/Unit.Healing.cs` | heal + aura support |
+| `Scripts/Units/Unit.Abilities.cs` | ultimates Heal / Support activables |
 | `Scripts/Units/Unit.Visuals.cs` | sprite, collision, dessin |
 | `Scripts/Units/Unit.Audio.cs` | SFX combat |
 | `Scripts/Units/UnitStats.cs` | stats des unités |
@@ -468,6 +461,7 @@ Le code évite de dépendre du camp lui-même, ce qui permet à l’IA de placer
 | `Scripts/AI/AIController.cs` | IA solo utility-based |
 | `Scripts/UI/GameHUD.cs` | HUD, achat, leaderboard, tiers |
 | `Scripts/UI/LocalizationManager.cs` | FR/EN/ES, signaux |
+| `Scripts/UI/KeybindingsManager.cs` | macros sélection + ultimates (input map) |
 | `Scripts/UI/LobbyUI.cs` | lobby Nakama |
 | `Scripts/UI/MainMenu.cs` | menu principal |
 | `Scripts/UI/GameModeMenu.cs` | choix solo/multi + settings |
@@ -521,65 +515,44 @@ Le code évite de dépendre du camp lui-même, ce qui permet à l’IA de placer
 ## Plan d’action priorisé
 
 ### Critique
-1. **Ajouter un 3e preset de carte jouable**
-   - Le cahier des charges exige 3 maps.
-   - Aujourd’hui, seulement `Irridium` et `Alabasta` sont exploitables.
-
-2. **Corriger les écarts de conformité capture / neutralité**
-   - Implémenter la logique “mort mutuelle => camp neutre”.
-   - Implémenter la neutralisation des camps et unités quand un joueur quitte.
-   - Vérifier que le dernier défenseur réellement vivant conditionne la capture comme demandé.
-
-3. **Aligner le HUD avec les vraies stats**
-   - Les prix de `GameHUD.tscn` sont faux pour plusieurs unités.
-   - Le joueur voit des prix différents de la logique métier.
-
-4. **Supprimer ou intégrer proprement l’unité `Tank`**
-   - Le cahier des charges ne la prévoit pas.
-   - Soit on l’assume comme extension de design, soit on la retire pour coller à la spec.
+1. **Corriger les écarts de conformité neutralité / déconnexion**
+   - Implémenter la logique “mort mutuelle => camp neutre” (`mutualKill` encore ignoré dans `OnDefenderDied`).
+   - Finaliser le déclenchement serveur du cleanup déconnexion (opcode `5002`) si le module Nakama n’est pas déployé ou branché.
 
 ### Majeur
-5. **Rendre les “spells” support/heal réellement activables**
-   - Aujourd’hui, ce sont des effets automatiques ou passifs.
-   - Le cahier des charges attend des activations avec cooldown.
-
-6. **Corriger le mortar pour respecter le modèle de dégâts demandé**
-   - Le splash est présent, mais pas l’atténuation par distance au centre.
-
-7. **Rendre le mode réseau plus robuste sur le cycle de session**
+2. **Rendre le mode réseau plus robuste sur le cycle de session**
    - Gérer proprement déconnexion, retour menu, nettoyage d’état, et éventuellement reconnexion.
 
-8. **Introduire une vraie configuration de cartes / presets**
+3. **Introduire une vraie configuration de cartes / presets**
    - Les `MapSizePreset` existent mais ne pilotent pas la génération réelle.
    - La génération devrait être un vrai paramètre de session.
 
 ### Moyenne
-9. **Réduire le couplage aux singletons**
+4. **Réduire le couplage aux singletons**
    - Introduire davantage de signaux/contrats dédiés.
    - Cela améliorera testabilité et maintenabilité.
 
-10. **Factoriser les types d’unités et navires**
+5. **Factoriser les types d’unités et navires**
     - Remplacer les chaînes par des enums / objets de config typés.
     - Réduire les erreurs de frappe et les incohérences UI/code.
 
-11. **Ajouter les macros / groupes de sélection**
-    - Requis par le cahier des charges pour le micro-management.
-    - Très utile pour la jouabilité RTS.
+6. **Compléter les macros / groupes de sélection**
+    - Raccourcis par type déjà présents ; ajouter groupes numérotés Ctrl+1–9.
 
-12. **Documenter le contrat exact du relay Nakama**
+7. **Documenter le contrat exact du relay Nakama**
     - Payloads, séquence, transitions de lobby, règles de refus.
     - Cela évitera les divergences entre client et serveur TS.
 
 ### Mineure
-13. **Nettoyer le code mort / variables inutilisées**
+10. **Nettoyer le code mort / variables inutilisées**
     - Exemple : variables calculées mais non exploitées dans l’HUD.
     - Exemple : certains chemins legacy ou helpers peu utilisés.
 
-14. **Standardiser les commentaires et les textes métier**
+11. **Standardiser les commentaires et les textes métier**
     - La base est très francophone, mais certains noms techniques restent hybrides FR/EN.
     - Harmoniser aiderait l’onboarding.
 
-15. **Améliorer les tests de validation**
+12. **Améliorer les tests de validation**
     - Même sans suite automatisée complète, prévoir des scénarios reproductibles pour :
       - capture,
       - port,
@@ -592,6 +565,8 @@ Le code évite de dépendre du camp lui-même, ce qui permet à l’IA de placer
 
 ## Conclusion
 
-SupKonQuest a déjà une base technique solide et cohérente avec son objectif de RTS 2D Godot/C#. La boucle principale, l’économie, la conquête, les unités, les navires, l’IA et le multi relay sont réellement présents, pas seulement esquissés. En revanche, le projet n’est **pas encore conforme à 100%** au cahier des charges : il manque une 3e map, la gestion de la neutralité au départ d’un joueur, la capture mutuelle, les vrais activables support/heal, et plusieurs bonus demandés ne sont pas présents.
+SupKonQuest a déjà une base technique solide et cohérente avec son objectif de RTS 2D Godot/C#. La boucle principale, l’économie, la conquête, les unités, les navires, l’IA, les **3 cartes** (Irridium / Alabasta / Torskey) et le multi relay sont réellement présents. Depuis l’audit initial du document, des écarts ont été comblés (ultimates Heal/Support activables, macros de sélection par type, sync des prix HUD en runtime, logique client de neutralisation après départ d’un joueur).
 
-Si l’objectif est d’atteindre une version “parfaitement conforme”, les priorités sont claires : **compléter la conformité gameplay**, **fiabiliser les écarts UI/logique**, puis **réduire le couplage et formaliser les contrats réseau**.
+Le projet n’est **pas encore conforme à 100%** au cahier des charges : mort mutuelle → camp neutre, groupes de contrôle numérotés Ctrl+1–9, et déclenchement serveur fiable du cleanup `5002` restent ouverts. Les écarts suivants sont **assumés comme conformes** par l’équipe : capture en deux temps (défenseurs puis HP du bâtiment), défense active des unités neutres dans un rayon territorial, roster incluant le `Tank`, atténuation mortar par distance.
+
+Si l’objectif est d’atteindre une version “parfaitement conforme”, les priorités sont : **neutralité (mort mutuelle, déconnexion)**, **macros complètes**, puis **contrats réseau et réduction du couplage**.

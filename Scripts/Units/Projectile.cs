@@ -139,7 +139,7 @@ public partial class Projectile : Node2D
 	private void ApplyMortarSplash()
 	{
 		const float SplashRadius = 200f;
-		const float SplashDamage = 20f;
+		const float SplashMaxDamage = 20f;
 
 		var allUnits = GetTree().GetNodesInGroup("units");
 		foreach (var node in allUnits)
@@ -150,13 +150,23 @@ public partial class Projectile : Node2D
 			if (unit.GetCurrentHealth() <= 0) continue;
 
 			float dist = _targetPos.DistanceTo(unit.GlobalPosition);
-			if (dist > SplashRadius) continue;
+			float splashDamage = ComputeSplashDamage(dist, SplashRadius, SplashMaxDamage);
+			if (splashDamage <= 0f) continue;
 
 			bool isMultiSplash = NetworkSync.Instance?.IsMultiplayer() == true;
 			if (isMultiSplash && !string.IsNullOrEmpty(unit.NetworkId))
-				NetworkSync.Instance?.SendUnitDamage(unit.NetworkId, SplashDamage, _attackerTeamId);
+				NetworkSync.Instance?.SendUnitDamage(unit.NetworkId, splashDamage, _attackerTeamId);
 			else
-				unit.TakeDamageFrom(SplashDamage, _attackerTeamId);
+				unit.TakeDamageFrom(splashDamage, _attackerTeamId);
 		}
+	}
+
+	/// <summary>Dégâts = Dégâts Max × (1 - Distance / Rayon Splash)</summary>
+	private static float ComputeSplashDamage(float distance, float splashRadius, float maxDamage)
+	{
+		if (distance >= splashRadius || splashRadius <= 0f)
+			return 0f;
+
+		return maxDamage * (1f - distance / splashRadius);
 	}
 }
