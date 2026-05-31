@@ -16,17 +16,6 @@ public partial class Minimap : Control
 	private float _overlayTimer;
 	private const float OverlayInterval = 0.1f;
 
-	private static readonly Color[] TeamColors =
-	{
-		new Color(0.2f, 0.5f, 1f),
-		new Color(1f, 0.3f, 0.3f),
-		new Color(0.3f, 1f, 0.4f),
-		new Color(1f, 0.85f, 0.2f),
-		new Color(0.85f, 0.3f, 1f),
-		new Color(1f, 0.5f, 0.2f),
-		new Color(0.3f, 0.9f, 0.9f),
-		new Color(0.9f, 0.4f, 0.7f),
-	};
 
 	public override void _Ready()
 	{
@@ -167,12 +156,7 @@ public partial class Minimap : Control
 		);
 	}
 
-	private static Color GetTeamColor(int teamId)
-	{
-		if (teamId <= 0)
-			return new Color(0.5f, 0.5f, 0.5f);
-		return TeamColors[(teamId - 1) % TeamColors.Length];
-	}
+	private static Color GetTeamColor(int teamId) => CampSimple.GetTeamColor(teamId);
 
 	private void FindMainCamera()
 	{

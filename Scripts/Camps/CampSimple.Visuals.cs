@@ -156,12 +156,13 @@ public partial class CampSimple
 		return isBoss ? $"#{CampId} boss": $"#{CampId}";
 	}
 
-	private Color GetTeamColor()
+	public static Color GetTeamColor(int teamId)
 	{
-		if (TeamId <= 0)
+		if (teamId <= 0)
 			return new Color(0.5f, 0.5f, 0.5f, 1f);
 
-		int colorIndex = (TeamId - 1) % _teamColors.Length;
-		return _teamColors[colorIndex];
+		return _teamColors[(teamId - 1) % _teamColors.Length];
 	}
+
+	private Color GetTeamColor() => GetTeamColor(TeamId);
 }
