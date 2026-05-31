@@ -1,17 +1,21 @@
 # Godot 4+ specific ignores
 .godot/
 /android/
-*addons/
-*supkonquest-server/
+/addons/
+/supkonquest-server/
+
 # Documentation et fichiers de configuration personnels
 .claude/
 .copilot/
 .cursorrules
+/project_info__1.md
+/project_info_1.md
 
 # Godot UID files
 *.cs.uid
 *.tscn.uid
 *export_presets.cfg
+
 # IDE
 .idea/
 *.sln.DotSettings.user
