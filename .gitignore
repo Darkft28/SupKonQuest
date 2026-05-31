@@ -9,7 +9,9 @@
 .cursorrules
 /project_info__1.md
 /project_info_1.md
-
+/docs/markdown-pdf.css
+/docs/user_manual.md
+/docs/tech_doc.md
 # Godot UID files
 *.cs.uid
 *.tscn.uid
