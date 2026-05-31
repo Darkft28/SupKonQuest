@@ -14,10 +14,11 @@ public partial class GameHUD : Control
 	private HBoxContainer _unitsContainer;
 	private HBoxContainer _shipsContainer;
 	private Button _quitButton;
-	private Button _portButton;
-	private Label _tierInfoLabel;
+	private Control _portPanel;
+	private TextureButton _portTextureBtn;
 	private Button _unlockTier2Button;
-	private HBoxContainer _abilitiesContainer;
+	private Control _unlockTier2Panel;
+	private VBoxContainer _abilitiesContainer;
 	private Button _healUltimateButton;
 	private Button _supportUltimateButton;
 
@@ -127,8 +128,6 @@ public partial class GameHUD : Control
 	{
 		if (_quitButton != null)
 			_quitButton.Text = L("hud_quit_menu");
-		if (_portButton != null)
-			_portButton.Text = LF("hud_port", CampSimple.PortCost);
 		if (_victoryMenuButton != null)
 			_victoryMenuButton.Text = L("main_menu");
 		if (_victoryAutoReturnLabel != null)
@@ -144,14 +143,18 @@ public partial class GameHUD : Control
 		if (_defeatBannerShown && _defeatLabel != null)
 			_defeatLabel.Text = L("defeat");
 		if (_unlockTier2Button != null)
-			_unlockTier2Button.Text = LF("tier_unlock_button", GameManager.Tier2Cost);
+		{
+			string t = L("tier_unlock_button");
+			int p = t.IndexOf('(');
+			_unlockTier2Button.Text = p > 0 ? t[..p].Trim() : t;
+		}
 		RefreshLeaderboardTitle();
 	}
 
 	private void BindSceneHudControls()
 	{
 		_quitButton = GetNode<Button>("QuitButton");
-		_portButton = GetNode<Button>("PortButton");
+		GetNode<Button>("PortButton").Visible = false; // remplacé par _portPanel
 		_disconnectPanel = GetNode<Panel>("DisconnectPanel");
 		_disconnectLabel = GetNode<Label>("DisconnectPanel/DisconnectLabel");
 		_leaderboardPanel = GetNodeOrNull<Panel>("LeaderboardPanel");
@@ -163,10 +166,7 @@ public partial class GameHUD : Control
 		UIStyle.ApplyStone(_quitButton);
 		_quitButton.Pressed += OnQuitButtonPressed;
 
-		_portButton.Text = LF("hud_port", CampSimple.PortCost);
-		UIStyle.ApplyStone(_portButton);
-		_portButton.Pressed += OnPortButtonPressed;
-		_portButton.Visible = false;
+		SetupPortPanel();
 
 		var style = new StyleBoxFlat();
 		style.BgColor = new Color(0f, 0f, 0f, 0.6f);
@@ -198,6 +198,15 @@ public partial class GameHUD : Control
 		}
 
 		SetupLeaderboardUi();
+	}
+
+	private void SetupPortPanel()
+	{
+		_portPanel      = GetNode<Control>("NinePatchRect/PortPanel");
+		_portTextureBtn = GetNode<TextureButton>("NinePatchRect/PortPanel/BuyButton");
+		var lbl = GetNodeOrNull<Label>("NinePatchRect/PortPanel/PriceRow/PriceLabel");
+		if (lbl != null) lbl.Text = CampSimple.PortCost.ToString();
+		_portTextureBtn.Pressed += OnPortButtonPressed;
 	}
 
 	private void SetupLeaderboardUi()
@@ -488,40 +497,24 @@ public partial class GameHUD : Control
 
 	private void CreateTierInfoLabel()
 	{
-		_tierInfoLabel = new Label();
-		_tierInfoLabel.HorizontalAlignment = HorizontalAlignment.Center;
-		_tierInfoLabel.AddThemeFontSizeOverride("font_size", 13);
-		_tierInfoLabel.Modulate = new Color(1f, 0.9f, 0.5f, 1f);
-		_tierInfoLabel.AutowrapMode = TextServer.AutowrapMode.WordSmart;
-		_tierInfoLabel.Visible = false;
-
-		_tierInfoLabel.AnchorLeft   = 0f;
-		_tierInfoLabel.AnchorTop    = 1f;
-		_tierInfoLabel.AnchorRight  = 1f;
-		_tierInfoLabel.AnchorBottom = 1f;
-		_tierInfoLabel.OffsetLeft   = 10f;
-		_tierInfoLabel.OffsetTop    = -145f;
-		_tierInfoLabel.OffsetRight  = -10f;
-		_tierInfoLabel.OffsetBottom = -115f;
-		AddChild(_tierInfoLabel);
-
-		// Bouton d'achat palier 2
-		_unlockTier2Button = new Button();
-		_unlockTier2Button.Text = LF("tier_unlock_button", GameManager.Tier2Cost);
-		_unlockTier2Button.AddThemeFontSizeOverride("font_size", 13);
+		// Panneau Palier 2 : récupéré depuis la scène
+		_unlockTier2Panel  = GetNode<Control>("NinePatchRect/Tier2Panel");
+		_unlockTier2Button = GetNode<Button>("NinePatchRect/Tier2Panel/UnlockButton");
+		string fullTierText = L("tier_unlock_button");
+		int parenIdx = fullTierText.IndexOf('(');
+		_unlockTier2Button.Text = parenIdx > 0 ? fullTierText[..parenIdx].Trim() : fullTierText;
 		UIStyle.ApplyStone(_unlockTier2Button);
-		_unlockTier2Button.AnchorLeft   = 0.5f;
-		_unlockTier2Button.AnchorTop    = 1f;
-		_unlockTier2Button.AnchorRight  = 0.5f;
-		_unlockTier2Button.AnchorBottom = 1f;
-		_unlockTier2Button.GrowHorizontal = Control.GrowDirection.Both;
-		_unlockTier2Button.OffsetLeft   = -120f;
-		_unlockTier2Button.OffsetTop    = -165f;
-		_unlockTier2Button.OffsetRight  = 120f;
-		_unlockTier2Button.OffsetBottom = -135f;
-		_unlockTier2Button.Visible = false;
+		foreach (var state in new[] { "normal", "hover", "pressed", "focus", "disabled" })
+		{
+			if (_unlockTier2Button.GetThemeStylebox(state) is StyleBoxTexture sb)
+			{
+				sb.ContentMarginLeft = 8f; sb.ContentMarginRight  = 8f;
+				sb.ContentMarginTop  = 2f; sb.ContentMarginBottom = 2f;
+			}
+		}
 		_unlockTier2Button.Pressed += OnUnlockTier2Pressed;
-		AddChild(_unlockTier2Button);
+		var t2lbl = GetNodeOrNull<Label>("NinePatchRect/Tier2Panel/PriceRow/PriceLabel");
+		if (t2lbl != null) t2lbl.Text = GameManager.Tier2Cost.ToString();
 	}
 
 	private void OnUnlockTier2Pressed()
@@ -646,30 +639,16 @@ public partial class GameHUD : Control
 
 	private void CreateAbilityButtons()
 	{
-		_abilitiesContainer = new HBoxContainer();
-		_abilitiesContainer.AnchorLeft = 0.5f;
-		_abilitiesContainer.AnchorTop = 1f;
-		_abilitiesContainer.AnchorRight = 0.5f;
-		_abilitiesContainer.AnchorBottom = 1f;
-		_abilitiesContainer.OffsetLeft = -260f;
-		_abilitiesContainer.OffsetTop = -210f;
-		_abilitiesContainer.OffsetRight = 260f;
-		_abilitiesContainer.OffsetBottom = -170f;
-		_abilitiesContainer.Alignment = BoxContainer.AlignmentMode.Center;
-		_abilitiesContainer.AddThemeConstantOverride("separation", 8);
-		AddChild(_abilitiesContainer);
-
-		_healUltimateButton = new Button();
+		_abilitiesContainer  = GetNode<VBoxContainer>("NinePatchRect/AbilitiesContainer");
+		_healUltimateButton  = GetNode<Button>("NinePatchRect/AbilitiesContainer/HealUlt");
 		_healUltimateButton.Text = BuildUltimateReadyLabel("Heal Ult", "ultimate_heal");
+		UIStyle.ApplyStone(_healUltimateButton);
 		_healUltimateButton.Pressed += () => StartAbilityTargeting("heal_ultimate");
-		_abilitiesContainer.AddChild(_healUltimateButton);
 
-		_supportUltimateButton = new Button();
+		_supportUltimateButton = GetNode<Button>("NinePatchRect/AbilitiesContainer/SupportUlt");
 		_supportUltimateButton.Text = BuildUltimateReadyLabel("Support Ult", "ultimate_support");
+		UIStyle.ApplyStone(_supportUltimateButton);
 		_supportUltimateButton.Pressed += () => StartAbilityTargeting("support_ultimate");
-		_abilitiesContainer.AddChild(_supportUltimateButton);
-
-		_abilitiesContainer.Visible = false;
 	}
 
 	private void HandleAbilityHotkeys()
@@ -948,7 +927,6 @@ public partial class GameHUD : Control
 
 		if (GameManager.Instance?.IsLocalPlayerEliminated() == true)
 		{
-			if (_tierInfoLabel != null) _tierInfoLabel.Visible = false;
 			SetAllUnitButtonsDisabled(null);
 			return;
 		}
@@ -959,14 +937,12 @@ public partial class GameHUD : Control
 
 		if (selectedCamp == null || !IsInstanceValid(selectedCamp))
 		{
-			if (_tierInfoLabel != null) _tierInfoLabel.Visible = false;
 			SetAllUnitButtonsDisabled(null);
 			return;
 		}
 
 		if (selectedCamp.GetTeamId() != localTeam)
 		{
-			if (_tierInfoLabel != null) _tierInfoLabel.Visible = false;
 			SetAllUnitButtonsDisabled(L("hud_select_own_camp"));
 			return;
 		}
@@ -974,34 +950,20 @@ public partial class GameHUD : Control
 		bool queueFull = selectedCamp.GetQueueCount() >= selectedCamp.GetMaxQueueSize();
 		int unlockedTier = GameManager.Instance?.GetUnlockedTier(localTeam) ?? 1;
 
-		// Barre d'info palier
-		if (_tierInfoLabel != null)
+		// Visibilité du panneau Palier 2
+		if (unlockedTier >= 2)
 		{
-			_tierInfoLabel.Visible = true;
-			if (unlockedTier >= 3)
+			if (_unlockTier2Panel != null) _unlockTier2Panel.Visible = false;
+		}
+		else
+		{
+			int gold = GameManager.Instance?.GetGold(GetLocalTeamId()) ?? 0;
+			bool canAfford = gold >= GameManager.Tier2Cost;
+			if (_unlockTier2Panel != null)
 			{
-				_tierInfoLabel.Text = L("tier_info_3_unlocked");
-				if (_unlockTier2Button != null) _unlockTier2Button.Visible = false;
-			}
-			else if (unlockedTier == 2)
-			{
-				string regionDesc = GetTier3RegionDescription(GetLocalTeamId());
-				_tierInfoLabel.Text = LF("tier_info_2_progress", regionDesc);
-				if (_unlockTier2Button != null) _unlockTier2Button.Visible = false;
-			}
-			else
-			{
-				int gold = GameManager.Instance?.GetGold(GetLocalTeamId()) ?? 0;
-				bool canAfford = gold >= GameManager.Tier2Cost;
-				_tierInfoLabel.Text = canAfford
-					? L("tier_info_1_can_unlock")
-					: LF("tier_info_1_save_gold", GameManager.Tier2Cost, gold);
-				if (_unlockTier2Button != null)
-				{
-					_unlockTier2Button.Visible = true;
-					_unlockTier2Button.Disabled = !canAfford;
-					_unlockTier2Button.Modulate = canAfford ? new Color(1f, 1f, 1f, 1f) : new Color(0.5f, 0.5f, 0.5f, 0.8f);
-				}
+				_unlockTier2Panel.Visible = true;
+				_unlockTier2Button.Disabled = !canAfford;
+				_unlockTier2Button.Modulate = canAfford ? new Color(1f, 1f, 1f, 1f) : new Color(0.5f, 0.5f, 0.5f, 0.8f);
 			}
 		}
 
@@ -1127,10 +1089,8 @@ public partial class GameHUD : Control
 		{
 			_unitsContainer.Visible = false;
 			_shipsContainer.Visible = false;
-			if (_portButton != null)
-				_portButton.Visible = false;
-			if (_tierInfoLabel != null)
-				_tierInfoLabel.Visible = false;
+			if (_portPanel != null)
+				_portPanel.Visible = false;
 			return;
 		}
 
@@ -1153,15 +1113,15 @@ public partial class GameHUD : Control
 			_shipsContainer.Visible = false;
 		}
 
-		if (_portButton != null)
+		if (_portPanel != null)
 		{
 			bool showPort = selectedCamp != null && IsInstanceValid(selectedCamp)
 				&& selectedCamp.GetTeamId() == GetLocalTeamId()
 				&& !selectedCamp.HasPort
 				&& !selectedCamp.IsNeutralCamp;
-			_portButton.Visible = showPort;
-			if (showPort)
-				_portButton.Disabled = !selectedCamp.CanBuyPort();
+			_portPanel.Visible = showPort;
+			if (showPort && _portTextureBtn != null)
+				_portTextureBtn.Disabled = !selectedCamp.CanBuyPort();
 		}
 
 		bool selectionChanged = selectedCamp != _lastSelectedCampForHud || selectedPort != _lastSelectedPortForHud;

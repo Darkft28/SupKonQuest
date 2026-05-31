@@ -823,9 +823,48 @@ public partial class MapGenerator : Node
 		return solId != 6 && solId != -1;
 	}
 
+	// BFS tilemap pour vérifier la connectivité terrestre sans déclencher l'assert
+	// C++ de Godot 4.5 ("is_reachable == false") dans NavigationServer2D.MapGetPath.
+	private static bool HasLandPathBFS(Vector2 worldFrom, Vector2 worldTo, int maxVisited = 40000)
+	{
+		var tm = _activeInstance?._tileMapSol;
+		if (tm == null) return true;
+
+		Vector2I tFrom = tm.LocalToMap(tm.ToLocal(worldFrom));
+		Vector2I tTo   = tm.LocalToMap(tm.ToLocal(worldTo));
+		if (tFrom == tTo) return true;
+
+		var visited = new System.Collections.Generic.HashSet<Vector2I> { tFrom };
+		var queue   = new System.Collections.Generic.Queue<Vector2I>();
+		queue.Enqueue(tFrom);
+
+		Span<Vector2I> dirs = stackalloc Vector2I[]
+			{ new Vector2I(1,0), new Vector2I(-1,0), new Vector2I(0,1), new Vector2I(0,-1) };
+
+		while (queue.Count > 0 && visited.Count < maxVisited)
+		{
+			var cur = queue.Dequeue();
+			foreach (var d in dirs)
+			{
+				var nb = cur + d;
+				if (!visited.Add(nb)) continue;
+				int sid = tm.GetCellSourceId(nb);
+				if (sid == 6 || sid == -1) continue; // eau ou vide
+				if (nb == tTo) return true;
+				queue.Enqueue(nb);
+			}
+		}
+		return false;
+	}
+
 	private static bool IsCampPairLandConnected(Vector2 snappedFrom, Vector2 snappedTo)
 	{
 		if (!LandNavigationMap.IsValid)
+			return false;
+
+		// BFS sur la tilemap : si les deux camps ne sont pas sur la même île, on évite
+		// d'appeler MapGetPath qui déclenche un assert C++ dans Godot 4.5.
+		if (!HasLandPathBFS(snappedFrom, snappedTo))
 			return false;
 
 		float direct = snappedFrom.DistanceTo(snappedTo);

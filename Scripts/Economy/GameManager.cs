@@ -23,7 +23,7 @@ public partial class GameManager : Node
 
 	private const int StartingGold = 100;
 	private const int CaptureBonus = 50;
-	private const int PassiveGoldPerSecond = 75;
+	private const int PassiveGoldPerSecond = 20;
 	private const int RegionBonusGold = 30;
 
 	private float _passiveGoldTimer = 0f;

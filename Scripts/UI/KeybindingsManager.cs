@@ -18,7 +18,7 @@ public partial class KeybindingsManager : Node
 	private static readonly Key[] DefaultShipKeys =
 		{ Key.Key9, Key.Key0, Key.Minus };
 	private static readonly Key[] DefaultUltimateKeys =
-		{ Key.Key1, Key.Key2, Key.Escape };
+		{ Key.E, Key.R, Key.Escape };
 	private const Key DefaultAllOwnedUnitsKey = Key.A;
 
 	private const string SavePath = "user://keybindings.cfg";

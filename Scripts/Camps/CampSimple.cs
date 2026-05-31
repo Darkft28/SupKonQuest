@@ -259,7 +259,6 @@ public partial class CampSimple : Area2D
 	{
 		UpdateHealthBar();
 		CleanDeadUnits();
-		GeneratePassiveGold(delta);
 		ProcessProductionQueue(delta);
 		ProcessShipProductionQueue(delta);
 	}
