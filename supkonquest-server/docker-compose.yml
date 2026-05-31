@@ -1,0 +1,54 @@
+api-version: 2019-12-01
+location: swedencentral
+name: nakama-server
+properties:
+  containers:
+  - name: cockroachdb
+    properties:
+      image: cockroachdb/cockroach:latest-v23.1
+      command:
+        - "/cockroach/cockroach"
+        - "start-single-node"
+        - "--insecure"
+        - "--store=attrs=ssd,path=/var/lib/cockroach/"
+      ports:
+        - port: 26257
+        - port: 8080
+      resources:
+        requests:
+          cpu: 1.0
+          memoryInGB: 1.5
+  - name: nakama
+    properties:
+      image: heroiclabs/nakama:3.22.0
+      command:
+        - "/bin/sh"
+        - "-ecx"
+        - "/nakama/nakama migrate up --database.address root@127.0.0.1:26257 && /nakama/nakama --name nakama1 --database.address root@127.0.0.1:26257 --logger.level DEBUG --session.token_expiry_sec 7200"
+      ports:
+        - port: 7349
+        - port: 7350
+        - port: 7351
+      resources:
+        requests:
+          cpu: 1.0
+          memoryInGB: 1.5
+      volumeMounts:
+        - name: modules-volume
+          mountPath: /nakama/data/modules/
+  volumes:
+    - name: modules-volume
+      azureFile:
+        shareName: nakamamodules
+        storageAccountName: storage999ls
+        storageAccountKey: <Clé_d'accès_stockage_azure>
+  osType: Linux
+  ipAddress:
+    type: Public
+    ports:
+      - protocol: tcp
+        port: 7350
+      - protocol: tcp
+        port: 7351
+      - protocol: tcp
+        port: 8080

@@ -2,7 +2,6 @@
 .godot/
 /android/
 /addons/
-/supkonquest-server/
 
 # Documentation et fichiers de configuration personnels
 .claude/

@@ -23,7 +23,7 @@ public partial class GameManager : Node
 
 	private const int StartingGold = 100;
 	private const int CaptureBonus = 50;
-	private const int PassiveGoldPerSecond = 500;
+	private const int PassiveGoldPerSecond = 75;
 	private const int RegionBonusGold = 30;
 
 	private float _passiveGoldTimer = 0f;
@@ -235,7 +235,7 @@ public partial class GameManager : Node
 			}
 			else
 			{
-				// Solo / AI: all teams receive passive gold
+				// Solo / IA : même PassiveGoldPerSecond (75) pour toutes les équipes (joueur + bots)
 				foreach (var teamId in new List<int>(_teamGold.Keys))
 				{
 					if (!ShouldAccrueGold(teamId))

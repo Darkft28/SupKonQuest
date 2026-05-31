@@ -1,0 +1,23 @@
+{
+  "files": [
+    "./node_modules/nakama-runtime/index.d.ts",
+    "./messages.ts",
+    "./lobby.ts",
+    "./match_handler.ts",
+    "./match_rpc.ts",
+    "./auth.ts",
+    "./main.ts"
+  ],
+  "compilerOptions": {
+    "target": "es5",
+    "ignoreDeprecations": "6.0",
+    "typeRoots": [
+      "./node_modules"
+    ],
+    "outFile": "./build/index.js",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true
+  }
+}
