@@ -20,6 +20,16 @@ public partial class MapGenerator : Node
 
 	// Territory connectivity graph (exposed for AI and units)
 	public static Dictionary<int, HashSet<int>> TerritoryGraph { get; private set; }
+	public static Rid LandNavigationMap { get; private set; }
+
+	private static MapGenerator _activeInstance;
+	private static readonly Dictionary<long, bool> _campLandLinks = new();
+
+	private const float LandPathEndTolerance = 768f;
+	private const float LandPathEndpointTolerance = 640f;
+	private const float LandPathDetourFactor = 1.55f;
+	private const float LandPathDetourPadding = 640f;
+	private const float MaxLandAssaultDistance = 9000f;
 
 	private PackedScene _campScene;
 
@@ -35,6 +45,7 @@ public partial class MapGenerator : Node
 
 	public override async void _Ready()
 	{
+		_activeInstance = this;
 		_tileMapSol = GetNode<TileMapLayer>("Sol");
 		_tileMapObjets = GetNode<TileMapLayer>("Objets");
 		_camera = GetNode<Camera2D>("Camera2D");
@@ -86,8 +97,24 @@ public partial class MapGenerator : Node
 		// otherwise two AIs between identical points can produce different
 		// paths depending on which one computes first.
 		SetLoadingStatus("Precomputing paths...");
-		for (int i = 0; i < 5; i++)
-			await ToSignal(GetTree(), SceneTree.SignalName.PhysicsFrame);
+		await WaitForLandNavigationReady();
+
+		RefreshLandNavigationMap();
+
+		var camps = GameManager.Instance?.GetAllCamps();
+		if (camps != null)
+		{
+			for (int attempt = 0; attempt < 4; attempt++)
+			{
+				BuildCampLandConnectivity(camps);
+				int connected = _campLandLinks.Values.Count(v => v);
+				if (connected > 0 || attempt == 3)
+					break;
+				for (int i = 0; i < 8; i++)
+					await ToSignal(GetTree(), SceneTree.SignalName.PhysicsFrame);
+				RefreshLandNavigationMap();
+			}
+		}
 
 		HideLoadingScreen();
 
@@ -469,7 +496,189 @@ public partial class MapGenerator : Node
 		navRegion.NavigationLayers = 1u; // Layer 1: land (units)
 		navRegion.NavigationPolygon = navPoly;
 		AddChild(navRegion);
+		LandNavigationMap = navRegion.GetNavigationMap();
+	}
 
+	public static void RefreshLandNavigationMap()
+	{
+		var navRegion = _activeInstance?.GetNodeOrNull<NavigationRegion2D>("NavRegion");
+		if (navRegion != null)
+			LandNavigationMap = navRegion.GetNavigationMap();
+	}
+
+	private async System.Threading.Tasks.Task WaitForLandNavigationReady()
+	{
+		RefreshLandNavigationMap();
+		if (!LandNavigationMap.IsValid)
+			return;
+
+		uint stableFrames = 0;
+		uint lastId = 0;
+		for (int attempt = 0; attempt < 240; attempt++)
+		{
+			await ToSignal(GetTree(), SceneTree.SignalName.PhysicsFrame);
+			uint id = NavigationServer2D.MapGetIterationId(LandNavigationMap);
+			if (id >= 2 && id == lastId)
+			{
+				stableFrames++;
+				if (stableFrames >= 5)
+					return;
+			}
+			else
+			{
+				stableFrames = 0;
+				lastId = id;
+			}
+		}
+	}
+
+	public static void BuildCampLandConnectivity(System.Collections.Generic.IEnumerable<CampSimple> camps)
+	{
+		_campLandLinks.Clear();
+		if (!LandNavigationMap.IsValid || camps == null)
+			return;
+
+		var list = camps.Where(c => c != null && Godot.GodotObject.IsInstanceValid(c)).ToList();
+		var navPos = new Dictionary<int, Vector2>(list.Count);
+		foreach (var camp in list)
+			navPos[camp.CampId] = SnapToLandNav(camp.GlobalPosition);
+
+		for (int i = 0; i < list.Count; i++)
+		{
+			for (int j = i + 1; j < list.Count; j++)
+			{
+				bool linked = IsCampPairLandConnected(navPos[list[i].CampId], navPos[list[j].CampId]);
+				_campLandLinks[CampPairKey(list[i].CampId, list[j].CampId)] = linked;
+			}
+		}
+	}
+
+	public static bool AreCampsLandConnected(CampSimple a, CampSimple b)
+	{
+		if (a == null || b == null)
+			return false;
+		if (a.CampId == b.CampId)
+			return true;
+
+		return _campLandLinks.TryGetValue(CampPairKey(a.CampId, b.CampId), out bool linked) && linked;
+	}
+
+	public static Vector2 SnapToLandNav(Vector2 worldPos)
+	{
+		if (!LandNavigationMap.IsValid)
+			return worldPos;
+		return NavigationServer2D.MapGetClosestPoint(LandNavigationMap, worldPos);
+	}
+
+	/// <summary>
+	/// Snaps near origin, rejecting snaps that jump across water to another landmass.
+	/// </summary>
+	public static Vector2 SnapToLandNavNear(Vector2 origin, Vector2 candidate, float maxCandidateSnap = 384f)
+	{
+		if (!LandNavigationMap.IsValid)
+			return candidate;
+
+		Vector2 originSnapped = SnapToLandNav(origin);
+		Vector2 candidateSnapped = SnapToLandNav(candidate);
+
+		if (candidateSnapped.DistanceTo(candidate) > maxCandidateSnap)
+			return originSnapped;
+
+		if (DirectLineCrossesWater(originSnapped, candidateSnapped))
+			return originSnapped;
+
+		return candidateSnapped;
+	}
+
+	/// <summary>Cheap check: straight line between two points does not cross water tiles.</summary>
+	public static bool HasClearLandLine(Vector2 from, Vector2 to)
+		=> !DirectLineCrossesWater(from, to);
+
+	/// <summary>
+	/// True when a land navigation path exists between two world positions.
+	/// Expensive — use only when issuing attack orders, not per-frame.
+	/// </summary>
+	public static bool IsLandPathReachable(Vector2 from, Vector2 to)
+	{
+		if (!LandNavigationMap.IsValid)
+			return false;
+
+		Vector2 snappedFrom = NavigationServer2D.MapGetClosestPoint(LandNavigationMap, from);
+		Vector2 snappedTo = NavigationServer2D.MapGetClosestPoint(LandNavigationMap, to);
+
+		if (snappedFrom.DistanceTo(from) > LandPathEndpointTolerance
+			|| snappedTo.DistanceTo(to) > LandPathEndpointTolerance)
+			return false;
+
+		float direct = snappedFrom.DistanceTo(snappedTo);
+		if (direct > MaxLandAssaultDistance)
+			return false;
+
+		Vector2[] path = NavigationServer2D.MapGetPath(LandNavigationMap, snappedFrom, snappedTo, true);
+		if (path == null || path.Length < 2)
+			return false;
+
+		if (path[path.Length - 1].DistanceTo(snappedTo) > LandPathEndTolerance)
+			return false;
+
+		float walked = 0f;
+		for (int i = 1; i < path.Length; i++)
+			walked += path[i].DistanceTo(path[i - 1]);
+
+		return walked <= direct * LandPathDetourFactor + LandPathDetourPadding
+			&& (!DirectLineCrossesWater(snappedFrom, snappedTo) || walked >= direct * 1.35f);
+	}
+
+	private static bool DirectLineCrossesWater(Vector2 from, Vector2 to)
+	{
+		float length = from.DistanceTo(to);
+		int samples = Mathf.Max(1, (int)(length / 64f));
+		for (int i = 0; i <= samples; i++)
+		{
+			float t = (float)i / samples;
+			if (!IsWorldPositionLand(from.Lerp(to, t)))
+				return true;
+		}
+		return false;
+	}
+
+	public static bool IsWorldPositionLand(Vector2 worldPos)
+	{
+		var instance = _activeInstance;
+		if (instance?._tileMapSol == null)
+			return true;
+
+		Vector2I tile = instance._tileMapSol.LocalToMap(instance._tileMapSol.ToLocal(worldPos));
+		int solId = instance._tileMapSol.GetCellSourceId(tile);
+		return solId != 6 && solId != -1;
+	}
+
+	private static bool IsCampPairLandConnected(Vector2 snappedFrom, Vector2 snappedTo)
+	{
+		if (!LandNavigationMap.IsValid)
+			return false;
+
+		float direct = snappedFrom.DistanceTo(snappedTo);
+		Vector2[] path = NavigationServer2D.MapGetPath(LandNavigationMap, snappedFrom, snappedTo, true);
+		if (path == null || path.Length < 2)
+			return false;
+
+		if (path[path.Length - 1].DistanceTo(snappedTo) > LandPathEndTolerance)
+			return false;
+
+		float walked = 0f;
+		for (int i = 1; i < path.Length; i++)
+			walked += path[i].DistanceTo(path[i - 1]);
+
+		return walked <= direct * LandPathDetourFactor + LandPathDetourPadding
+			&& (!DirectLineCrossesWater(snappedFrom, snappedTo) || walked >= direct * 1.35f);
+	}
+
+	private static long CampPairKey(int campA, int campB)
+	{
+		if (campA > campB)
+			(campA, campB) = (campB, campA);
+		return ((long)campA << 32) | (uint)campB;
 	}
 
 	private void BuildWaterNavigationMesh()
@@ -521,7 +730,7 @@ public partial class MapGenerator : Node
 				if (solId == 6)
 					return false; // water in cell -> non-walkable
 				if (solId == -1)
-					continue;     // empty (map edge) -> ignore
+					return false; // void / bord de carte -> non praticable
 
 				// Forest = obstacle (even without an object tile)
 				if (solId == 3 || solId == 5 || solId == 4)

@@ -309,6 +309,10 @@ public partial class Unit
 				float distance = GlobalPosition.DistanceTo(otherUnit.GlobalPosition);
 				if (distance <= DetectionRange && distance < closestDistance)
 				{
+					if (IsAiControlledUnit()
+						&& !MapGenerator.HasClearLandLine(GlobalPosition, otherUnit.GlobalPosition))
+						continue;
+
 					closestEnemy = otherUnit;
 					closestDistance = distance;
 				}
@@ -335,6 +339,12 @@ public partial class Unit
 
 			float distance = GlobalPosition.DistanceTo(camp.GlobalPosition);
 			if (distance > CampAttackDetectionRange) continue;
+
+			if (OwnerCamp != null && !MapGenerator.AreCampsLandConnected(OwnerCamp, camp))
+				continue;
+
+			if (!MapGenerator.HasClearLandLine(GlobalPosition, camp.GlobalPosition))
+				continue;
 
 			// Score de base : distance euclidienne
 			float score = distance;

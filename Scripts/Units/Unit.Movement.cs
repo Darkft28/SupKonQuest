@@ -220,6 +220,9 @@ public partial class Unit
 
 	public void MoveTo(Vector2 target)
 	{
+		if (MapGenerator.LandNavigationMap.IsValid)
+			target = MapGenerator.SnapToLandNavNear(GlobalPosition, target);
+
 		_targetPosition = target;
 		_savedTargetPosition = null;
 		_campTarget = null;
@@ -279,6 +282,20 @@ public partial class Unit
 		if (_navAgent == null || !_navAgent.IsInsideTree())
 		{
 			Vector2 dir = (targetPos - GlobalPosition).Normalized();
+			if (IsAiControlledUnit())
+			{
+				if (dir.LengthSquared() < 0.01f
+					|| IsWaterTileAt(GlobalPosition + dir * 128f)
+					|| !MapGenerator.HasClearLandLine(GlobalPosition, targetPos))
+				{
+					_targetPosition = null;
+					_campTarget = null;
+					_currentTarget = null;
+					ChangeState(UnitState.Idle);
+					return;
+				}
+			}
+
 			_intendedDirection = dir;
 			ApplyMovementVelocity(dir * moveSpeed);
 			return;
@@ -303,19 +320,68 @@ public partial class Unit
 
 		if (_navAgent.IsNavigationFinished())
 		{
+			if (GlobalPosition.DistanceTo(targetPos) > ArrivalDistance)
+			{
+				_targetPosition = null;
+				_campTarget = null;
+				_currentTarget = null;
+				ChangeState(UnitState.Idle);
+				return;
+			}
+
 			_navPathCooldown = 60;
 			Velocity = Vector2.Zero;
 			return;
 		}
 
 		Vector2 nextPos = _navAgent.GetNextPathPosition();
+		if (nextPos.DistanceTo(GlobalPosition) > 1800f)
+		{
+			_targetPosition = null;
+			_campTarget = null;
+			_currentTarget = null;
+			ChangeState(UnitState.Idle);
+			return;
+		}
+
 		Vector2 direction = (nextPos - GlobalPosition).Normalized();
 		_intendedDirection = direction;
+
+		if (IsAiControlledUnit())
+		{
+			Vector2 probe = GlobalPosition + direction * 128f;
+			if (IsWaterTileAt(probe) || IsWaterTileAt(GlobalPosition))
+			{
+				_targetPosition = null;
+				_campTarget = null;
+				_currentTarget = null;
+				ChangeState(UnitState.Idle);
+				return;
+			}
+		}
+
 		ApplyMovementVelocity(direction * moveSpeed);
+	}
+
+	private bool IsAiControlledUnit()
+	{
+		var gameState = GetNodeOrNull<GameState>("/root/GameState");
+		return gameState != null && gameState.IsAIMode && TeamId != gameState.LocalTeamId;
 	}
 
 	private void OnNavVelocityComputed(Vector2 safeVelocity)
 	{
+		if (IsAiControlledUnit() && safeVelocity.LengthSquared() > 0.01f)
+		{
+			Vector2 dir = safeVelocity.Normalized();
+			if (IsWaterTileAt(GlobalPosition + dir * 96f) || IsWaterTileAt(GlobalPosition))
+			{
+				Velocity = Vector2.Zero;
+				MoveAndSlide();
+				return;
+			}
+		}
+
 		Velocity = safeVelocity;
 		MoveAndSlide();
 	}

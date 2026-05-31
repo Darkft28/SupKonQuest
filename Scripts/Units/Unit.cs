@@ -212,6 +212,7 @@ public partial class Unit : CharacterBody2D
 
 		_navAgent.PathDesiredDistance = 10f;
 		_navAgent.TargetDesiredDistance = ArrivalDistance;
+		_navAgent.PathMaxDistance = 512f;
 		_navAgent.AvoidanceEnabled = true;
 		_navAgent.NavigationLayers = 1u;
 		_navAgent.MaxSpeed = _stats.Speed;

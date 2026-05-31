@@ -467,11 +467,15 @@ public partial class AIController : Node
 
 		if (_diffIdx > 0 && !forceAttack)
 		{
-			Vector2 rallyPos = GetHomePosition();
-			float   arrivalR = RallyArrivalRadius[_diffIdx];
+			float arrivalR = RallyArrivalRadius[_diffIdx];
 			var idle = GetIdleAIUnits();
-			rallied = idle.Where(u => u.GlobalPosition.DistanceTo(rallyPos) <= arrivalR).ToList();
-			enRoute = idle.Where(u => u.GlobalPosition.DistanceTo(rallyPos) >  arrivalR).ToList();
+			rallied = idle.Where(u =>
+			{
+				var homeCamp = GetNearestOwnedCamp(u.GlobalPosition);
+				return homeCamp != null
+					&& u.GlobalPosition.DistanceTo(homeCamp.GlobalPosition) <= arrivalR;
+			}).ToList();
+			enRoute = idle.Where(u => !rallied.Contains(u)).ToList();
 		}
 		else
 		{
@@ -488,7 +492,7 @@ public partial class AIController : Node
 				int defCount = Mathf.Max(1, Mathf.RoundToInt(enRoute.Count * DefenseRatio[_diffIdx]));
 				var defenders = enRoute.Take(defCount).ToList();
 				foreach (var unit in defenders)
-					unit.MoveTo(threatenedCamp.GlobalPosition + RandomOffset(180f));
+					unit.MoveTo(MapGenerator.SnapToLandNavNear(threatenedCamp.GlobalPosition, threatenedCamp.GlobalPosition + RandomOffset(180f)));
 				enRoute = enRoute.Skip(defCount).ToList();
 				GD.Print($"[IA team {_teamId}] Reactive defense: {defCount} units to camp #{threatenedCamp.CampId}");
 			}
@@ -498,10 +502,12 @@ public partial class AIController : Node
 		// -- Rallying (Medium/Hard) ---------------------------------------------
 		if (_diffIdx > 0 && !forceAttack)
 		{
-			Vector2 rallyPos = GetHomePosition();
-			// Send en-route units to rally point
 			foreach (var unit in enRoute)
-				unit.MoveTo(rallyPos + RandomOffset(280f));
+			{
+				var homeCamp = GetNearestOwnedCamp(unit.GlobalPosition);
+				if (homeCamp == null) continue;
+				unit.MoveTo(MapGenerator.SnapToLandNavNear(homeCamp.GlobalPosition, homeCamp.GlobalPosition + RandomOffset(280f)));
+			}
 
 			// Adaptive threshold: min(MinRallyUnits, 60% of total army)
 			int totalArmy = GetAIUnits().Count;
@@ -553,21 +559,29 @@ public partial class AIController : Node
 	private void SendUnitsTo(CampSimple target, List<Unit> units)
 	{
 		if (units == null) return;
+
+		int sentCount = 0;
 		foreach (var unit in units)
 		{
 			if (!IsInstanceValid(unit)) continue;
 
-			// AttackCamp: all units navigate toward the same target camp,
-			// using the same nav corridor. Two opposing armies attacking each other
-			// mutuellement se croisent sur le même chemin et combattent via _opportunisticTarget.
-			// Les Heal suivent en MoveTo (AttackCamp les ignore).
+			if (!MapGenerator.IsLandPathReachable(unit.GlobalPosition, target.GlobalPosition))
+				continue;
+
 			if (unit.GetUnitType() == "Heal")
-				unit.MoveTo(target.GlobalPosition + RandomOffset(350f));
+			{
+				Vector2 healDest = MapGenerator.SnapToLandNavNear(unit.GlobalPosition, target.GlobalPosition + RandomOffset(350f));
+				unit.MoveTo(healDest);
+			}
 			else
 				unit.AttackCamp(target);
+
+			sentCount++;
 		}
 		_lastAttackTimer = 0f;
-		GD.Print($"[IA] {units.Count} units -> camp #{target.CampId} (team {target.GetTeamId()})");
+
+		if (sentCount > 0)
+			GD.Print($"[IA] {sentCount} units -> camp #{target.CampId} (team {target.GetTeamId()})");
 	}
 
 	// -- Amphibious warfare (Medium / Hard) ---------------------------------------
@@ -691,7 +705,8 @@ public partial class AIController : Node
 
 			// Nearest idle units (anywhere) - rally point is often far from the port
 			var boarders = GetIdleAIUnits()
-				.Where(u => u.CanBoardTransport())
+				.Where(u => u.CanBoardTransport()
+					&& MapGenerator.HasClearLandLine(u.GlobalPosition, transport.GlobalPosition))
 				.OrderBy(u => u.GlobalPosition.DistanceTo(transport.GlobalPosition))
 				.Take(freeSlots)
 				.ToList();
@@ -930,14 +945,19 @@ public partial class AIController : Node
 
 		if (candidates.Count == 0) return null;
 
+		CampSimple chosen;
 		// Error rate: Easy sometimes chooses a suboptimal target
 		if (!forceAttack && ErrorRate[_diffIdx] > 0f && _rng.NextDouble() < ErrorRate[_diffIdx])
 		{
 			int idx = _rng.Next(Mathf.Min(candidates.Count, 3));
-			return candidates[idx].camp;
+			chosen = candidates[idx].camp;
+		}
+		else
+		{
+			chosen = candidates[0].camp;
 		}
 
-		return candidates[0].camp;
+		return chosen;
 	}
 
 	private float ScoreCamp(CampSimple camp, int currentTier, int homeRegion)
@@ -987,13 +1007,14 @@ public partial class AIController : Node
 
 	private bool IsLandReachable(CampSimple camp)
 	{
-		if (camp.RegionId <= 0)
-			return true;
+		if (camp == null)
+			return false;
 
-		if (MapGenerator.TerritoryGraph == null)
-			return true;
+		var aiCamps = GetAICamps();
+		if (aiCamps.Count == 0)
+			return false;
 
-		return GetReachableLandRegions().Contains(camp.RegionId);
+		return aiCamps.Any(owned => MapGenerator.AreCampsLandConnected(owned, camp));
 	}
 
 	// -- Defense ------------------------------------------------------------------
@@ -1093,6 +1114,22 @@ public partial class AIController : Node
 	// Returns the centroid of all owned camps.
 	// Unlike a fixed home camp, this point moves as AI captures new camps,
 	// preventing units from being pulled backward after each capture.
+	private CampSimple GetNearestOwnedCamp(Vector2 from)
+	{
+		CampSimple nearest = null;
+		float bestDist = float.MaxValue;
+		foreach (var camp in GetAICamps())
+		{
+			float dist = camp.GlobalPosition.DistanceTo(from);
+			if (dist < bestDist)
+			{
+				bestDist = dist;
+				nearest = camp;
+			}
+		}
+		return nearest;
+	}
+
 	private Vector2 GetHomePosition()
 	{
 		var camps = GetAICamps();

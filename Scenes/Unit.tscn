@@ -27,6 +27,7 @@ shape = SubResource("CircleShape2D_detection")
 [node name="NavigationAgent2D" type="NavigationAgent2D" parent="."]
 path_desired_distance = 10.0
 target_desired_distance = 20.0
+path_max_distance = 512.0
 avoidance_enabled = true
 radius = 40.0
 neighbor_distance = 120.0
