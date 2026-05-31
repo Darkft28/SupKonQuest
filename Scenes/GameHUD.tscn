@@ -499,6 +499,44 @@ texture = ExtResource("5_gold")
 expand_mode = 1
 stretch_mode = 5
 
+[node name="QueueToggleBtn" type="Button" parent="NinePatchRect"]
+layout_mode = 1
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -151.0
+offset_top = -34.0
+offset_right = -8.0
+offset_bottom = -10.0
+grow_horizontal = 0
+theme_override_font_sizes/font_size = 11
+text = "File d'attente ▲"
+
+[node name="QueuePanel" type="Panel" parent="NinePatchRect"]
+clip_contents = true
+layout_mode = 1
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -562.0
+offset_top = -2.0
+offset_right = -160.0
+offset_bottom = -2.0
+grow_horizontal = 0
+
+[node name="QueueContent" type="HBoxContainer" parent="NinePatchRect/QueuePanel"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 8.0
+offset_top = 6.0
+offset_right = -8.0
+offset_bottom = -6.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/separation = 6
+
 [node name="Minimap" type="NinePatchRect" parent="."]
 layout_mode = 0
 offset_left = -12.0
@@ -509,7 +547,6 @@ texture = ExtResource("2_s6mu7")
 
 [node name="MinimapOverlay" type="Control" parent="Minimap"]
 layout_mode = 1
-anchors_preset = -1
 anchor_left = 0.163
 anchor_top = 0.158
 anchor_right = 0.84200007
@@ -518,7 +555,6 @@ offset_left = -0.9259987
 offset_top = -0.9160023
 offset_right = -0.030014038
 offset_bottom = 1.1939697
-mouse_filter = 0
 script = ExtResource("3_s6mu7")
 
 [node name="GoldPanel" type="Control" parent="."]

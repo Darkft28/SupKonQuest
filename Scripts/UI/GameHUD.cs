@@ -22,6 +22,30 @@ public partial class GameHUD : Control
 	private Button _healUltimateButton;
 	private Button _supportUltimateButton;
 
+	private Button _queueToggleBtn;
+	private Control _queuePanel;
+	private HBoxContainer _queueContent;
+	private bool _queueOpen = false;
+	private float _queueRefreshTimer = 0f;
+	private Tween _queueTween;
+	private const float QueuePanelHeight = 92f;
+	private const float QueueRefreshInterval = 0.1f;
+
+	private static readonly Dictionary<string, string> UnitTexturePaths = new()
+	{
+		{ "Infantry",  "res://Assets/Units/Characters/Infantry/Infantry_Front.png" },
+		{ "Support",   "res://Assets/Units/Characters/Support/Support_Front.png" },
+		{ "Heal",      "res://Assets/Units/Characters/Healer/healer_Front.png" },
+		{ "Range",     "res://Assets/Units/Characters/Range/Range_Front.png" },
+		{ "AntiArmor", "res://Assets/Units/Characters/Anti-armor/Anti-armor_front.png" },
+		{ "Heavy",     "res://Assets/Units/Characters/Heavy/Heavy_Front.png" },
+		{ "Mortar",    "res://Assets/Units/Characters/Mortar/Mortar_Front.png" },
+		{ "Tank",      "res://Assets/Units/Characters/Tank/Tank_Front.png" },
+		{ "Transport", "res://Assets/Units/Ships/Transport/Transport_Front.png" },
+		{ "Fregate",   "res://Assets/Units/Ships/Frégate/frégate_Front.png" },
+		{ "Destroyer", "res://Assets/Units/Ships/Destroyer/Destroyers_Front.png" },
+	};
+
 	private Panel _disconnectPanel;
 	private Label _disconnectLabel;
 	private Panel _defeatPanel;
@@ -86,6 +110,7 @@ public partial class GameHUD : Control
 		CreateTierInfoLabel();
 		BindSceneHudControls();
 		CreateAbilityButtons();
+		SetupQueuePanel();
 
 		var nakama = GetNodeOrNull<NakamaService>("/root/NakamaService");
 		if (nakama != null)
@@ -635,6 +660,126 @@ public partial class GameHUD : Control
 		UpdateAbilityButtons();
 		HandleAbilityHotkeys();
 		UpdateLeaderboard(delta);
+		if (_queueOpen)
+		{
+			_queueRefreshTimer -= (float)delta;
+			if (_queueRefreshTimer <= 0f)
+			{
+				_queueRefreshTimer = QueueRefreshInterval;
+				UpdateQueueDisplay();
+			}
+		}
+	}
+
+	private void SetupQueuePanel()
+	{
+		_queueToggleBtn = GetNode<Button>("NinePatchRect/QueueToggleBtn");
+		UIStyle.ApplyStone(_queueToggleBtn);
+		_queueToggleBtn.Pressed += OnQueueTogglePressed;
+
+		_queuePanel = GetNode<Panel>("NinePatchRect/QueuePanel");
+		var panelStyle = new StyleBoxFlat();
+		panelStyle.BgColor = new Color(0f, 0f, 0f, 0.78f);
+		panelStyle.SetCornerRadiusAll(4);
+		((Panel)_queuePanel).AddThemeStyleboxOverride("panel", panelStyle);
+
+		_queueContent = GetNode<HBoxContainer>("NinePatchRect/QueuePanel/QueueContent");
+	}
+
+	private void OnQueueTogglePressed()
+	{
+		_queueOpen = !_queueOpen;
+		_queueToggleBtn.Text = _queueOpen ? "File d'attente ▼" : "File d'attente ▲";
+
+		_queueTween?.Kill();
+		_queueTween = CreateTween();
+		float targetTop = _queueOpen ? -QueuePanelHeight : 0f;
+		_queueTween.TweenProperty(_queuePanel, "offset_top", targetTop, 0.2f)
+			.SetTrans(Tween.TransitionType.Sine).SetEase(Tween.EaseType.Out);
+		_queueTween.TweenProperty(_queuePanel, "offset_bottom", 0f, 0f); // fixe
+
+		if (_queueOpen) UpdateQueueDisplay();
+	}
+
+	private void UpdateQueueDisplay()
+	{
+		foreach (var child in _queueContent.GetChildren())
+			child.QueueFree();
+
+		var camp = _selectionManager?.GetSelectedCamp();
+		if (camp == null || !IsInstanceValid(camp) || camp.GetTeamId() != GetLocalTeamId())
+			return;
+
+		string current = camp.GetCurrentProduction();
+		float progress = camp.GetProductionProgress();
+		string[] queued = camp.GetQueuedUnits();
+
+		float totalRemaining = 0f;
+
+		if (current != null)
+		{
+			float prodTime = UnitStats.GetStats(current).ProductionTime;
+			float remaining = prodTime * (1f - progress);
+			totalRemaining += remaining;
+			_queueContent.AddChild(BuildQueueCard(current, progress, remaining));
+		}
+
+		foreach (var unitType in queued)
+		{
+			float t = UnitStats.GetStats(unitType).ProductionTime;
+			totalRemaining += t;
+			_queueContent.AddChild(BuildQueueCard(unitType, 0f, t));
+		}
+
+		// Label "Total" à droite
+		var totalLabel = new Label();
+		totalLabel.Text = $"Total\n{FormatTime(totalRemaining)}";
+		totalLabel.AddThemeFontSizeOverride("font_size", 11);
+		totalLabel.AddThemeColorOverride("font_color", new Color(1f, 0.88f, 0.42f, 1f));
+		totalLabel.HorizontalAlignment = HorizontalAlignment.Center;
+		totalLabel.VerticalAlignment   = VerticalAlignment.Center;
+		totalLabel.SizeFlagsVertical   = Control.SizeFlags.Fill;
+		_queueContent.AddChild(totalLabel);
+	}
+
+	private static string FormatTime(float seconds)
+	{
+		if (seconds >= 60f)
+		{
+			int m = (int)(seconds / 60f);
+			float s = seconds % 60f;
+			return $"{m}m {s:0.00}s";
+		}
+		return $"{seconds:0.00}s";
+	}
+
+	private static Control BuildQueueCard(string unitType, float progress, float timeSeconds)
+	{
+		var card = new VBoxContainer();
+		card.AddThemeConstantOverride("separation", 2);
+
+		var bar = new ProgressBar();
+		bar.CustomMinimumSize = new Vector2(50, 8);
+		bar.Value = progress * 100f;
+		bar.ShowPercentage = false;
+		card.AddChild(bar);
+
+		var img = new TextureRect();
+		img.CustomMinimumSize = new Vector2(50, 50);
+		img.ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize;
+		img.StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered;
+		if (UnitTexturePaths.TryGetValue(unitType, out string path))
+			img.Texture = GD.Load<Texture2D>(path);
+		card.AddChild(img);
+
+		var timeLabel = new Label();
+		timeLabel.Text = FormatTime(timeSeconds);
+		timeLabel.AddThemeFontSizeOverride("font_size", 10);
+		timeLabel.AddThemeColorOverride("font_color", new Color(0.85f, 0.85f, 0.85f, 1f));
+		timeLabel.HorizontalAlignment = HorizontalAlignment.Center;
+		card.AddChild(timeLabel);
+
+		return card;
 	}
 
 	private void CreateAbilityButtons()
