@@ -67,11 +67,17 @@ public partial class Unit : CharacterBody2D
 	// Throttle recherche ennemis/camps - évite O(n²) chaque frame
 	private float _aiSearchTimer = 0f;
 	private const float EnemySearchInterval = 0.5f;
+	private const float HealSearchInterval = 0.5f;
 
 	// Throttle vérification défenseurs camp - évite LINQ chaque frame
 	private float _campDefeatCheckTimer = 0f;
 	private bool _campDefeatCached = false;
 	private const float CampDefeatCheckInterval = 0.3f;
+
+	private float _healSearchTimer = 0f;
+	private bool _countedInTeamUnits;
+	private float _rvoCheckTimer = 0f;
+	private const float RvoCheckInterval = 0.2f;
 
 
 	// Ennemi croisé en chemin vers un camp (combat opportuniste)
@@ -88,6 +94,8 @@ public partial class Unit : CharacterBody2D
 	// Aura de defense (Support)
 	private const float SupportAuraRadius = 200f;
 	private const float SupportDefenseBonus = 10f;
+	private float _activeSupportAuraBonus;
+	private Area2D _supportAuraArea;
 	private static readonly Color AuraColor = new Color(0.3f, 0.5f, 1f, 0.12f);
 	private static readonly Color AuraBorderColor = new Color(0.3f, 0.5f, 1f, 0.35f);
 
@@ -219,10 +227,85 @@ public partial class Unit : CharacterBody2D
 		_navAgent.VelocityComputed += OnNavVelocityComputed;
 
 		_currentState = UnitState.Idle;
+
+		if (TeamId > 0 && _currentHealth > 0)
+		{
+			GameManager.Instance?.RegisterTeamUnit(TeamId);
+			_countedInTeamUnits = true;
+		}
+
+		if (UnitType == "Support")
+			_ = SetupSupportAuraAsync();
+	}
+
+	private void UnregisterFromTeamCount()
+	{
+		if (!_countedInTeamUnits)
+			return;
+
+		_countedInTeamUnits = false;
+		GameManager.Instance?.UnregisterTeamUnit(TeamId);
+	}
+
+	public void AddSupportAuraBonus(float amount)
+	{
+		_activeSupportAuraBonus = Mathf.Min(_activeSupportAuraBonus + amount, 40f);
+	}
+
+	public void RemoveSupportAuraBonus(float amount)
+	{
+		_activeSupportAuraBonus = Mathf.Max(0f, _activeSupportAuraBonus - amount);
+	}
+
+	private async System.Threading.Tasks.Task SetupSupportAuraAsync()
+	{
+		_supportAuraArea = new Area2D
+		{
+			Name = "SupportAura",
+			CollisionLayer = 0,
+			CollisionMask = 1,
+			Monitoring = true,
+		};
+
+		var shapeNode = new CollisionShape2D();
+		var circle = new CircleShape2D { Radius = SupportAuraRadius };
+		shapeNode.Shape = circle;
+		_supportAuraArea.AddChild(shapeNode);
+		_supportAuraArea.BodyEntered += OnSupportAuraBodyEntered;
+		_supportAuraArea.BodyExited += OnSupportAuraBodyExited;
+		AddChild(_supportAuraArea);
+
+		await ToSignal(GetTree(), SceneTree.SignalName.PhysicsFrame);
+
+		if (!IsInstanceValid(_supportAuraArea))
+			return;
+
+		foreach (Node body in _supportAuraArea.GetOverlappingBodies())
+			OnSupportAuraBodyEntered(body);
+	}
+
+	private void OnSupportAuraBodyEntered(Node body)
+	{
+		if (body is Unit ally && ally != this && ally.GetTeamId() == TeamId && ally.GetCurrentHealth() > 0)
+			ally.AddSupportAuraBonus(SupportDefenseBonus);
+	}
+
+	private void OnSupportAuraBodyExited(Node body)
+	{
+		if (body is Unit ally && ally != this)
+			ally.RemoveSupportAuraBonus(SupportDefenseBonus);
 	}
 
 	public override void _ExitTree()
 	{
+		UnregisterFromTeamCount();
+
+		if (_supportAuraArea != null && IsInstanceValid(_supportAuraArea))
+		{
+			_supportAuraArea.BodyEntered -= OnSupportAuraBodyEntered;
+			_supportAuraArea.BodyExited -= OnSupportAuraBodyExited;
+		}
+
 		if (!string.IsNullOrEmpty(NetworkId))
 		{
 			NetworkEntityRegistry.Unregister(NetworkId);

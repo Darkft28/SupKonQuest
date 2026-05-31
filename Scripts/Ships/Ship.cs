@@ -36,6 +36,8 @@ public partial class Ship : CharacterBody2D
 	private ShipState _currentState = ShipState.Idle;
 	private float _attackTimer = 0f;
 	private const float AttackInterval = 1.5f;
+	private const float ShipSearchInterval = 0.5f;
+	private float _shipSearchTimer = 0f;
 	private Ship _currentTarget = null;
 
 	private Area2D _detectionZone = null;

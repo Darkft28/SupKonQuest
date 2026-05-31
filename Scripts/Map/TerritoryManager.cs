@@ -1,6 +1,7 @@
 using Godot;
 using System;
 using System.Collections.Generic;
+using System.Threading.Tasks;
 
 public partial class TerritoryManager : Node2D
 {
@@ -26,6 +27,9 @@ public partial class TerritoryManager : Node2D
 	private Image _tintImage;
 	private ImageTexture _tintTexture;
 	private Sprite2D _tintSprite;
+
+	private bool _territoryRefreshInProgress;
+	private const int TerritoryTilesPerFrame = 5000;
 
 	private static readonly Color[] TeamColors = new Color[]
 	{
@@ -399,26 +403,52 @@ public partial class TerritoryManager : Node2D
 	private void UpdateTintImage()
 	{
 		_tintImage = Image.CreateEmpty(MapWidth, MapHeight, false, Image.Format.Rgba8);
+		FillTintImagePixels();
+		_tintTexture = ImageTexture.CreateFromImage(_tintImage);
+		_tintSprite.Texture = _tintTexture;
+	}
 
+	private async Task UpdateTintImageAsync()
+	{
+		_tintImage = Image.CreateEmpty(MapWidth, MapHeight, false, Image.Format.Rgba8);
+
+		int processed = 0;
 		for (int x = 0; x < MapWidth; x++)
 		{
 			for (int y = 0; y < MapHeight; y++)
 			{
-				int teamId = _territoryMap[x, y];
-				if (teamId < 0)
+				WriteTintPixel(x, y);
+				processed++;
+				if (processed >= TerritoryTilesPerFrame)
 				{
-					_tintImage.SetPixel(x, y, new Color(0, 0, 0, 0));
-				}
-				else
-				{
-					Color teamColor = GetTeamColor(teamId);
-					_tintImage.SetPixel(x, y, new Color(teamColor.R, teamColor.G, teamColor.B, TintAlpha));
+					processed = 0;
+					await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
 				}
 			}
 		}
 
 		_tintTexture = ImageTexture.CreateFromImage(_tintImage);
 		_tintSprite.Texture = _tintTexture;
+	}
+
+	private void FillTintImagePixels()
+	{
+		for (int x = 0; x < MapWidth; x++)
+			for (int y = 0; y < MapHeight; y++)
+				WriteTintPixel(x, y);
+	}
+
+	private void WriteTintPixel(int x, int y)
+	{
+		int teamId = _territoryMap[x, y];
+		if (teamId < 0)
+		{
+			_tintImage.SetPixel(x, y, new Color(0, 0, 0, 0));
+			return;
+		}
+
+		Color teamColor = GetTeamColor(teamId);
+		_tintImage.SetPixel(x, y, new Color(teamColor.R, teamColor.G, teamColor.B, TintAlpha));
 	}
 
 	public override void _Draw()
@@ -476,9 +506,19 @@ public partial class TerritoryManager : Node2D
 	// Appelé directement depuis CampSimple.CaptureCamp() et ApplyRemoteCapture()
 	public void RefreshTerritory(int captorTeamId = -1)
 	{
-		GD.Print($"[TERRITOIRE] RefreshTerritory() - captor: team {captorTeamId}");
+		if (_territoryRefreshInProgress)
+			return;
+
+		_ = RefreshTerritoryAsync(captorTeamId);
+	}
+
+	private async Task RefreshTerritoryAsync(int captorTeamId)
+	{
+		_territoryRefreshInProgress = true;
+		GD.Print($"[TERRITOIRE] RefreshTerritoryAsync() - captor: team {captorTeamId}");
 		ComputeTerritory();
-		UpdateTintImage();
+		await UpdateTintImageAsync();
 		QueueRedraw();
+		_territoryRefreshInProgress = false;
 	}
 }

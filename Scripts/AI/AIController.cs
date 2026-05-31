@@ -565,7 +565,7 @@ public partial class AIController : Node
 		{
 			if (!IsInstanceValid(unit)) continue;
 
-			if (!MapGenerator.IsLandPathReachable(unit.GlobalPosition, target.GlobalPosition))
+			if (!CanUnitReachTargetByLand(unit, target))
 				continue;
 
 			if (unit.GetUnitType() == "Heal")
@@ -578,10 +578,28 @@ public partial class AIController : Node
 
 			sentCount++;
 		}
-		_lastAttackTimer = 0f;
+
+		if (sentCount > 0)
+			_lastAttackTimer = 0f;
 
 		if (sentCount > 0)
 			GD.Print($"[IA] {sentCount} units -> camp #{target.CampId} (team {target.GetTeamId()})");
+	}
+
+	/// <summary>
+	/// Aligné sur ChooseTarget (AreCampsLandConnected) : évite de rejeter des unités
+	/// dont le camp possédé le plus proche est connecté terrestrement à la cible.
+	/// </summary>
+	private bool CanUnitReachTargetByLand(Unit unit, CampSimple target)
+	{
+		if (unit == null || target == null)
+			return false;
+
+		if (MapGenerator.IsLandPathReachable(unit.GlobalPosition, target.GlobalPosition))
+			return true;
+
+		var nearestOwned = GetNearestOwnedCamp(unit.GlobalPosition);
+		return nearestOwned != null && MapGenerator.AreCampsLandConnected(nearestOwned, target);
 	}
 
 	// -- Amphibious warfare (Medium / Hard) ---------------------------------------

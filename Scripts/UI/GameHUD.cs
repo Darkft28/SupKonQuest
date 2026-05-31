@@ -6,6 +6,8 @@ public partial class GameHUD : Control
 	private Label _goldLabel;
 	private Control _goldPanel;
 	private SelectionManager _selectionManager;
+	private CampSimple _lastSelectedCampForHud;
+	private CampSimple _lastSelectedPortForHud;
 	private Dictionary<string, TextureButton> _unitButtons = new Dictionary<string, TextureButton>();
 	private Dictionary<string, TextureButton> _shipButtons = new Dictionary<string, TextureButton>();
 	private Dictionary<string, Label> _lockLabels = new Dictionary<string, Label>();
@@ -94,6 +96,7 @@ public partial class GameHUD : Control
 			gameManager.OnlinePlayerLeft += OnOnlinePlayerLeft;
 			gameManager.LocalPlayerEliminated += OnLocalPlayerEliminated;
 			gameManager.GameWon += OnGameWon;
+			gameManager.OnTeamUnitCountChanged += OnTeamUnitCountChanged;
 		}
 
 		if (LocalizationManager.Instance != null)
@@ -110,6 +113,14 @@ public partial class GameHUD : Control
 			UpdateUnitButtons();
 			UpdateShipButtons();
 		}
+	}
+
+	private void OnTeamUnitCountChanged(int teamId, int newCount)
+	{
+		if (teamId != GetLocalTeamId())
+			return;
+
+		UpdateUnitButtons();
 	}
 
 	private void RefreshLocalizedHudTexts()
@@ -446,6 +457,7 @@ public partial class GameHUD : Control
 			gameManager.OnlinePlayerLeft -= OnOnlinePlayerLeft;
 			gameManager.LocalPlayerEliminated -= OnLocalPlayerEliminated;
 			gameManager.GameWon -= OnGameWon;
+			gameManager.OnTeamUnitCountChanged -= OnTeamUnitCountChanged;
 		}
 
 		if (LocalizationManager.Instance != null)
@@ -626,7 +638,6 @@ public partial class GameHUD : Control
 
 		UpdateGoldDisplayThrottled(delta);
 		UpdateContainerVisibility();
-		UpdateUnitButtons();
 		UpdateShipButtons();
 		UpdateAbilityButtons();
 		HandleAbilityHotkeys();
@@ -1152,6 +1163,14 @@ public partial class GameHUD : Control
 			if (showPort)
 				_portButton.Disabled = !selectedCamp.CanBuyPort();
 		}
+
+		bool selectionChanged = selectedCamp != _lastSelectedCampForHud || selectedPort != _lastSelectedPortForHud;
+		if (selectionChanged)
+		{
+			_lastSelectedCampForHud = selectedCamp;
+			_lastSelectedPortForHud = selectedPort;
+			UpdateUnitButtons();
+		}
 	}
 
 	private void UpdateGoldDisplayThrottled(double delta)
@@ -1168,6 +1187,7 @@ public partial class GameHUD : Control
 	{
 		_goldRefreshTimer = 0f;
 		UpdateGoldDisplay();
+		UpdateUnitButtons();
 	}
 
 	private void UpdateGoldDisplay()

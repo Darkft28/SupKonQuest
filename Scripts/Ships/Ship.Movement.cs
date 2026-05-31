@@ -6,13 +6,17 @@ public partial class Ship
 	{
 		if (ShipType == "Transport") return;
 
+		_shipSearchTimer += (float)delta;
+		if (_shipSearchTimer < ShipSearchInterval)
+			return;
+
+		_shipSearchTimer = 0f;
+
 		if (_currentTarget == null)
 		{
 			Ship enemy = FindEnemyShipInRange();
 			if (enemy != null)
-			{
 				SetNewTarget(enemy);
-			}
 		}
 	}
 
@@ -47,16 +51,21 @@ public partial class Ship
 		// Chercher des ennemis en route (sauf Transport)
 		if (ShipType != "Transport")
 		{
-			Ship enemy = FindEnemyShipInRange();
-			if (enemy != null)
+			_shipSearchTimer += (float)delta;
+			if (_shipSearchTimer >= ShipSearchInterval)
 			{
-				_currentTarget = enemy;
-				float distToEnemy = GlobalPosition.DistanceTo(enemy.GlobalPosition);
-				if (distToEnemy <= _stats.Range)
-					ChangeState(ShipState.Attacking);
-				else
-					ChangeState(ShipState.MovingToTarget);
-				return;
+				_shipSearchTimer = 0f;
+				Ship enemy = FindEnemyShipInRange();
+				if (enemy != null)
+				{
+					_currentTarget = enemy;
+					float distToEnemy = GlobalPosition.DistanceTo(enemy.GlobalPosition);
+					if (distToEnemy <= _stats.Range)
+						ChangeState(ShipState.Attacking);
+					else
+						ChangeState(ShipState.MovingToTarget);
+					return;
+				}
 			}
 		}
 

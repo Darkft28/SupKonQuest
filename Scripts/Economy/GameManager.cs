@@ -73,6 +73,7 @@ public partial class GameManager : Node
 		_tier2Unlocked.Clear();
 		_teamUltimateCooldowns.Clear();
 		_localEliminationNotified = false;
+		_teamUnitCounts.Clear();
 
 		var campNodes = GetTree().GetNodesInGroup("camps");
 		foreach (var node in campNodes)
@@ -82,6 +83,7 @@ public partial class GameManager : Node
 		}
 
 		AssignCampsToPlayers();
+		ResyncAndNotifyTeamUnitCounts();
 	}
 
 	private void AssignCampsToPlayers()
@@ -470,16 +472,61 @@ public partial class GameManager : Node
 	// regardless of which camp produced them.
 	public const int MaxUnitsPerCamp = 10;
 
+	public event Action<int, int> OnTeamUnitCountChanged;
+
+	private readonly Dictionary<int, int> _teamUnitCounts = new Dictionary<int, int>();
+
 	public int GetTeamUnitCount(int teamId)
 	{
-		int count = 0;
-		var nodes = GetTree().GetNodesInGroup("units");
-		foreach (var node in nodes)
+		return _teamUnitCounts.TryGetValue(teamId, out int count) ? count : 0;
+	}
+
+	public void RegisterTeamUnit(int teamId)
+	{
+		if (teamId <= 0)
+			return;
+
+		if (!_teamUnitCounts.ContainsKey(teamId))
+			_teamUnitCounts[teamId] = 0;
+
+		_teamUnitCounts[teamId]++;
+		OnTeamUnitCountChanged?.Invoke(teamId, _teamUnitCounts[teamId]);
+	}
+
+	public void UnregisterTeamUnit(int teamId)
+	{
+		if (teamId <= 0 || !_teamUnitCounts.ContainsKey(teamId))
+			return;
+
+		_teamUnitCounts[teamId] = Math.Max(0, _teamUnitCounts[teamId] - 1);
+		OnTeamUnitCountChanged?.Invoke(teamId, _teamUnitCounts[teamId]);
+	}
+
+	public void ResyncTeamUnitCounts()
+	{
+		_teamUnitCounts.Clear();
+		foreach (var node in GetTree().GetNodesInGroup("units"))
 		{
-			if (node is Unit u && u.GetTeamId() == teamId && u.GetCurrentHealth() > 0)
-				count++;
+			if (node is Unit unit && unit.GetTeamId() > 0 && unit.GetCurrentHealth() > 0)
+			{
+				int teamId = unit.GetTeamId();
+				if (!_teamUnitCounts.ContainsKey(teamId))
+					_teamUnitCounts[teamId] = 0;
+				_teamUnitCounts[teamId]++;
+			}
 		}
-		return count;
+	}
+
+	public void ResyncAndNotifyTeamUnitCounts()
+	{
+		var previous = new Dictionary<int, int>(_teamUnitCounts);
+		ResyncTeamUnitCounts();
+
+		foreach (var (teamId, count) in _teamUnitCounts)
+		{
+			if (!previous.TryGetValue(teamId, out int oldCount) || oldCount != count)
+				OnTeamUnitCountChanged?.Invoke(teamId, count);
+		}
 	}
 
 	public int GetMaxUnitsForTeam(int teamId)
@@ -676,6 +723,7 @@ public partial class GameManager : Node
 		_teamGoldVersion.Remove(leavingTeamId);
 		_homeRegions.Remove(leavingTeamId);
 		_tier2Unlocked.Remove(leavingTeamId);
+		_teamUnitCounts.Remove(leavingTeamId);
 
 		if (GameState.IsOnlineMultiplayer)
 			EmitSignal(SignalName.OnlinePlayerLeft, leavingTeamId);

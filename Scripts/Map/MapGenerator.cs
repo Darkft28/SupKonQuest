@@ -25,6 +25,12 @@ public partial class MapGenerator : Node
 	private static MapGenerator _activeInstance;
 	private static readonly Dictionary<long, bool> _campLandLinks = new();
 
+	public static ImageTexture MinimapBaseTexture { get; private set; }
+	public static int MinimapMapWidth { get; private set; } = 256;
+	public static int MinimapMapHeight { get; private set; } = 256;
+	public const int MinimapTileSize = 128;
+	public static event Action MinimapTextureReady;
+
 	private const float LandPathEndTolerance = 768f;
 	private const float LandPathEndpointTolerance = 640f;
 	private const float LandPathDetourFactor = 1.55f;
@@ -42,6 +48,21 @@ public partial class MapGenerator : Node
 	private Label _loadingStatusLabel;
 
 	private Random _seededRandom;
+
+	private const int MinimapBakeResolution = 512;
+
+	private struct BakeMaskSnapshot
+	{
+		public bool Active;
+		public bool UnitsVisible;
+		public bool HudVisible;
+		public bool VfxVisible;
+		public bool SelectionVisible;
+		public bool CameraEnabled;
+		public bool LoadingOverlayVisible;
+	}
+
+	private BakeMaskSnapshot _bakeMaskSnapshot;
 
 	public override async void _Ready()
 	{
@@ -115,6 +136,9 @@ public partial class MapGenerator : Node
 				RefreshLandNavigationMap();
 			}
 		}
+
+		SetLoadingStatus("Building minimap...");
+		await BakeMinimapScreenshotAsync();
 
 		HideLoadingScreen();
 
@@ -246,6 +270,152 @@ public partial class MapGenerator : Node
 
 		// Intro zoom to local player's base
 		TriggerIntroZoom();
+	}
+
+	private void SetBakeMask(bool hidden)
+	{
+		if (hidden)
+		{
+			if (_bakeMaskSnapshot.Active)
+				return;
+
+			var hud = GetNodeOrNull<CanvasLayer>("CanvasLayer");
+			var vfx = GetNodeOrNull<Node2D>("UltimateVfxManager");
+
+			_bakeMaskSnapshot = new BakeMaskSnapshot
+			{
+				Active = true,
+				UnitsVisible = _unitsContainer?.Visible ?? true,
+				HudVisible = hud?.Visible ?? true,
+				VfxVisible = vfx?.Visible ?? true,
+				SelectionVisible = _selectionManager?.Visible ?? true,
+				CameraEnabled = _camera?.Enabled ?? true,
+				LoadingOverlayVisible = _loadingOverlay?.Visible ?? true,
+			};
+
+			if (_unitsContainer != null)
+				_unitsContainer.Visible = false;
+			if (hud != null)
+				hud.Visible = false;
+			if (vfx != null)
+				vfx.Visible = false;
+			if (_selectionManager != null)
+				_selectionManager.Visible = false;
+			if (_camera != null)
+				_camera.Enabled = false;
+			if (_loadingOverlay != null && IsInstanceValid(_loadingOverlay))
+				_loadingOverlay.Visible = false;
+		}
+		else
+		{
+			if (!_bakeMaskSnapshot.Active)
+				return;
+
+			var hud = GetNodeOrNull<CanvasLayer>("CanvasLayer");
+			var vfx = GetNodeOrNull<Node2D>("UltimateVfxManager");
+
+			if (_unitsContainer != null)
+				_unitsContainer.Visible = _bakeMaskSnapshot.UnitsVisible;
+			if (hud != null)
+				hud.Visible = _bakeMaskSnapshot.HudVisible;
+			if (vfx != null)
+				vfx.Visible = _bakeMaskSnapshot.VfxVisible;
+			if (_selectionManager != null)
+				_selectionManager.Visible = _bakeMaskSnapshot.SelectionVisible;
+			if (_camera != null)
+				_camera.Enabled = _bakeMaskSnapshot.CameraEnabled;
+			if (_loadingOverlay != null && IsInstanceValid(_loadingOverlay))
+				_loadingOverlay.Visible = _bakeMaskSnapshot.LoadingOverlayVisible;
+
+			_bakeMaskSnapshot = default;
+		}
+	}
+
+	private async System.Threading.Tasks.Task BakeMinimapScreenshotAsync()
+	{
+		if (_tileMapSol == null)
+			return;
+
+		MinimapMapWidth = _mapWidth;
+		MinimapMapHeight = _mapHeight;
+
+		Rect2I used = _tileMapSol.GetUsedRect();
+		if (used.Size.X <= 0 || used.Size.Y <= 0)
+		{
+			GD.PrintErr("[MAP] Minimap bake: GetUsedRect() empty, using logical map bounds.");
+			int halfWidth = _mapWidth / 2;
+			int halfHeight = _mapHeight / 2;
+			used = new Rect2I(-halfWidth, -halfHeight, _mapWidth, _mapHeight);
+		}
+
+		Vector2 topLeftWorld = _tileMapSol.ToGlobal(_tileMapSol.MapToLocal(used.Position));
+		Vector2 bottomRightWorld = _tileMapSol.ToGlobal(_tileMapSol.MapToLocal(used.Position + used.Size));
+		Vector2 worldCenter = (topLeftWorld + bottomRightWorld) / 2f;
+		Vector2 usedPixelSize = bottomRightWorld - topLeftWorld;
+
+		if (usedPixelSize.X <= 0f || usedPixelSize.Y <= 0f)
+		{
+			GD.PrintErr("[MAP] Minimap bake: invalid used pixel size.");
+			return;
+		}
+
+		Vector2 bakeViewportSize = new Vector2(MinimapBakeResolution, MinimapBakeResolution);
+		Vector2 bakeZoom = new Vector2(
+			bakeViewportSize.X / usedPixelSize.X,
+			bakeViewportSize.Y / usedPixelSize.Y);
+
+		SubViewport subViewport = null;
+		try
+		{
+			SetBakeMask(hidden: true);
+
+			subViewport = new SubViewport
+			{
+				Size = new Vector2I(MinimapBakeResolution, MinimapBakeResolution),
+				RenderTargetUpdateMode = SubViewport.UpdateMode.Disabled,
+				World2D = _tileMapSol.GetWorld2D(),
+			};
+
+			var bakeCam = new Camera2D
+			{
+				GlobalPosition = worldCenter,
+				Zoom = bakeZoom,
+				Enabled = true,
+			};
+			subViewport.AddChild(bakeCam);
+			AddChild(subViewport);
+
+			await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+
+			subViewport.RenderTargetUpdateMode = SubViewport.UpdateMode.Once;
+			await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+			await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+
+			var viewportTex = subViewport.GetTexture();
+			if (viewportTex != null)
+			{
+				Image image = viewportTex.GetImage();
+				if (image != null && !image.IsEmpty())
+				{
+					MinimapBaseTexture?.Dispose();
+					MinimapBaseTexture = ImageTexture.CreateFromImage(image);
+				}
+				else
+					GD.PrintErr("[MAP] Minimap bake: captured image is empty.");
+			}
+			else
+				GD.PrintErr("[MAP] Minimap bake: SubViewport texture is null.");
+		}
+		finally
+		{
+			SetBakeMask(hidden: false);
+			if (subViewport != null && IsInstanceValid(subViewport))
+			{
+				subViewport.QueueFree();
+				subViewport = null;
+			}
+			MinimapTextureReady?.Invoke();
+		}
 	}
 
 	private static void ClearContainerChildren(Node container)

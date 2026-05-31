@@ -408,7 +408,7 @@ offset_right = 177.0
 offset_bottom = 658.0
 texture = ExtResource("2_s6mu7")
 
-[node name="SubViewportContainer" type="SubViewportContainer" parent="Minimap"]
+[node name="MinimapOverlay" type="Control" parent="Minimap"]
 layout_mode = 1
 anchors_preset = -1
 anchor_left = 0.163
@@ -420,15 +420,7 @@ offset_top = -0.9160023
 offset_right = -0.030014038
 offset_bottom = 1.1939697
 mouse_filter = 0
-stretch = true
 script = ExtResource("3_s6mu7")
-
-[node name="SubViewport" type="SubViewport" parent="Minimap/SubViewportContainer"]
-handle_input_locally = false
-size = Vector2i(129, 128)
-render_target_update_mode = 4
-
-[node name="MinimapCamera" type="Camera2D" parent="Minimap/SubViewportContainer/SubViewport"]
 
 [node name="GoldPanel" type="Control" parent="."]
 anchors_preset = 0

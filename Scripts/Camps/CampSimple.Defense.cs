@@ -92,8 +92,7 @@ public partial class CampSimple
 
 	private Vector2? FindIntruderInTerritory()
 	{
-		var allUnits = GetTree().GetNodesInGroup("units");
-		foreach (var node in allUnits)
+		foreach (var node in GetTree().GetNodesInGroup("units"))
 		{
 			if (node is Unit unit && unit.GetTeamId() != TeamId
 				&& unit.GetCurrentHealth() > 0
@@ -107,11 +106,9 @@ public partial class CampSimple
 
 	private void AlertDefenders(Vector2 intruderPos)
 	{
-		var allUnits = GetTree().GetNodesInGroup("units");
-		foreach (var node in allUnits)
+		foreach (var unit in GetLiveDefenders())
 		{
-			if (node is Unit unit && unit.GetTeamId() == TeamId
-				&& unit.IsIdleState() && unit.GetCurrentHealth() > 0
+			if (unit.IsIdleState()
 				&& GlobalPosition.DistanceTo(unit.GlobalPosition) <= TerritoryRadius)
 			{
 				unit.MoveTo(intruderPos);

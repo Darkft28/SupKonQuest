@@ -24,13 +24,13 @@ public partial class Unit
 
 		Velocity = Vector2.Zero;
 		_healTimer += (float)delta;
-		QueueRedraw();
 
 		if (_healTimer >= HealInterval)
 		{
 			_healTimer = 0f;
 			PlayHealerSfx();
 			_healTarget.Heal(HealAmount);
+			QueueRedraw();
 		}
 	}
 
@@ -42,27 +42,7 @@ public partial class Unit
 
 	public float GetSupportDefenseBonus()
 	{
-		// Un Support ne se buff pas lui-meme
-		if (UnitType == "Support")
-			return 0f;
-
-		var allUnits = GetTree().GetNodesInGroup("units");
-		float bonus = 0f;
-
-		foreach (var node in allUnits)
-		{
-			if (node is Unit ally && ally.UnitType == "Support"&& ally.GetTeamId() == TeamId
-				&& ally.GetCurrentHealth() > 0)
-			{
-				float distance = GlobalPosition.DistanceTo(ally.GlobalPosition);
-				if (distance <= SupportAuraRadius)
-				{
-					bonus += SupportDefenseBonus;
-				}
-			}
-		}
-
-		return Mathf.Min(bonus, 40f) + GetTemporaryDefenseBonus(); // cap aura + buff ultimate
+		return _activeSupportAuraBonus + GetTemporaryDefenseBonus();
 	}
 
 	private Unit FindWoundedAllyInRange()

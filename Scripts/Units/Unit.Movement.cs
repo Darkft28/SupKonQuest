@@ -7,14 +7,21 @@ public partial class Unit
 		// Healer : chercher des alliés blessés, jamais d'ennemis
 		if (UnitType == "Heal")
 		{
-			Unit woundedAlly = FindWoundedAllyInRange();
-			if (woundedAlly != null)
+			_healSearchTimer += (float)delta;
+			if (_healSearchTimer >= HealSearchInterval)
 			{
-				_healTarget = woundedAlly;
-				_healTimer = 0f;
-				ChangeState(UnitState.Healing);
+				_healSearchTimer = 0f;
+				Unit woundedAlly = FindWoundedAllyInRange();
+				if (woundedAlly != null)
+				{
+					_healTarget = woundedAlly;
+					_healTimer = 0f;
+					ChangeState(UnitState.Healing);
+					return;
+				}
 			}
-			else if (_savedTargetPosition.HasValue)
+
+			if (_savedTargetPosition.HasValue)
 			{
 				_targetPosition = _savedTargetPosition;
 				_savedTargetPosition = null;
@@ -112,14 +119,19 @@ public partial class Unit
 		// Healer en déplacement : chercher des alliés blessés, jamais d'ennemis
 		if (UnitType == "Heal")
 		{
-			Unit woundedAlly = FindWoundedAllyInRange();
-			if (woundedAlly != null)
+			_healSearchTimer += (float)delta;
+			if (_healSearchTimer >= HealSearchInterval)
 			{
-				_savedTargetPosition = _targetPosition;
-				_healTarget = woundedAlly;
-				_healTimer = 0f;
-				ChangeState(UnitState.Healing);
-				return;
+				_healSearchTimer = 0f;
+				Unit woundedAlly = FindWoundedAllyInRange();
+				if (woundedAlly != null)
+				{
+					_savedTargetPosition = _targetPosition;
+					_healTarget = woundedAlly;
+					_healTimer = 0f;
+					ChangeState(UnitState.Healing);
+					return;
+				}
 			}
 		}
 		else
@@ -349,18 +361,47 @@ public partial class Unit
 
 		if (IsAiControlledUnit())
 		{
-			Vector2 probe = GlobalPosition + direction * 128f;
-			if (IsWaterTileAt(probe) || IsWaterTileAt(GlobalPosition))
-			{
-				_targetPosition = null;
-				_campTarget = null;
-				_currentTarget = null;
-				ChangeState(UnitState.Idle);
+			if (TryAbortAiWaterMovement(direction, 128f))
 				return;
-			}
 		}
 
 		ApplyMovementVelocity(direction * moveSpeed);
+	}
+
+	private bool TryAbortAiWaterMovement(Vector2 direction, float probeDistance)
+	{
+		if (!IsAiControlledUnit())
+			return false;
+
+		if (TryRecoverAiFromWater())
+			return true;
+
+		if (direction.LengthSquared() < 0.01f)
+			return false;
+
+		Vector2 probe = GlobalPosition + direction.Normalized() * probeDistance;
+		if (!IsWaterTileAt(probe))
+			return false;
+
+		_targetPosition = null;
+		_campTarget = null;
+		_currentTarget = null;
+		ChangeState(UnitState.Idle);
+		return true;
+	}
+
+	private bool TryRecoverAiFromWater()
+	{
+		if (!IsAiControlledUnit() || !IsWaterTileAt(GlobalPosition))
+			return false;
+
+		GlobalPosition = MapGenerator.SnapToLandNavNear(GlobalPosition, GlobalPosition);
+		Velocity = Vector2.Zero;
+		_targetPosition = null;
+		_campTarget = null;
+		_currentTarget = null;
+		ChangeState(UnitState.Idle);
+		return true;
 	}
 
 	private bool IsAiControlledUnit()
@@ -371,23 +412,64 @@ public partial class Unit
 
 	private void OnNavVelocityComputed(Vector2 safeVelocity)
 	{
-		if (IsAiControlledUnit() && safeVelocity.LengthSquared() > 0.01f)
+		if (IsAiControlledUnit())
 		{
-			Vector2 dir = safeVelocity.Normalized();
-			if (IsWaterTileAt(GlobalPosition + dir * 96f) || IsWaterTileAt(GlobalPosition))
-			{
-				Velocity = Vector2.Zero;
-				MoveAndSlide();
+			if (TryRecoverAiFromWater())
 				return;
+
+			if (safeVelocity.LengthSquared() > 0.01f)
+			{
+				Vector2 dir = safeVelocity.Normalized();
+				if (IsWaterTileAt(GlobalPosition + dir * 96f))
+				{
+					Velocity = Vector2.Zero;
+					MoveAndSlide();
+					return;
+				}
 			}
 		}
 
 		Velocity = safeVelocity;
 		MoveAndSlide();
+		TryRecoverAiFromWater();
+	}
+
+	private void UpdateSelectiveRvo(float delta)
+	{
+		// RVO sélectif : joueur local uniquement — l'IA garde l'évitement activé (évite dérives vers l'eau).
+		if (IsAiControlledUnit())
+			return;
+
+		if (_navAgent == null || !_navAgent.IsInsideTree())
+			return;
+
+		_rvoCheckTimer += delta;
+		if (_rvoCheckTimer < RvoCheckInterval)
+			return;
+
+		_rvoCheckTimer = 0f;
+
+		bool nearAlly = false;
+		const float neighborRadiusSq = 120f * 120f;
+		foreach (var node in GetTree().GetNodesInGroup("units"))
+		{
+			if (node is not Unit ally || ally == this || ally.GetTeamId() != TeamId || ally.GetCurrentHealth() <= 0)
+				continue;
+
+			if (GlobalPosition.DistanceSquaredTo(ally.GlobalPosition) <= neighborRadiusSq)
+			{
+				nearAlly = true;
+				break;
+			}
+		}
+
+		_navAgent.AvoidanceEnabled = nearAlly;
 	}
 
 	private void ApplyMovementVelocity(Vector2 desiredVelocity)
 	{
+		UpdateSelectiveRvo((float)GetPhysicsProcessDeltaTime());
+
 		if (_navAgent != null && _navAgent.IsInsideTree() && _navAgent.AvoidanceEnabled)
 			_navAgent.Velocity = desiredVelocity;
 		else
